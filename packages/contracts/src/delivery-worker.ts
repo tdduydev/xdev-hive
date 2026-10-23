@@ -10,20 +10,14 @@ export const credentialRef = z
   .regex(/^[a-z0-9-]{1,64}$/, "Tên credential gồm chữ thường, số, gạch ngang, tối đa 64 ký tự.");
 export type CredentialRef = z.output<typeof credentialRef>;
 
-export const DELIVERY_JOB_KINDS = [
-  "ssh-script",
-  "jenkins-job",
-  "gitlab-manual",
-  "argocd",
-  "kubectl",
-  "health",
-  "ci-action",
-] as const;
+// Worker chỉ bấm job Jenkins hoặc sync Argo CD rồi theo dõi trạng thái; hệ ngoài tự triển khai (đã bỏ ssh, kubectl, kiểm tra
+// sức khoẻ khỏi phạm vi).
+export const DELIVERY_JOB_KINDS = ["jenkins-job", "argocd"] as const;
 export const deliveryJobKind = z.enum(DELIVERY_JOB_KINDS);
 export type DeliveryJobKind = z.output<typeof deliveryJobKind>;
 
-/** Cách triển khai worker biết chạy. `ci-action` và `health` đi kèm các cách trên nên không khai riêng. */
-export const DELIVERY_METHODS = ["ssh-script", "jenkins-job", "gitlab-manual", "argocd", "kubectl"] as const;
+/** Cách triển khai worker biết chạy. */
+export const DELIVERY_METHODS = DELIVERY_JOB_KINDS;
 export const deliveryMethod = z.enum(DELIVERY_METHODS);
 export type DeliveryMethod = z.output<typeof deliveryMethod>;
 
@@ -83,12 +77,6 @@ export const deliveryEvent = z.discriminatedUnion("type", [
     ref: z.string().min(1).max(500),
     /** Đường dẫn mở ở nguồn (FR-054). */
     url: z.string().url().optional(),
-  }),
-  z.object({
-    ...eventBase,
-    type: z.literal("health"),
-    ok: z.boolean(),
-    status: z.number().int().min(0).max(999).optional(),
   }),
   z.object({
     ...eventBase,

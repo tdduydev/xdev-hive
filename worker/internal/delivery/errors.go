@@ -1,5 +1,5 @@
 // Package delivery chạy việc CI/CD và triển khai trên worker (specs/032). Hub chỉ giữ cấu hình, duyệt và lịch sử; gói này
-// gọi Jenkins, Argo CD, Kubernetes, SSH từ trong mạng nội bộ và đọc credential từ kho bí mật của máy.
+// gọi Jenkins và Argo CD từ trong mạng nội bộ và đọc credential từ kho bí mật của máy.
 package delivery
 
 import (
@@ -18,7 +18,6 @@ const (
 	CodeUnavailable       Code = "unavailable"
 	CodeTimeout           Code = "timeout"
 	CodeBadRequest        Code = "bad_request"
-	CodeHostKeyChanged    Code = "hostkey_changed"
 	CodeUnsupported       Code = "unsupported"
 	CodeCanceled          Code = "canceled"
 )

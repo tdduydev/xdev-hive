@@ -60,6 +60,8 @@ export interface TargetDraft {
   rollbackOn: boolean;
   rollbackJobPath: string;
   rollbackParams: ParamDraft[];
+  // jenkins-job, argocd: tên credential trong kho của máy chạy (specs/032), không phải giá trị
+  credential: string;
   // gitlab-manual
   jobName: string;
   // argocd, kubectl
@@ -107,6 +109,7 @@ export function emptyDraft(method: DeployMethod): TargetDraft {
     rollbackOn: false,
     rollbackJobPath: "",
     rollbackParams: [],
+    credential: "",
     jobName: "",
     timeoutSec: "600",
     application: "",
@@ -162,6 +165,7 @@ export function draftFromConfig(config: TargetConfig): TargetDraft {
       draft.rollbackOn = config.rollbackJob !== null;
       draft.rollbackJobPath = config.rollbackJob?.jobPath ?? "";
       draft.rollbackParams = (config.rollbackJob?.params ?? []).map((p) => ({ name: p.name, value: p.value }));
+      draft.credential = config.credential ?? "";
       break;
     case "gitlab-manual":
       draft.jobName = config.jobName;
@@ -171,6 +175,7 @@ export function draftFromConfig(config: TargetConfig): TargetDraft {
       draft.application = config.application;
       draft.syncToRevision = config.syncToRevision;
       draft.timeoutSec = String(config.timeoutSec);
+      draft.credential = config.credential ?? "";
       break;
     case "kubectl":
       draft.connectionId = config.connectionId;
@@ -200,6 +205,7 @@ function healthConfig(d: TargetDraft) {
 }
 
 const branchOf = (d: TargetDraft) => d.branch.trim() || null;
+const credentialOf = (d: TargetDraft) => d.credential.trim() || null;
 const paramsOf = (list: ParamDraft[]) => list.map((p) => ({ name: p.name.trim(), value: p.value }));
 
 /** Cấu hình gửi hub từ bản nháp. Trả về dữ liệu chưa kiểm; `targetUpsertInput` của hợp đồng kiểm. */
@@ -236,6 +242,7 @@ export function draftToConfig(d: TargetDraft): unknown {
         params: paramsOf(d.params),
         promote: d.promoteOn ? { fromEnvironmentId: d.promoteFrom, buildParam: d.promoteParam.trim() } : null,
         rollbackJob: d.rollbackOn ? { jobPath: d.rollbackJobPath, params: paramsOf(d.rollbackParams) } : null,
+        credential: credentialOf(d),
       };
     case "gitlab-manual":
       return { method: "gitlab-manual", ...base, jobName: d.jobName, branch: branchOf(d) };
@@ -248,6 +255,7 @@ export function draftToConfig(d: TargetDraft): unknown {
         syncToRevision: d.syncToRevision,
         branch: branchOf(d),
         timeoutSec: num(d.timeoutSec),
+        credential: credentialOf(d),
       };
     case "kubectl":
       return {

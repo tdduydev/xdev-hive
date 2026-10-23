@@ -9,6 +9,31 @@
 Nhãn **[Unverified]** đánh dấu điều chưa kiểm trên máy thật. Máy viết plan này không có toolchain Go, nên mã Go chỉ được
 CI kiểm; xem research D8.
 
+## Phạm vi rút gọn (2026-10-23)
+
+Xem spec.md mục "Phạm vi rút gọn". Ảnh hưởng tới plan:
+
+- Worker: chỉ client Jenkins (trigger, theo dõi build) và Argo CD (sync, theo dõi). Đã gỡ `kube.go`, `health.go`, `ssh.go`
+  khỏi `worker/internal/delivery`.
+- Contracts: `deliveryJobSpec` chỉ còn `jenkins-job` và `argocd`; bỏ sự kiện health.
+- Hub, thêm:
+  - `dispatch.ts`: tạo `delivery_jobs` khi lần triển khai bắt đầu, chọn máy qua `runner-select`, chờ máy tối đa 15 phút
+    rồi lỗi `no_runner`;
+  - `approvals.ts`: hàng chờ duyệt, duyệt, từ chối, hết hạn;
+  - `runners.ts`: cấu hình `runner` của môi trường và danh sách máy ứng viên.
+- Web:
+  - hộp "Máy chạy" ở trang Môi trường;
+  - ô "Credential trên máy chạy" ở đích Jenkins và Argo CD;
+  - trang `/deploy-approvals`;
+  - cột "Máy chạy" ở lịch sử và trang lần triển khai.
+- Ngoài phạm vi:
+  - `ssh-script`, `kubectl`, gọi thẳng Kubernetes;
+  - health;
+  - GitLab;
+  - Proceed/Abort;
+  - trang "Chuyển sang worker";
+  - bảng deploy.
+
 ## Tóm tắt
 
 Hôm nay hub tự gọi Jenkins, Argo CD, Kubernetes và SSH (spec 020). Hub nằm ngoài mạng nội bộ nên không với tới. Plan này
@@ -39,9 +64,13 @@ nơi gọi truyền `Scope` vào (FR-104..106).
 - cột "máy chạy" cho lần triển khai; cờ `runner` cho từng môi trường (`worker` hoặc `legacy`);
 - đường legacy giữ nguyên sau cờ `HIVE_DELIVERY_OUTBOUND`.
 
-**Chưa làm trong lượt này** (cần file do luồng khác giữ): nối vào `worker/internal/channel` (nhận việc, gửi sự kiện),
-thêm khả năng ở `hello`, tab "Credential triển khai" trên desktop, trang "Chuyển sang worker". Ghi ở
-`SUMMARY-SPEC032.md`.
+**Chưa làm trong lượt này** (cần file do luồng khác giữ):
+
+- nối vào `worker/internal/channel` (nhận việc, gửi sự kiện);
+- thêm khả năng ở `hello`;
+- tab "Credential triển khai" trên desktop.
+
+Ghi ở `SUMMARY-SPEC032.md`. Trang "Chuyển sang worker" nằm ngoài phạm vi.
 
 ## Technical Context
 
@@ -69,9 +98,13 @@ thêm khả năng ở `hello`, tab "Credential triển khai" trên desktop, tran
 
 ```text
 packages/contracts/src/delivery-worker.ts        # mới
-worker/internal/delivery/                        # mới: creds, errors, jenkins, argocd, kube, health, ssh, executor
+worker/internal/delivery/                        # mới: creds, errors, jenkins, argocd, executor
 apps/hub/src/modules/delivery/runner-select.ts   # mới, thuần
+apps/hub/src/modules/delivery/dispatch.ts        # mới: giao việc cho máy, chờ máy
+apps/hub/src/modules/delivery/approvals.ts       # mới: cổng duyệt
 apps/hub/src/modules/delivery/schema.ts          # thêm delivery_jobs, runner cho môi trường
+apps/web/src/pages/deploys/approvals-page.tsx    # mới: trang Duyệt triển khai
+apps/web/src/pages/settings/runner-form.tsx      # mới: chọn máy chạy của môi trường
 apps/hub/db/migrations/                          # sinh ở cuối, sau khi merge main
 ```
 

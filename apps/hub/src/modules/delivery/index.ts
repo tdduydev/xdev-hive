@@ -28,6 +28,7 @@ export {
   DELIVERY_CI_POLL_QUEUE,
   DELIVERY_DEPLOY_QUEUE,
   DELIVERY_DEPLOY_WATCH_QUEUE,
+  DELIVERY_JOB_CHECK_QUEUE,
   DELIVERY_LOG_RETENTION_QUEUE,
   DELIVERY_WEBHOOK_REFRESH_QUEUE,
   DEPLOY_WATCH_HEARTBEAT_SECONDS,
@@ -36,11 +37,14 @@ export {
 } from "./jobs.ts";
 export { type DeliveryEvent, type DeliveryEventInput, emitDeliveryEvent } from "./notifications.ts";
 export { deliveryRouter } from "./router.ts";
+export { recordDeliveryCapability } from "./runners.ts";
 export {
   ciJenkinsConnections,
   ciJenkinsUserTokens,
   ciProjectJobs,
   ciRunsSeen,
+  deliveryJobs,
+  deliveryRunners,
   deployApprovals,
   deployConnections,
   deployEnvironments,
@@ -51,3 +55,10 @@ export {
   type HostKey,
 } from "./schema.ts";
 export { type DeployStreamDeps, deployStreamHandler } from "./stream-route.ts";
+export {
+  deliveryJobSpecOf,
+  type IngestResult,
+  ingestDeliveryEvent,
+  leasedJobsFor,
+  renewLease,
+} from "./worker-jobs.ts";

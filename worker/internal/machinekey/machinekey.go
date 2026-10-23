@@ -64,6 +64,9 @@ type Store struct {
 	Keyring Keyring
 	// File là nơi giữ khoá khi máy không có keychain (Linux không có Secret Service, máy chủ không giao diện).
 	File string
+	// Scope là id đăng ký (spec 034): hai tổ chức trên cùng hub, cùng tên máy thì mỗi đăng ký một khoá trong keychain.
+	// Rỗng giữ tên cũ để máy cài trước đó còn tìm thấy khoá.
+	Scope string
 }
 
 // NewStore dùng keychain của hệ điều hành và file cạnh worker.json.
@@ -71,8 +74,12 @@ func NewStore(configPath string) *Store {
 	return &Store{Keyring: osKeyring{}, File: strings.TrimSuffix(configPath, filepath.Ext(configPath)) + ".key"}
 }
 
-func account(hubURL, machineID string) string {
-	return strings.TrimRight(hubURL, "/") + " " + machineID
+func (s *Store) account(hubURL, machineID string) string {
+	a := strings.TrimRight(hubURL, "/") + " " + machineID
+	if s.Scope != "" {
+		a += " " + s.Scope
+	}
+	return a
 }
 
 func (s *Store) keyring() Keyring {
@@ -88,7 +95,7 @@ var ErrNoKey = errors.New("máy chưa có khoá")
 // Load đọc keychain trước rồi tới file. Keychain lỗi (bị khoá, không có dịch vụ) thì vẫn thử file, vì khoá có thể đã
 // được tạo lúc keychain không dùng được.
 func (s *Store) Load(hubURL, machineID string) (*Key, error) {
-	if v, err := s.keyring().Get(KeyringService, account(hubURL, machineID)); err == nil && v != "" {
+	if v, err := s.keyring().Get(KeyringService, s.account(hubURL, machineID)); err == nil && v != "" {
 		k, err := decode(v)
 		if err != nil {
 			return nil, fmt.Errorf("khoá máy trong keychain hỏng: %w", err)
@@ -107,7 +114,7 @@ func (s *Store) Load(hubURL, machineID string) (*Key, error) {
 	}
 	// Dòng đầu là hub và tên máy: file nằm cạnh worker.json nên còn sót lại khi máy đăng ký sang hub khác.
 	owner, seed, _ := strings.Cut(strings.ReplaceAll(string(data), "\r", ""), "\n")
-	if owner != account(hubURL, machineID) {
+	if owner != s.account(hubURL, machineID) {
 		return nil, ErrNoKey
 	}
 	k, err := decode(strings.TrimSpace(seed))
@@ -124,7 +131,7 @@ func (s *Store) Create(hubURL, machineID string) (*Key, error) {
 		return nil, fmt.Errorf("tạo khoá máy: %w", err)
 	}
 	seed := base64.RawURLEncoding.EncodeToString(priv.Seed())
-	if err := s.keyring().Set(KeyringService, account(hubURL, machineID), seed); err == nil {
+	if err := s.keyring().Set(KeyringService, s.account(hubURL, machineID), seed); err == nil {
 		// Bỏ file cũ để Load không đọc nhầm khoá đã thay khi keychain sau này không mở được.
 		if s.File != "" {
 			_ = os.Remove(s.File)
@@ -134,7 +141,7 @@ func (s *Store) Create(hubURL, machineID string) (*Key, error) {
 	if s.File == "" {
 		return nil, errors.New("máy không có keychain và không có chỗ ghi file khoá")
 	}
-	if err := writeFile(s.File, account(hubURL, machineID)+"\n"+seed); err != nil {
+	if err := writeFile(s.File, s.account(hubURL, machineID)+"\n"+seed); err != nil {
 		return nil, err
 	}
 	return &Key{private: priv, Storage: StorageFile}, nil
@@ -143,7 +150,7 @@ func (s *Store) Create(hubURL, machineID string) (*Key, error) {
 // Delete xoá khoá ở cả hai nơi, dùng khi máy đăng ký lại hay gỡ worker.
 func (s *Store) Delete(hubURL, machineID string) error {
 	var errs []error
-	if err := s.keyring().Delete(KeyringService, account(hubURL, machineID)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	if err := s.keyring().Delete(KeyringService, s.account(hubURL, machineID)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		errs = append(errs, fmt.Errorf("xoá khoá máy trong keychain: %w", err))
 	}
 	if s.File != "" {

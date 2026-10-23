@@ -205,6 +205,8 @@ export const registerOutput = z.object({
   machineId,
   /** Chỉ trả một lần; worker lưu vào file cấu hình và gửi trong header Authorization khi mở WSS. */
   machineToken: z.string(),
+  /** Tên tổ chức để máy đăng ký với nhiều tổ chức hiện được tên dễ đọc (spec 034 FR-006). Hub cũ không gửi. */
+  orgName: z.string().optional(),
 });
 
 export type RegisterInput = z.output<typeof registerInput>;

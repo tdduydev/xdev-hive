@@ -303,6 +303,10 @@ export function rolesRouter(deps: OrgDeps) {
           .values({ roleId: role.id, orgId, userId: input.userId })
           .onConflictDoNothing();
       } else {
+        // Quyền của vai trò gán cho đội chỉ được hỏi theo đội, nên quyền phạm vi tổ chức gán vào đây sẽ nằm im mà người
+        // quản trị tưởng đã cấp (spec 034 FR-092).
+        if (role.scope === "org")
+          throw new BadRequestError("ROLE_ORG_SCOPE", "Vai trò phạm vi tổ chức chỉ gán được cho người.");
         const [team] = await tx.select({ id: teams.id }).from(teams).where(eq(teams.id, input.teamId));
         if (!team) throw new NotFoundError("TEAM_NOT_FOUND", "Không tìm thấy đội.");
         await tx.insert(teamCustomRoles).values({ roleId: role.id, orgId, teamId: input.teamId }).onConflictDoNothing();
@@ -319,6 +323,8 @@ export function rolesRouter(deps: OrgDeps) {
     unassign: os.unassign.handler(async ({ context: { tx, user }, input }) => {
       await requireRolesWrite(tx, user.id);
       const role = await getRole(tx, input.roleId);
+      // Gỡ vai trò theo cùng luật với gán: không thì người chỉ có roles.write gỡ được vai trò của quản trị cao hơn mình.
+      await requireCanGrant(tx, user.id, role.permissions);
       if (input.kind === "member")
         await tx
           .delete(memberCustomRoles)

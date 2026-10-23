@@ -218,6 +218,17 @@ describe("gán vai trò và quyền hiệu lực", () => {
     ).toBeDefined();
   });
 
+  it("vai trò phạm vi tổ chức không gán được cho đội", async () => {
+    const role = await call(
+      router(orgAdmin).create,
+      { name: `TC ${randomUUID().slice(0, 4)}`, scope: "org", permissions: ["tasks.read"] },
+      ctx(),
+    );
+    expect(
+      await errorCode(() => call(router(orgAdmin).assign, { roleId: role.id, kind: "team", teamId: teamA }, ctx())),
+    ).toBe("ROLE_ORG_SCOPE");
+  });
+
   it("không xoá được vai trò đang gán; gỡ hết rồi thì xoá được", async () => {
     const role = await call(
       router(orgAdmin).create,
@@ -248,6 +259,26 @@ describe("gán vai trò và quyền hiệu lực", () => {
         call(router(viewer).create, { name: "Leo thang", scope: "org", permissions: ["audit.read"] }, ctx()),
       ),
     ).toBe("PERMISSION_NOT_HELD");
+  });
+
+  it("gỡ vai trò theo cùng luật với gán: không gỡ được vai trò có quyền mình không có", async () => {
+    const manager = await call(
+      router(owner).create,
+      { name: `QLG ${randomUUID().slice(0, 4)}`, scope: "org", permissions: ["roles.write", "tasks.read"] },
+      ctx(),
+    );
+    await call(router(owner).assign, { roleId: manager.id, kind: "member", userId: viewer }, ctx());
+    const audit = await call(
+      router(owner).create,
+      { name: `KT ${randomUUID().slice(0, 4)}`, scope: "org", permissions: ["audit.read"] },
+      ctx(),
+    );
+    await call(router(owner).assign, { roleId: audit.id, kind: "member", userId: member }, ctx());
+    expect(
+      await errorCode(() => call(router(viewer).unassign, { roleId: audit.id, kind: "member", userId: member }, ctx())),
+    ).toBe("PERMISSION_NOT_HELD");
+    const after = await call(router(owner).unassign, { roleId: audit.id, kind: "member", userId: member }, ctx());
+    expect(after.assignments).toEqual([]);
   });
 });
 

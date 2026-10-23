@@ -16,7 +16,7 @@ import {
 } from "@xdev-hive/contracts";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../../audit/index.ts";
-import { findProject, loadProject } from "../../catalog/index.ts";
+import { loadProject } from "../../catalog/index.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -30,15 +30,19 @@ import {
 } from "../../platform/index.ts";
 import { effectivePermissions, teamMemberIds, teamRoleOf } from "../../tenancy/index.ts";
 import { scmDomainError, scmTarget } from "../ci/feed.ts";
+import { deliveryOutbound, OUTBOUND_DISABLED } from "../clients/outbound.ts";
 import { pgCode } from "../connections/jenkins.ts";
 import type { DeliveryDeps } from "../deps.ts";
+import { dispatchDeploy } from "../dispatch.ts";
 import { loadEnvironment, peopleOf } from "../environments.ts";
 import { appendDeployLog, notifyDeploy } from "../logs.ts";
 import { emitDeliveryEvent } from "../notifications.ts";
-import { DELIVERY_DEPLOY_QUEUE, DELIVERY_DEPLOY_WATCH_QUEUE } from "../queues.ts";
-import { deployApprovals, deploys, deployTargets } from "../schema.ts";
+import { DELIVERY_APPROVAL_EXPIRE_QUEUE, DELIVERY_DEPLOY_QUEUE, DELIVERY_DEPLOY_WATCH_QUEUE } from "../queues.ts";
+import { deploys, deployTargets } from "../schema.ts";
 import { targetVariableContext } from "../targets.ts";
-import { type DeployRow, deployNotFound, deployView, type LocatedDeploy, loadLocatedDeploy } from "./board.ts";
+import { cancelDeliveryJobs } from "../worker-jobs.ts";
+import { type DeployRow, deployNotFound, deployView } from "./board.ts";
+import { deployLink, describe, emitDeployEvent, locate, versionLabel } from "./events.ts";
 import type { DeployMethod, DeployMethodContext, DeployRun } from "./method.ts";
 import { methodFor as registeredMethodFor } from "./methods.ts";
 
@@ -286,86 +290,6 @@ function requirePool(deps: DeliveryDeps) {
   return deps.pool;
 }
 
-async function locate(tx: Tx, id: string): Promise<LocatedDeploy> {
-  const row = await loadLocatedDeploy(tx, id);
-  if (!row) throw deployNotFound();
-  return row;
-}
-
-// ---- Thông báo ------------------------------------------------------------------------------------------------------
-
-function versionLabel(v: DeployVersion): string {
-  if (v.commit) return v.commit.slice(0, 8);
-  if (v.tag) return v.tag;
-  if (v.jenkinsBuild !== null) return `build #${v.jenkinsBuild}`;
-  return v.image ?? v.revision ?? "bản mới";
-}
-
-const deployLink = (deps: DeliveryDeps, id: string) =>
-  deps.publicUrl ? `${deps.publicUrl.replace(/\/+$/, "")}/deploys/${id}` : null;
-
-async function describe(tx: Tx, row: LocatedDeploy) {
-  const project = await findProject(tx, row.projectId);
-  const env = await loadEnvironment(tx, row.environmentId);
-  return { project: project?.name ?? "dự án", env: env?.name ?? "môi trường" };
-}
-
-const FINISH_TEXT: Partial<Record<DeployState, [string, string]>> = {
-  succeeded: ["thành công", "Bản {v} đang chạy trên {env}."],
-  failed: ["thất bại", "Bản {v} lỗi{step}. Xem log của lần triển khai."],
-  failed_needs_review: ["cần xem lại", "Các bước của bản {v} đã chạy xong nhưng kiểm tra sức khoẻ không đạt."],
-  unknown: [
-    "không rõ kết quả",
-    "Hive không đọc được máy chủ hay nguồn quá 15 phút khi triển khai bản {v}. Kiểm tra trên máy chủ trước khi chạy lại.",
-  ],
-};
-
-/** started/succeeded/failed cho người bấm và người đã duyệt; `eventKey` ổn định nên job chạy lại không báo hai lần. */
-async function emitDeployEvent(tx: Tx, deps: DeliveryDeps, deployId: string, state: DeployState): Promise<void> {
-  const row = await locate(tx, deployId);
-  const d = row.deploy;
-  if (d.origin !== "hive") return;
-  const { project, env } = await describe(tx, row);
-  const approvers = await tx
-    .select({ userId: deployApprovals.userId })
-    .from(deployApprovals)
-    .where(and(eq(deployApprovals.deployId, d.id), eq(deployApprovals.decision, "approve")));
-  const recipientIds = [d.requestedBy, ...approvers.map((a) => a.userId)].filter((id): id is string => id !== null);
-  const v = versionLabel(d.version);
-  let event: "deploy.started" | "deploy.succeeded" | "deploy.failed";
-  let title: string;
-  let body: string;
-  if (state === "running") {
-    const who = d.requestedBy ? ((await peopleOf(tx, [d.requestedBy])).get(d.requestedBy)?.name ?? "") : "";
-    event = "deploy.started";
-    title = `Đang triển khai ${project} lên ${env}`;
-    body = `${who ? `${who} triển khai` : "Triển khai"} bản ${v} lên ${env}.`;
-  } else {
-    const [outcome, template] = FINISH_TEXT[state] ?? ["thất bại", "Bản {v} lỗi{step}."];
-    const failedStep = d.steps.find((s) => s.state === "failed");
-    event = state === "succeeded" ? "deploy.succeeded" : "deploy.failed";
-    title = `Triển khai ${project} lên ${env} ${outcome}`;
-    body = template
-      .replace("{v}", v)
-      .replace("{env}", env)
-      .replace("{step}", failedStep ? ` ở bước ${failedStep.key}` : "");
-  }
-  await emitDeliveryEvent(
-    tx,
-    {
-      orgId: d.orgId,
-      event,
-      title,
-      body,
-      systemId: row.systemId,
-      eventKey: `deploy:${d.id}:${event}`,
-      recipientIds,
-      link: deployLink(deps, d.id),
-    },
-    deps.jobs,
-  );
-}
-
 // ---- Tạo ------------------------------------------------------------------------------------------------------------
 
 /** Quyền bấm Triển khai/Huỷ: `deploy.run` của đội sở hữu môi trường, cộng vai trò trong `deployRoles` nếu có. */
@@ -534,6 +458,7 @@ export async function requestDeploy(
         skipBackupReason: req.skipBackupReason ?? null,
         approvalsRequired: approvals,
         approvalExpiresAt: approvals > 0 ? new Date(now.getTime() + env.policy.approvalTtlHours * 3_600_000) : null,
+        ranLegacy: env.runner === "legacy",
       })
       .returning();
   } catch (e) {
@@ -614,6 +539,13 @@ async function requestApprovals(tx: Tx, deps: DeliveryDeps, deploy: DeployRow, e
     if (roles.length > 0 && !roles.includes((await teamRoleOf(tx, id, env.teamId)) ?? "")) continue;
     recipientIds.push(id);
   }
+  if (!deps.jobs) throw new Error("Hub chưa bật hàng đợi job nên chưa hẹn hết hạn duyệt được.");
+  if (deploy.approvalExpiresAt)
+    await deps.jobs.enqueue<DeployJob>(
+      DELIVERY_APPROVAL_EXPIRE_QUEUE,
+      { orgId: deploy.orgId, deployId: deploy.id },
+      { tx, singletonKey: deploy.id, startAfter: deploy.approvalExpiresAt },
+    );
   const row = await locate(tx, deploy.id);
   const { project } = await describe(tx, row);
   const who = (await peopleOf(tx, [requester])).get(requester)?.name ?? requester;
@@ -674,6 +606,14 @@ export async function startDeploy(deps: DeliveryDeps, job: DeployJob, opts: JobO
         await notifyDeploy(tx, deploy.id);
         return;
       }
+      if (!env) return;
+      if (env.runner !== "legacy") {
+        // Đường chính (specs/032): máy trong mạng nội bộ chạy; lần giữ `queued` tới khi máy báo bắt đầu.
+        await dispatchDeploy(tx, deps, deploy, target, env, now);
+        return;
+      }
+      // Kiểu cũ: hub tự gọi ra ngoài, chỉ khi quản trị hub bật HIVE_DELIVERY_OUTBOUND.
+      if (!deliveryOutbound()) throw new Error(OUTBOUND_DISABLED);
       const method = methodOf(opts, deploy.method);
       const { own, hive } = splitRemote(deploy.remote);
       const ctx: DeployMethodContext = { tx, deps };
@@ -690,6 +630,7 @@ export async function startDeploy(deps: DeliveryDeps, job: DeployJob, opts: JobO
           steps: started.steps,
           remote: joinRemote(started.remote ?? own, hive),
           external: started.external ?? deploy.external,
+          ranLegacy: true,
           startedAt: now,
           updatedAt: new Date(),
         })
@@ -836,6 +777,8 @@ export async function cancelDeploy(
     throw notActive();
 
   const target = await loadTarget(tx, deploy.targetId);
+  const now = clock(opts)();
+  if (!deploy.ranLegacy) return cancelOnWorker(tx, userId, deploy, now);
   const { own, hive } = splitRemote(deploy.remote);
   if (deploy.state === "running" && target) {
     try {
@@ -849,13 +792,7 @@ export async function cancelDeploy(
       throw new ConflictError("DEPLOY_CANCEL_FAILED", `Không huỷ được trên máy chủ: ${message}`);
     }
   }
-  const now = clock(opts)();
-  const at = now.toISOString();
-  const steps: DeployStep[] = deploy.steps.map((s) =>
-    s.state === "running" || s.state === "pending"
-      ? { ...s, state: "canceled", finishedAt: s.state === "running" ? at : s.finishedAt }
-      : s,
-  );
+  const steps = canceledSteps(deploy.steps, now);
   const next = target ? await writeLog(tx, deps, deploy, target, hive, "", "close") : {};
   const who = (await peopleOf(tx, [userId])).get(userId)?.name ?? userId;
   await hiveLine(tx, deps, deploy, target, `Đã huỷ bởi ${who}.`);
@@ -872,6 +809,36 @@ export async function cancelDeploy(
   });
   await notifyDeploy(tx, id);
   return deployView(tx, await locate(tx, id));
+}
+
+function canceledSteps(steps: DeployStep[], now: Date): DeployStep[] {
+  const at = now.toISOString();
+  return steps.map((s) =>
+    s.state === "running" || s.state === "pending"
+      ? { ...s, state: "canceled", finishedAt: s.state === "running" ? at : s.finishedAt }
+      : s,
+  );
+}
+
+/**
+ * Huỷ lần chạy trên máy: việc thành `canceled` để sự kiện đến sau bị bỏ; máy được báo dừng qua kênh (T017). Hub không ghi
+ * log vì log của lần này nằm trên máy.
+ */
+async function cancelOnWorker(tx: Tx, userId: string, deploy: DeployRow, now: Date): Promise<Deploy> {
+  const jobs = await cancelDeliveryJobs(tx, deploy.id, now);
+  await tx
+    .update(deploys)
+    .set({ state: "canceled", steps: canceledSteps(deploy.steps, now), finishedAt: now, updatedAt: now })
+    .where(eq(deploys.id, deploy.id));
+  await recordAudit(tx, {
+    action: "delivery.deploy.cancel",
+    targetType: "deploy",
+    targetId: deploy.id,
+    actorUserId: userId,
+    data: { targetId: deploy.targetId, from: deploy.state, jobs: jobs.map((j) => j.id) },
+  });
+  await notifyDeploy(tx, deploy.id);
+  return deployView(tx, await locate(tx, deploy.id));
 }
 
 // ---- Đăng ký worker -------------------------------------------------------------------------------------------------

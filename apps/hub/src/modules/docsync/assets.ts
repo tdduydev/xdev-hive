@@ -16,7 +16,7 @@ import {
   withTenant,
 } from "../platform/index.ts";
 import { type GitProvider, listConnections } from "../scm/index.ts";
-import { ORG_HEADER, requireOrgRole, requireTeamRole } from "../tenancy/index.ts";
+import { ORG_HEADER, requireOrgRole, requireTeamRole, tokenOrgMismatch } from "../tenancy/index.ts";
 import { isLfsPath, parseGitattributes } from "./content.ts";
 import { type HomeRow, homeProvider } from "./homes.ts";
 import { keyFromPath, matchesHome, type PathHome, pathFromKey, resolveRelative } from "./paths.ts";
@@ -388,6 +388,7 @@ async function session(deps: AssetDeps, request: Request) {
     return { error: reply(500, "Hub chưa cấu hình HIVE_DATABASE_URL.", "INTERNAL_SERVER_ERROR") } as const;
   const orgId = request.headers.get(ORG_HEADER) ?? new URL(request.url).searchParams.get("org");
   if (!orgId || !UUID.test(orgId)) return { error: reply(400, `Chưa chọn tổ chức (header ${ORG_HEADER}).`) } as const;
+  if (tokenOrgMismatch(found, orgId)) return { error: reply(401, "Chưa đăng nhập.", "UNAUTHORIZED") } as const;
   return { pool: deps.pool, ctx: { userId: found.user.id, orgId } } as const;
 }
 

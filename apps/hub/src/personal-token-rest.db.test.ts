@@ -99,6 +99,18 @@ describe("token cá nhân trên REST API", () => {
     ]);
     const token = await pat(org.orgId, org.user("tmember"));
     expect((await call("/v1/teams", token, other.orgId)).status).toBe(401);
+    // Spec 034 FR-094: header đúng tổ chức của token nhưng đường dẫn chọn tổ chức kia thì vẫn bị chặn.
+    expect((await call(`/v1/orgs/${org.orgId}`, token, org.orgId)).status).toBe(200);
+    expect((await call(`/v1/orgs/${other.orgId}`, token, org.orgId)).status).toBe(401);
+    // Route SSE chọn tổ chức bằng `?org=` khi không có header; bridge token không thấy tham số này.
+    const stream = (orgId: string) =>
+      app.fetch(
+        new Request(`${baseURL}/api/v1/runs/${randomUUID()}/stream?org=${orgId}`, {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      );
+    expect((await stream(org.orgId)).status).not.toBe(401);
+    expect((await stream(other.orgId)).status).toBe(401);
   });
 
   it("machine token hay run token không thay được phiên người dùng", async () => {

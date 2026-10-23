@@ -355,8 +355,8 @@ impl Launch {
             && local_id
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
-        let cli_ok = !cli.is_empty()
-            && cli.len() <= 32
+        let cli_ok = cli.len() <= 32
+            && cli.starts_with(|c: char| c.is_ascii_lowercase())
             && cli
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');

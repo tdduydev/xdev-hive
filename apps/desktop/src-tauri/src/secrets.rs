@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn worker_error_text_prefers_stderr_then_json() {
-        let json = br#"{"error":{"code":"store_locked","message":"Kho đang khoá."}}"#;
+        let json = r#"{"error":{"code":"store_locked","message":"Kho đang khoá."}}"#.as_bytes();
         assert_eq!(error_text(json, "Kho đang bị khoá.\n".as_bytes()), "Kho đang bị khoá.");
         assert_eq!(error_text(json, b"  \n"), "Kho đang khoá.");
         assert_eq!(
