@@ -164,7 +164,11 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
   async function submit(e: FormEvent) {
     e.preventDefault();
     setTouched(true);
-    if (nameError || valueError || busy) return;
+    if (nameError || valueError || busy) {
+      // Đưa focus tới ô lỗi đầu tiên để người dùng bàn phím và trình đọc màn hình thấy ngay chỗ cần sửa.
+      document.getElementById(`${id}-${nameError ? "name" : "value"}`)?.focus();
+      return;
+    }
     const typed = value;
     setBusy(true);
     setError(null);
@@ -199,6 +203,7 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
             <Label htmlFor={`${id}-name`}>{t.name}</Label>
             <Input
               id={`${id}-name`}
+              name="name"
               className="font-mono"
               value={name}
               spellCheck={false}
@@ -220,6 +225,7 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
             <Label htmlFor={`${id}-description`}>{t.description}</Label>
             <Input
               id={`${id}-description`}
+              name="description"
               value={description}
               autoComplete="off"
               aria-describedby={`${id}-description-note`}
@@ -234,6 +240,7 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
             {/* Không có nút xem giá trị đang gõ: màn chỉ cho thấy giá trị qua nút Hiện có xác nhận (FR-007). */}
             <Input
               id={`${id}-value`}
+              name="value"
               type="password"
               className="font-mono"
               value={value}

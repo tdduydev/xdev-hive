@@ -370,7 +370,9 @@ export function SecretsScreen() {
                     {rows.map((s) => (
                       <TableRow key={s.name}>
                         <Td className="min-w-40">
-                          <div className="font-mono text-sm font-medium break-all">{s.name}</div>
+                          <div translate="no" className="font-mono text-sm font-medium break-all">
+                            {s.name}
+                          </div>
                           {s.description && (
                             <div className="text-xs break-words text-muted-foreground">{s.description}</div>
                           )}

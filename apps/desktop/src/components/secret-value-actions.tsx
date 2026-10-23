@@ -165,7 +165,9 @@ export function SecretValueActions({ name, disabled }: { name: string; disabled:
       </div>
       {value !== null && (
         <section aria-label={t.value} className="flex max-w-full min-w-0 flex-col items-end gap-0.5">
-          <code className="max-w-full rounded-md bg-muted px-2 py-1 font-mono text-xs break-all">{value}</code>
+          <code translate="no" className="max-w-full rounded-md bg-muted px-2 py-1 font-mono text-xs break-all">
+            {value}
+          </code>
           <span className="text-xs text-muted-foreground">{t.hidesIn}</span>
         </section>
       )}
