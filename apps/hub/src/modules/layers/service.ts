@@ -1,4 +1,11 @@
-import { CONFIG_SCHEMA_VERSION, type EffectiveConfig, type LayerEntry, type teamSetInput } from "@xdev-hive/contracts";
+import {
+  CONFIG_SCHEMA_VERSION,
+  type EffectiveConfig,
+  type LayerEntry,
+  type ProjectBudget,
+  type ProjectSettings,
+  type teamSetInput,
+} from "@xdev-hive/contracts";
 import { and, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { recordAudit } from "../audit/index.ts";
@@ -9,7 +16,7 @@ import { allowWith, effectivePermissions, requireOrgRole, requireTeamRole, teamR
 import { configVersion, type LayerInput, rankOf, resolveConfig, withoutChain } from "./engine.ts";
 import { findSetting, type SettingDef } from "./registry.ts";
 import { configLayerEntries as entries } from "./schema.ts";
-import { buildLayers, orgValuesFromPolicy, type StoredEntry } from "./sources.ts";
+import { buildLayers, orgValuesFromPolicy, projectValuesFromSettings, type StoredEntry } from "./sources.ts";
 
 type Row = typeof entries.$inferSelect;
 const view = (r: Row): LayerEntry => ({
@@ -52,24 +59,79 @@ function checkLockable(def: SettingDef) {
     );
 }
 
-/** Cấu hình hiệu lực của một dự án. Người xem dự án nào cũng đọc được; chuỗi tầng chỉ cho người sửa được cài đặt dự án. */
-export async function effectiveConfig(tx: Tx, userId: string, projectId: string): Promise<EffectiveConfig> {
-  const project = await loadProject(tx, projectId);
-  const role = project && (await teamRoleOf(tx, userId, project.teamId));
-  // Không có quyền xem thì NOT_FOUND để không lộ dự án có tồn tại.
-  if (!project || !role) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
+type ProjectLike = { id: string; teamId: string; settings: ProjectSettings };
+
+async function resolveFor(tx: Tx, project: ProjectLike) {
   const orgId = await ctxOrg(tx);
   const [policy, rows] = await Promise.all([loadPolicy(tx), tx.select().from(entries)]);
   const resolved = resolveConfig(
     buildLayers({
       orgId,
       teamId: project.teamId,
-      projectId,
+      projectId: project.id,
       policy,
       settings: project.settings,
       entries: rows.map(stored),
     }),
   );
+  return { orgId, resolved };
+}
+
+/**
+ * Quyền CLI và trần chi phí mỗi run của một dự án, tính qua engine nên tầng đội cũng có tiếng nói. Thay cho
+ * `resolvePermission` và `clampBudget` ở chỗ giao run; không có hàng tầng nào thì ra đúng kết quả của hai hàm đó.
+ */
+export async function runSettingsOf(tx: Tx, project: ProjectLike) {
+  const { resolved } = await resolveFor(tx, project);
+  const get = (key: string) => resolved.find((r) => r.key === key)?.value;
+  const mode = get("agent.permissionMode") === "full" ? "full" : "workspace";
+  const asked = project.settings.runPermissions?.mode ?? "workspace";
+  const cap = get("limits.perRunUsd");
+  return {
+    permission: {
+      mode,
+      notice:
+        asked === "full" && mode === "workspace"
+          ? "Chính sách tổ chức không cho toàn quyền CLI; run chạy trong worktree."
+          : null,
+    } as { mode: "workspace" | "full"; notice: string | null },
+    clampBudget(budget: ProjectBudget | undefined): ProjectBudget | undefined {
+      if (typeof cap !== "number") return budget;
+      return { ...budget, perRunUsd: budget?.perRunUsd === undefined ? cap : Math.min(budget.perRunUsd, cap) };
+    },
+  };
+}
+
+/**
+ * Chặn sửa cài đặt dự án mà tầng trên đã khoá (FR-020). Chỉ khoá của công ty và của đội dự án; so giá trị trước và
+ * sau để một bản vá không đụng tới khoá đó vẫn đi qua.
+ */
+export async function assertSettingsUnlocked(
+  tx: Tx,
+  ctx: { teamId: string; current: ProjectSettings; next: ProjectSettings },
+): Promise<void> {
+  const orgId = await ctxOrg(tx);
+  const rows = await tx.select().from(entries).where(eq(entries.locked, true));
+  const locked = new Set(
+    rows
+      .filter((r) => (r.layer === "org" && r.targetId === orgId) || (r.layer === "team" && r.targetId === ctx.teamId))
+      .map((r) => r.key),
+  );
+  if (locked.size === 0) return;
+  const before = projectValuesFromSettings(ctx.current);
+  const after = projectValuesFromSettings(ctx.next);
+  for (const key of locked)
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+      throw new ConflictError("CONFIG_LOCKED", `Cài đặt “${key}” đã bị khoá ở cấp trên, dự án không đổi được.`);
+}
+
+/** Cấu hình hiệu lực của một dự án. Người xem dự án nào cũng đọc được; chuỗi tầng chỉ cho người sửa được cài đặt dự án. */
+export async function effectiveConfig(tx: Tx, userId: string, projectId: string): Promise<EffectiveConfig> {
+  const project = await loadProject(tx, projectId);
+  const role = project && (await teamRoleOf(tx, userId, project.teamId));
+  // Không có quyền xem thì NOT_FOUND để không lộ dự án có tồn tại.
+  if (!project || !role) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
+  const { orgId, resolved } = await resolveFor(tx, project);
   const canSeeChain = role === "admin" || role === "member";
   return {
     orgId,

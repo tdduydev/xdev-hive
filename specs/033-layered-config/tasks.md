@@ -47,5 +47,5 @@ The MVP is Phases 1 to 4. Later phases are listed so nothing is lost; they are n
 - [ ] T026 [US7] Config history view with the "affects this project" filter (FR-082)
 - [ ] T027 [US9] Move a project between teams with preview (FR-031)
 - [ ] T028 [US8] Fold `sandbox_org_settings.locked`, skill-pack and MCP rules into the registry (FR-020, FR-071)
-- [ ] T029 [US8] Make `resolveModel`, `resolvePermission`, `clampBudget`, `machineSlots` call the engine (FR-016)
+- [x] T029 [US8] Make `resolveModel`, `resolvePermission`, `clampBudget`, `machineSlots` call the engine (FR-016)
 - [ ] T030 [US8] SDLC modes (auto-approve floor, deny paths) as layered settings. Deferred: `apps/hub/src/modules/sdlc/**` and `packages/contracts/src/sdlc.ts` belong to spec 035 work right now; start after it merges

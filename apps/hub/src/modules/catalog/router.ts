@@ -15,9 +15,9 @@ import {
   listProjects,
   retryStep,
 } from "./projects.ts";
-import { updateProjectSettings } from "./settings.ts";
+import { type SettingsGuard, updateProjectSettings } from "./settings.ts";
 
-export function catalogRouter(deps: CatalogDeps & OrgDeps) {
+export function catalogRouter(deps: CatalogDeps & OrgDeps & { settingsGuard?: SettingsGuard }) {
   const { authed, inOrg, orgMember } = orgMiddlewares(deps);
   const os = implement(contract.projects).$context<RequestContext>().use(authed);
   return {
@@ -52,7 +52,9 @@ export function catalogRouter(deps: CatalogDeps & OrgDeps) {
       ),
     updateSettings: os.updateSettings
       .use(inOrg)
-      .handler(({ context: { tx, user }, input }) => updateProjectSettings(tx, user.id, input.key, input.settings)),
+      .handler(({ context: { tx, user }, input }) =>
+        updateProjectSettings(tx, user.id, input.key, input.settings, deps.settingsGuard),
+      ),
     tokenUsage: os.tokenUsage.use(inOrg).handler(async ({ context: { tx, user }, input }) => ({
       rows: await projectTokenUsage(tx, user.id, input.key, input.days),
     })),

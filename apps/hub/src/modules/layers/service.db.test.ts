@@ -3,9 +3,17 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { errorCode, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
+import { loadProject, updateProjectSettings } from "../catalog/index.ts";
 import { loadPolicy, saveAgentPolicy } from "../governance/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
-import { effectiveConfig, setOrgLock, setTeamEntry, teamEntries } from "./service.ts";
+import {
+  assertSettingsUnlocked,
+  effectiveConfig,
+  runSettingsOf,
+  setOrgLock,
+  setTeamEntry,
+  teamEntries,
+} from "./service.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -130,5 +138,28 @@ describe("org lock", () => {
     expect(await errorCode(() => as("admin", (tx, u) => setOrgLock(tx, u, "limits.perRunUsd", true)))).toBe(
       "CONFIG_LAYER_NOT_ALLOWED",
     );
+  });
+});
+
+describe("old write paths and run settings", () => {
+  const patchProject = (patch: Parameters<typeof updateProjectSettings>[3]) =>
+    as("tadmin", (tx, u) => updateProjectSettings(tx, u, `cfg-${tag}`, patch, assertSettingsUnlocked));
+
+  it("rejects a project change to a setting locked above, but lets unrelated patches through", async () => {
+    await as("admin", (tx, u) => setOrgLock(tx, u, "merge.mode", true));
+    expect(await errorCode(() => patchProject({ merge: { mode: "auto" } }))).toBe("CONFIG_LOCKED");
+    await patchProject({ merge: { requireCi: false } });
+    await as("admin", (tx, u) => setOrgLock(tx, u, "merge.mode", false));
+    expect((await patchProject({ merge: { mode: "auto" } })).merge.mode).toBe("auto");
+    await patchProject({ merge: { mode: "review" } });
+  });
+
+  it("applies the team ceiling to the budget handed to a run", async () => {
+    await setLimit("tadmin", 5);
+    const settings = async () =>
+      as("tmember", async (tx) => runSettingsOf(tx, (await loadProject(tx, projectId)) as never));
+    expect((await settings()).clampBudget(undefined)).toEqual({ perRunUsd: 5 });
+    expect((await settings()).clampBudget({ perRunUsd: 50 })).toEqual({ perRunUsd: 5 });
+    expect((await settings()).permission.mode).toBe("workspace");
   });
 });

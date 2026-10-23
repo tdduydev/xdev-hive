@@ -58,7 +58,7 @@ import {
   registerMcpTools as knowledgeMcpTools,
   knowledgeRouter,
 } from "./modules/knowledge/index.ts";
-import { layeredConfigRouter } from "./modules/layers/index.ts";
+import { assertSettingsUnlocked, layeredConfigRouter } from "./modules/layers/index.ts";
 import {
   createThreadHost,
   createThreadLinkTarget,
@@ -280,7 +280,7 @@ export function createApp({
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),
     chat: chatRouter({ ...shared, ...chatApis, publicUrl, telegramPollingBotIds: config.telegramPollingBotIds }),
-    projects: catalogRouter({ ...shared, jobs, publicUrl }),
+    projects: catalogRouter({ ...shared, jobs, publicUrl, settingsGuard: assertSettingsUnlocked }),
     projectMembers: projectMembersRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({
       auth,

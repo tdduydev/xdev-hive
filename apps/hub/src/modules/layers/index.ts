@@ -2,4 +2,4 @@
 export { configVersion, type LayerInput, resolveConfig } from "./engine.ts";
 export { findSetting, REGISTRY } from "./registry.ts";
 export { layeredConfigRouter } from "./router.ts";
-export { effectiveConfig } from "./service.ts";
+export { assertSettingsUnlocked, effectiveConfig, runSettingsOf } from "./service.ts";

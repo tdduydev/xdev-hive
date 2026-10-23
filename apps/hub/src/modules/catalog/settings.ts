@@ -13,6 +13,15 @@ import { allowWith, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { findProject } from "./projects.ts";
 import { projects } from "./schema.ts";
 
+/**
+ * Móc do tầng cấu hình (layers) cấp để chặn sửa khoá của tầng trên. Catalog không import layers (layers đã import
+ * catalog), nên app.ts truyền vào.
+ */
+export type SettingsGuard = (
+  tx: Tx,
+  ctx: { teamId: string; current: ProjectSettings; next: ProjectSettings },
+) => Promise<void>;
+
 /** Gán từng khoá của bản vá; `null` là bỏ khoá để trường không bắt buộc về mặc định. */
 function assign<T extends object>(base: T | undefined, patch: object): T {
   const out: Record<string, unknown> = { ...base };
@@ -97,6 +106,7 @@ export async function updateProjectSettings(
   userId: string,
   key: string,
   patch: ProjectSettingsPatch,
+  guard?: SettingsGuard,
 ): Promise<ProjectSettings> {
   const ref = await findProject(tx, key);
   // Không thấy dự án thì báo như không tồn tại, để không lộ key của đội khác.
@@ -130,6 +140,7 @@ export async function updateProjectSettings(
     );
   }
   const next = checked.data;
+  await guard?.(tx, { teamId: ref.teamId, current: current as ProjectSettings, next });
   await tx.update(projects).set({ settings: next, updatedAt: sql`now()` }).where(eq(projects.id, ref.id));
   // Chỉ ghi các mục được vá. Settings không chứa secret (secret của dự án nằm trong bảng secrets, mã hoá riêng), nên
   // ghi nguyên giá trị trước và sau.
