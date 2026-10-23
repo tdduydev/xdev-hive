@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -279,4 +280,32 @@ func mergeSecretEnv(base, granted map[string]string) map[string]string {
 		}
 	}
 	return out
+}
+
+func (r Runner) attachSecretContext(job *Job, block string) (func(), error) {
+	noop := func() {}
+	if block == "" {
+		return noop, nil
+	}
+	if !r.packInSystemPrompt(*job) {
+		job.Prompt = block + "\n---\n\n" + job.Prompt
+		return noop, nil
+	}
+	if job.guard == nil {
+		g, err := r.prepareGuard(*job, block, 0, 0, false)
+		if err != nil {
+			return noop, err
+		}
+		job.guard = g
+		return g.cleanup, nil
+	}
+	if job.guard.packFile == "" {
+		job.guard.packFile = filepath.Join(job.guard.dir, "context-pack.md")
+	}
+	f, err := os.OpenFile(job.guard.packFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return noop, err
+	}
+	_, err = f.WriteString("\n\n" + block)
+	return noop, errors.Join(err, f.Close())
 }

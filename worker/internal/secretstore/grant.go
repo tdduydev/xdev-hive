@@ -54,6 +54,7 @@ type GrantRequest struct {
 
 // Granted là kết quả cấp. Values cùng thứ tự với Names, để đưa vào secretmask.New và đổi chỉ số bị che thành tên.
 type Granted struct {
+	Items  []Secret
 	ID     string
 	Env    map[string]string
 	Names  []string
@@ -118,7 +119,13 @@ func Grant(ctx context.Context, req GrantRequest) (Granted, error) {
 	for i, n := range names {
 		env[n] = values[i]
 	}
-	return Granted{ID: id, Env: env, Names: names, Values: values}, nil
+	var items []Secret
+	for _, name := range names {
+		if item := cat.Find(name); item != nil {
+			items = append(items, *item)
+		}
+	}
+	return Granted{ID: id, Env: env, Names: names, Values: values, Items: items}, nil
 }
 
 func projectName(workerConfig, localID string) string {

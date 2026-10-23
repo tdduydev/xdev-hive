@@ -265,7 +265,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test golden cho khối có bí mật và khối "không có bí mật".
 
   Sau T004. Khác file với T012, nên A2 làm song song được.
-- [ ] T018 [US4] A·vừa — Đưa khối vào agent.
+- [x] T018 [US4] A·vừa — Đưa khối vào agent.
   - `worker/internal/runner/runner.go`: claude có `packInSystemPrompt` thì nối khối vào file
     `--append-system-prompt-file`; CLI khác thì ghép vào đầu `job.Prompt` sau gói ngữ cảnh.
   - `worker/internal/runner/interactive.go`: nối `InteractiveSpec.SystemPrompt`.

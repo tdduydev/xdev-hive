@@ -20,6 +20,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
 
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
@@ -543,6 +544,11 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			}
 		}
 	}
+	contextCleanup, err := r.attachSecretContext(&job, secretstore.ContextBlock(secretstore.PolicyAllow, granted.Items))
+	if err != nil {
+		return err
+	}
+	defer contextCleanup()
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
