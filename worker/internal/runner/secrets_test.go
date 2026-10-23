@@ -6,9 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -22,8 +24,9 @@ func TestRunnerSecretAgentAndPublication(t *testing.T) {
 	for _, mode := range []string{"safe", "leak", "base64"} {
 		t.Run(mode, func(t *testing.T) {
 			config, value := secretFixture(t)
+			t.Setenv("demo_credential", "old-host-value")
 			remote, base := makeRemote(t)
-			r := Runner{DataDir: t.TempDir(), WorkerConfig: config, CLICommands: map[string]Command{"codex": {Path: os.Args[0], Args: []string{"-test.run=^TestSecretAgentProcess$"}}}}
+			r := Runner{DataDir: t.TempDir(), WorkerConfig: config, SecretStore: secretstore.NewStore(), CLICommands: map[string]Command{"codex": {Path: os.Args[0], Args: []string{"-test.run=^TestSecretAgentProcess$"}}}}
 			var logs bytes.Buffer
 			var result *Result
 			job := Job{RunID: "grant-" + mode, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/grant-" + mode, CLI: "codex", Prompt: "test", LocalID: "local-demo", Env: map[string]string{"HIVE_SECRET_AGENT": mode, "DEMO_CREDENTIAL": "old"}}
@@ -89,13 +92,23 @@ func TestSecretAgentProcess(t *testing.T) {
 
 func TestSecretSinkMasksBeforePersistence(t *testing.T) {
 	config, value := secretFixture(t)
-	g, err := secretstore.Grant(context.Background(), secretstore.GrantRequest{WorkerConfig: config, LocalID: "local-demo", Kind: "run"})
+	g, err := secretstore.Grant(context.Background(), secretstore.GrantRequest{WorkerConfig: config, Store: secretstore.NewStore(), LocalID: "local-demo", Kind: "run"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var wire bytes.Buffer
-	sink := newSecretSink(SinkFunc(func(e Event) error { return json.NewEncoder(&wire).Encode(e) }), secretmask.New(g.Values), config, g)
-	forms := []string{value, base64.StdEncoding.EncodeToString([]byte(value)), strings.ReplaceAll(value, "\n", "\r\n")}
+	var offset int64
+	sink := newSecretSink(SinkFunc(func(e Event) error {
+		if e.Type == "log" && e.Stream == "stdout" {
+			if len(e.Data) > 16<<10 || e.Offset != offset {
+				t.Fatal("khối log sau che vượt giới hạn hoặc sai offset")
+			}
+			offset += int64(len(e.Data))
+		}
+		return json.NewEncoder(&wire).Encode(e)
+	}), secretmask.New(g.Values), config, g)
+	encoded, _ := json.Marshal(value)
+	forms := []string{value, base64.StdEncoding.EncodeToString([]byte(value)), url.QueryEscape(value), string(encoded[1 : len(encoded)-1]), strings.ReplaceAll(value, "'", "'\\''"), strings.ReplaceAll(value, "\n", "\r\n")}
 	for _, form := range forms {
 		data := strings.Repeat("x", (16<<10)-4) + form + " end"
 		for i := 0; i < len(data); i += 16 << 10 {
@@ -117,6 +130,25 @@ func TestSecretSinkMasksBeforePersistence(t *testing.T) {
 	entries, err := secretstore.ReadLog(secretstore.GrantsPath(config), secretstore.LogFilter{}, cat)
 	if err != nil || len(entries) != 1 || !entries[0].Names[0].Leaked {
 		t.Fatal("thiếu nhật ký che giá trị")
+	}
+}
+
+func TestSecretSinkMasksNestedReportValues(t *testing.T) {
+	const value = "fake-nested-credential"
+	type report struct {
+		Nested map[string]any
+		Raw    json.RawMessage
+		Array  [1]string
+	}
+	sink := newSecretSink(nil, secretmask.New([]string{value}), "", secretstore.Granted{})
+	in := report{Nested: map[string]any{value: []any{value}}, Raw: json.RawMessage(`{"message":"` + value + `"}`), Array: [1]string{value}}
+	out := sink.clean(reflect.ValueOf(in)).Interface().(report)
+	b, err := json.Marshal(out)
+	if err != nil || bytes.Contains(b, []byte(value)) || !bytes.Contains(b, []byte(secretmask.Mask)) {
+		t.Fatal("báo cáo lồng hoặc JSON thô chưa được che")
+	}
+	if in.Array[0] != value || !bytes.Contains(in.Raw, []byte(value)) {
+		t.Fatal("bộ che sửa báo cáo gốc của bên gọi")
 	}
 }
 
@@ -174,7 +206,7 @@ func secretFixture(t *testing.T) (string, string) {
 
 func TestRunnerSecretGrantIsolation(t *testing.T) {
 	config, value := secretFixture(t)
-	r := Runner{WorkerConfig: config}
+	r := Runner{WorkerConfig: config, SecretStore: secretstore.NewStore()}
 	for _, tc := range []struct {
 		local   string
 		sandbox bool
@@ -223,7 +255,7 @@ func TestRunnerMissingSecretStopsBeforeSpawn(t *testing.T) {
 		t.Fatal(err)
 	}
 	remote, base := makeRemote(t)
-	r := Runner{DataDir: t.TempDir(), WorkerConfig: config, CLICommands: fakeCommands("commit")}
+	r := Runner{DataDir: t.TempDir(), WorkerConfig: config, SecretStore: secretstore.NewStore(), CLICommands: fakeCommands("commit")}
 	var events []Event
 	err := r.Run(context.Background(), Job{RunID: "missing", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/missing", CLI: "codex", Prompt: "test", LocalID: "local-demo"}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
 	if err == nil {

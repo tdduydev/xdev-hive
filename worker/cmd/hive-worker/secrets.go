@@ -65,7 +65,7 @@ type (
 
 // Test thay kho và đồng hồ.
 var (
-	secretsStore = secretstore.NewStore
+	secretsStore = secretstore.NewSystemStore
 	secretsNow   = time.Now
 )
 

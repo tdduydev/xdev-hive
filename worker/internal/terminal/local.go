@@ -52,6 +52,7 @@ var LocalCLIs = []string{"claude", "codex", "gemini"}
 //
 // Phiên được ghi lên hub qua Recorder (nil là không ghi, như runner host); Recorder tự thôi ghi trên máy dùng chung (D13).
 type Local struct {
+	SecretStore  *secretstore.Store
 	WorkerConfig string
 	// Accounts chọn gói cho phiên; nil là đăng nhập mặc định của CLI.
 	Accounts *accounts.Pool
@@ -80,12 +81,13 @@ type Local struct {
 }
 
 type localSession struct {
-	id        string
-	cli       string
-	cwd       string
-	accountID string
-	account   string
-	started   time.Time
+	secretGrant secretstore.Granted
+	id          string
+	cli         string
+	cwd         string
+	accountID   string
+	account     string
+	started     time.Time
 	// origin: OriginLocal (`hive chat`) hay OriginRemote (term_start); không đổi sau khi mở nên đọc không cần khoá.
 	origin string
 	cmd    *exec.Cmd
@@ -435,7 +437,8 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 	}
 	now := time.Now()
 	s := &localSession{
-		id: id, cli: p.CLI, cwd: p.Cwd, accountID: lease.ID(), account: clip(lease.Label(), maxLabel), started: now,
+		secretGrant: granted,
+		id:          id, cli: p.CLI, cwd: p.Cwd, accountID: lease.ID(), account: clip(lease.Label(), maxLabel), started: now,
 		origin: origin, active: now, cmd: cmd, f: f, lease: lease, stopCh: make(chan struct{}), done: make(chan struct{}),
 		clients: map[*localClient]struct{}{},
 	}
@@ -545,6 +548,8 @@ func (l *Local) pump(s *localSession, secrets []string) <-chan struct{} {
 	go func() {
 		defer close(done)
 		red := newRedactor(secrets)
+		seen := map[int]bool{}
+		grantMask := newRedactor(s.secretGrant.Values)
 		flush := orDefault(l.Flush, DefaultFlush)
 		timer := time.NewTimer(flush)
 		timer.Stop()
@@ -553,9 +558,13 @@ func (l *Local) pump(s *localSession, secrets []string) <-chan struct{} {
 			case b, ok := <-reads:
 				if !ok {
 					s.emit(red.release(), l.tailBytes())
+					_ = grantMask.release()
+					l.markSecretLeaks(s.secretGrant, grantMask.writer.Found(), seen)
 					return
 				}
 				s.emit(red.push(b), l.tailBytes())
+				_ = grantMask.push(b)
+				l.markSecretLeaks(s.secretGrant, grantMask.writer.Found(), seen)
 				// Đuôi có thể là đầu của bí mật được giữ lại; không có gì mới trong một nhịp thì nhả để màn hình không đứng.
 				if red.holding() {
 					timer.Reset(flush)

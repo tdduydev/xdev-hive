@@ -97,7 +97,7 @@ func Grant(ctx context.Context, req GrantRequest) (Granted, error) {
 	}
 	store := req.Store
 	if store == nil {
-		store = NewStore()
+		store = NewSystemStore()
 	}
 	record := GrantRecord{
 		Kind:        req.Kind,
@@ -174,9 +174,19 @@ func projectName(workerConfig, localID string) string {
 func readAll(ctx context.Context, store *Store, names []string) ([]string, error) {
 	values := make([]string, len(names))
 	errs := make([]error, len(names))
+	start := 0
+	// Keychain có thể hỏi mở khoá. Chỉ đọc một mục trước; thất bại thì không bật thêm hộp thoại cho từng biến.
+	if runtime.GOOS == "darwin" && len(names) > 0 {
+		values[0], errs[0] = readOne(ctx, store, names[0])
+		if errors.Is(errs[0], ErrLocked) || errors.Is(errs[0], ErrUnavailable) {
+			return nil, mergeErrors(names[:1], errs[:1])
+		}
+		start = 1
+	}
 	sem := make(chan struct{}, readParallel)
 	var wg sync.WaitGroup
-	for i, name := range names {
+	for i := start; i < len(names); i++ {
+		name := names[i]
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() {

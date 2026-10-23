@@ -249,7 +249,8 @@ func (r Runner) runCheck(ctx context.Context, job Job, work, name string, c Chec
 		cmd.Env = mergeEnv(nil, env)
 	}
 	tail := &tailBuffer{}
-	cmd.Stdout, cmd.Stderr = tail, tail
+	maskedTail := secretmask.New(exact).Writer(tail)
+	cmd.Stdout, cmd.Stderr = maskedTail, maskedTail
 	// Process con giữ pipe sau khi lệnh thoát không được làm kẹt worker.
 	cmd.WaitDelay = r.grace()
 	start := time.Now()
@@ -257,6 +258,20 @@ func (r Runner) runCheck(ctx context.Context, job Job, work, name string, c Chec
 	err := startProcess(cmd)
 	if err == nil {
 		err = waitProcess(cctx, cmd, r.grace)
+	}
+	_ = maskedTail.Flush()
+	if secure := job.secretSink; secure != nil {
+		var hits []int
+		for _, i := range maskedTail.Found() {
+			for j, value := range secure.grant.Values {
+				if exact[i] == value {
+					hits = append(hits, j)
+				}
+			}
+		}
+		secure.mu.Lock()
+		secure.mark(hits)
+		secure.mu.Unlock()
 	}
 	res.DurationMs = time.Since(start).Milliseconds()
 	timedOut := errors.Is(cctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil

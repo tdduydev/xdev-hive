@@ -26,6 +26,7 @@ func (r Runner) grantSecrets(ctx context.Context, job Job) (secretstore.Granted,
 	}
 	return secretstore.Grant(ctx, secretstore.GrantRequest{
 		WorkerConfig: r.WorkerConfig, LocalID: job.LocalID, Kind: "run",
+		Store:     r.SecretStore,
 		SessionID: fmt.Sprintf("%s#%d", job.RunID, job.Attempt), Policy: job.Policy.SecretInjection,
 		Approve: func(ctx context.Context, req secretstore.ApprovalRequest) (bool, error) {
 			return secretstore.AwaitApproval(ctx, r.WorkerConfig, req)
@@ -111,9 +112,34 @@ func (s *secretSink) clean(v reflect.Value) reflect.Value {
 			return v
 		}
 		if v.Type().Elem().Kind() == reflect.Uint8 {
-			return reflect.ValueOf([]byte(s.text(string(v.Bytes()))))
+			data := []byte(s.text(string(v.Bytes())))
+			x := reflect.MakeSlice(v.Type(), len(data), len(data))
+			reflect.Copy(x, reflect.ValueOf(data))
+			return x
 		}
 		x := reflect.MakeSlice(v.Type(), v.Len(), v.Len())
+		for i := 0; i < v.Len(); i++ {
+			x.Index(i).Set(s.clean(v.Index(i)))
+		}
+		return x
+	case reflect.Interface:
+		if v.IsNil() {
+			return v
+		}
+		x := reflect.New(v.Type()).Elem()
+		x.Set(s.clean(v.Elem()))
+		return x
+	case reflect.Map:
+		if v.IsNil() {
+			return v
+		}
+		x := reflect.MakeMapWithSize(v.Type(), v.Len())
+		for iter := v.MapRange(); iter.Next(); {
+			x.SetMapIndex(s.clean(iter.Key()), s.clean(iter.Value()))
+		}
+		return x
+	case reflect.Array:
+		x := reflect.New(v.Type()).Elem()
 		for i := 0; i < v.Len(); i++ {
 			x.Index(i).Set(s.clean(v.Index(i)))
 		}
@@ -132,14 +158,20 @@ func (s *secretSink) Emit(e Event) error {
 			template := e
 			template.Data = nil
 			stream.writer = s.masker.Writer(writerFunc(func(p []byte) (int, error) {
-				x := template
-				x.Offset = stream.offset
-				x.Data = append([]byte(nil), p...)
-				err := s.next.Emit(x)
-				if err == nil {
-					stream.offset += int64(len(p))
+				written := 0
+				for len(p) > 0 {
+					n := min(len(p), 16<<10)
+					x := template
+					x.Offset = stream.offset
+					x.Data = append([]byte(nil), p[:n]...)
+					if err := s.next.Emit(x); err != nil {
+						return written, err
+					}
+					written += n
+					stream.offset += int64(n)
+					p = p[n:]
 				}
-				return len(p), err
+				return written, nil
 			}))
 			s.streams[e.Stream] = stream
 		}

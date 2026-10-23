@@ -71,7 +71,7 @@ func TestSC004NoValuesOnDisk(t *testing.T) {
 		}
 		return os.WriteFile(filepath.Join(pending, fmt.Sprintf("%03d.json", n)), b, 0600)
 	})
-	r := runner.Runner{DataDir: filepath.Join(root, "data"), WorkerConfig: config, CLICommands: map[string]runner.Command{"codex": {Path: os.Args[0], Args: []string{"-test.run=^TestSC004Agent$"}, ReadOnly: true}}}
+	r := runner.Runner{DataDir: filepath.Join(root, "data"), WorkerConfig: config, SecretStore: secretstore.NewStore(), CLICommands: map[string]runner.Command{"codex": {Path: os.Args[0], Args: []string{"-test.run=^TestSC004Agent$"}, ReadOnly: true}}}
 	err := r.Run(context.Background(), runner.Job{RunID: "sc004", Attempt: 1, LocalID: "local-sc004", Kind: runner.KindPlan, RepoURL: filepath.ToSlash(remote), BaseBranch: "main", Branch: "ai/sc004", CLI: "codex", Prompt: "test", Env: map[string]string{"HIVE_SC004_AGENT": "1"}}, sink)
 	if err != nil {
 		t.Fatal("run giả không hoàn tất")

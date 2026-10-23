@@ -33,7 +33,7 @@ func TestLocalSecretGrantOnlyForLocalOrigin(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	l := Local{WorkerConfig: cfg}
+	l := Local{WorkerConfig: cfg, SecretStore: secretstore.NewStore()}
 	for _, origin := range []string{"", OriginLocal, OriginRemote} {
 		g, err := l.localSecrets(context.Background(), "session", CreateParams{Cwd: dir, origin: origin})
 		if err != nil {
@@ -51,6 +51,12 @@ func TestLocalSecretGrantOnlyForLocalOrigin(t *testing.T) {
 		encoded := base64.StdEncoding.EncodeToString([]byte(value))
 		if got := feed(newRedactor(g.Values), encoded[:8], encoded[8:]); got != "***" {
 			t.Fatal("bản ghi terminal chưa che")
+		}
+		l.markSecretLeaks(g, []int{0}, map[int]bool{})
+		cat, _ := secretstore.LoadCatalog(secretstore.CatalogPath(cfg))
+		entries, err := secretstore.ReadLog(secretstore.GrantsPath(cfg), secretstore.LogFilter{}, cat)
+		if err != nil || len(entries) == 0 || !entries[0].Names[0].Leaked {
+			t.Fatal("thiếu dấu che trong nhật ký terminal")
 		}
 	}
 }

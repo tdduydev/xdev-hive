@@ -428,7 +428,7 @@ không chứa giá trị.
   - dòng có `missingInStore` hiện "Kho thiếu giá trị, hãy đặt lại".
 
   Kèm test. Sau T024.
-- [ ] T035 [US9] A2·vừa — Phân loại lỗi kho theo hệ điều hành.
+- [x] T035 [US9] A2·vừa — Phân loại lỗi kho theo hệ điều hành.
   - File mới `worker/internal/secretstore/keyring_{darwin,windows,linux}.go`.
   - Giới hạn 5 giây. Worker không có phiên người dùng thì không gọi API bật hộp thoại (FR-061).
   - `status` trên Linux thử D-Bus.
@@ -439,6 +439,8 @@ không chứa giá trị.
     **[Unverified]** keychain của runner CI mở khoá sẵn; T001 hoặc lần chạy CI đầu kiểm.
 
   Sau T003, T001.
+
+  Mã và bước CI đã có; kiểm kho thật macOS/Windows và hành vi hộp mở khoá còn chờ CI/T001, không chạy trên máy dev.
 
 ---
 

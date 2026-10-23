@@ -12,7 +12,7 @@ func TestRunnerBackgroundApproval(t *testing.T) {
 	for _, allow := range []bool{true, false} {
 		t.Run(map[bool]string{true: "allow", false: "deny"}[allow], func(t *testing.T) {
 			config, _ := secretFixture(t)
-			r := Runner{WorkerConfig: config}
+			r := Runner{WorkerConfig: config, SecretStore: secretstore.NewStore()}
 			ctx, cancel := context.WithTimeout(t.Context(), 4*time.Second)
 			defer cancel()
 			done := make(chan secretstore.Granted, 1)

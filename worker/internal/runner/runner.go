@@ -20,6 +20,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
 
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
@@ -100,6 +101,7 @@ type Job struct {
 	LocalID       string
 	grantedEnv    map[string]string
 	grantedValues []string
+	secretSink    *secretSink
 	// Checks là lệnh kiểm của quy trình review code (spec.checks.commands); chạy sau khi agent xong, trước khi đẩy.
 	// Chỉ run code dùng; run chỉ đọc bỏ qua.
 	Checks []CheckCommand
@@ -202,6 +204,7 @@ func CommandsFromEnv() (map[string]Command, error) {
 }
 
 type Runner struct {
+	SecretStore  *secretstore.Store
 	WorkerConfig string
 	DataDir      string
 	CLICommands  map[string]Command
@@ -461,6 +464,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	secretBase := ""
 	if len(granted.Values) > 0 {
 		secure = newSecretSink(sink, secretmask.New(granted.Values), r.WorkerConfig, granted)
+		job.secretSink = secure
 		sink = secure
 		defer func() { retErr = secure.safeError(retErr) }()
 		secretBase, err = gitOutput(ctx, work, "rev-parse", "HEAD")
@@ -561,7 +565,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	process := cmd.Cmd
 	process.Dir = work
 	// job.Env của dự án đặt sau nhóm tiết kiệm token: biến dự án đã đặt rõ thì không bị mặc định đè.
-	process.Env = mergeEnv(os.Environ(), mergeSecretEnv(mergeMap(job.savingEnv, job.Env), job.grantedEnv))
+	process.Env = secretstore.MergeEnv(mergeEnv(os.Environ(), mergeMap(job.savingEnv, job.Env)), job.grantedEnv)
 	if r.Sandbox == nil {
 		// Đặt sau job.Env để spec của hub không đổi được thư mục đăng nhập của máy.
 		process.Env = mergeEnv(r.Account.Base(process.Env), r.Account.Env())
