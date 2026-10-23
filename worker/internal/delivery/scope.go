@@ -5,7 +5,8 @@ import (
 	"regexp"
 )
 
-var scopeIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
+// Id đăng ký của internal/registry có dạng `reg_<base32>` (kể cả `reg_legacy`), nên phải nhận `_`.
+var scopeIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // Scope là một đăng ký của máy với một tổ chức trên một hub. Một máy có thể phục vụ hai tổ chức cùng lúc (specs/034), nên
 // credential, hàng việc, thư mục làm việc và log của delivery đều gắn với Scope và không bao giờ dùng chung giữa các
