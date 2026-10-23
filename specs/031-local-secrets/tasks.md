@@ -154,7 +154,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - kiểm tên phía UI bằng `@xdev-hive/contracts/local-secrets`.
   - Test `apps/desktop/src/lib/secrets.test.ts` khớp fixture `worker/internal/secretstore/testdata/cli/*.json`.
     Nếu T007 chưa xong, dùng mẫu trong contract.
-- [ ] T010 [US1] C·vừa — Màn mới `apps/desktop/src/screens/secrets-screen.tsx` và test:
+- [x] T010 [US1] C·vừa — Màn mới `apps/desktop/src/screens/secrets-screen.tsx` và test:
   - bảng tên, mô tả, dự án, ngày đổi;
   - sheet thêm và sửa: ô giá trị `type=password`, `autoComplete="off"`, xoá state sau khi gửi (FR-007);
   - gán dự án từ `local-projects.ts`;

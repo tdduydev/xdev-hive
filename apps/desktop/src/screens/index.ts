@@ -9,6 +9,7 @@ import { PlansScreen } from "@/screens/plans-screen.tsx";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
 import { RemoteScreen } from "@/screens/remote-screen.tsx";
 import { RunsScreen } from "@/screens/runs-screen.tsx";
+import { SecretsScreen } from "@/screens/secrets-screen.tsx";
 import { SettingsScreen } from "@/screens/settings-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
 import { SkillsScreen } from "@/screens/skills-screen.tsx";
@@ -26,6 +27,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   projects: ProjectsScreen,
   remote: RemoteScreen,
   runs: RunsScreen,
+  secrets: SecretsScreen,
   settings: SettingsScreen,
   setup: SetupScreen,
   skills: SkillsScreen,

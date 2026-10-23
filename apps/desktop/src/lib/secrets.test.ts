@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkSecretName,
   type DeleteResult,
+  formatWhen,
   type GrantEntry,
   isMissingValue,
   type SecretItem,
@@ -16,6 +17,8 @@ import {
   secretDelete,
   secretReveal,
   secretSave,
+  secretsFilterFromHash,
+  secretsHash,
   secretsList,
   secretsLog,
   secretsLogClear,
@@ -156,5 +159,20 @@ describe("trạng thái", () => {
     const item = fixture<SecretItem>("item.json");
     expect(isMissingValue(item)).toBe(false);
     expect(isMissingValue({ ...item, missingInStore: true })).toBe(true);
+  });
+});
+
+describe("địa chỉ và ngày giờ", () => {
+  it("địa chỉ lọc theo dự án đi và về nguyên vẹn", () => {
+    expect(secretsHash()).toBe("#/secrets");
+    expect(secretsHash("1111111111111111")).toBe("#/secrets/1111111111111111");
+    expect(secretsFilterFromHash("#/secrets/1111111111111111")).toBe("1111111111111111");
+    expect(secretsFilterFromHash("#/secrets")).toBe("");
+    expect(secretsFilterFromHash("#/secrets/%E0%A4%A")).toBe("");
+  });
+
+  it("ngày giờ theo ngôn ngữ; chuỗi lạ giữ nguyên", () => {
+    expect(formatWhen("2026-10-23T08:01:02Z", "en")).toMatch(/2026/);
+    expect(formatWhen("hôm qua", "vi")).toBe("hôm qua");
   });
 });

@@ -138,3 +138,30 @@ export const isMissingValue = (s: SecretItem): boolean => s.missingInStore === t
 
 /** Kho dùng được để lưu và đọc giá trị. */
 export const storeUsable = (s: StoreStatus | undefined): boolean => !s || (s.available && s.locked !== true);
+
+/** Địa chỉ màn Bí mật, lọc theo dự án (localId) khi có: `#/secrets/<localId>`. */
+export const secretsHash = (localId?: string): string =>
+  localId ? `#/secrets/${encodeURIComponent(localId)}` : "#/secrets";
+
+/** localId đang lọc theo địa chỉ; rỗng là không lọc. */
+export function secretsFilterFromHash(hash: string): string {
+  const raw = hash.replace(/^#\/?/, "").split("/")[1] ?? "";
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return "";
+  }
+}
+
+/** Ngày giờ ngắn theo ngôn ngữ app, vd. "23/10/2026, 08:30". Chuỗi không đọc được thì trả nguyên văn. */
+export function formatWhen(iso: string, lang: "vi" | "en"): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  return at.toLocaleString(lang === "vi" ? "vi-VN" : "en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
