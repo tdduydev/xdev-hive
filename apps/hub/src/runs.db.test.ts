@@ -1706,6 +1706,25 @@ describe("chính sách agent của tổ chức", () => {
     }
   });
 
+  it.each([
+    ["deny", true],
+    ["approve", true],
+    ["allow", false],
+  ] as const)("bí mật tại máy %s: spec có policy là %s, bản chụp chính sách giữ lựa chọn", async (injection, sent) => {
+    await setPolicy({ secretInjection: injection });
+    const w = await FakeWorker.connect(await seedMachine(`policy-secret-${injection}-${tag}`));
+    try {
+      const run = await startRun((await newTask(`Bí mật ${injection}`)).id);
+      const { spec } = await w.next("job_offer", (o) => o.runId === run.id);
+      // Giữ spec như cũ khi không có gì cần báo, để worker cũ và worker mới nhận cùng một gói.
+      if (sent) expect(spec).toMatchObject({ policy: { secretInjection: injection } });
+      else expect(spec).not.toHaveProperty("policy");
+      expect((await runRow(run.id)).agent_policy_snapshot).toMatchObject({ secretInjection: injection });
+    } finally {
+      await w.close();
+    }
+  });
+
   it("tổ chức cấm toàn quyền thì dự án ghi đè full vẫn chạy trong worktree", async () => {
     await setPolicy({ allowFullPermission: false });
     await admin.query(

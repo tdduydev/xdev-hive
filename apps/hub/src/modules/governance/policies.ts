@@ -68,7 +68,12 @@ export async function saveAgentPolicy(
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(hive.ctx_org()::text, 33))`);
   const before = await loadPolicy(tx);
   // Client chưa biết mục `remote` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt.
-  const next = agentPolicyInput.parse(input.remote === undefined ? { ...input, remote: before.remote } : input);
+  // Cùng lý do cho `secretInjection`: điền "allow" lúc đó sẽ lặng lẽ gỡ lệnh cấm bí mật mà tổ chức đã đặt.
+  const next = agentPolicyInput.parse({
+    ...input,
+    ...(input.remote === undefined ? { remote: before.remote } : {}),
+    ...(input.secretInjection === undefined ? { secretInjection: before.secretInjection } : {}),
+  });
   if (
     (allowsFull(next) && !allowsFull(before)) ||
     (next.defaultPermissionMode === "full" && before.defaultPermissionMode !== "full")
@@ -112,7 +117,8 @@ export async function saveAgentPolicy(
       defaultTemplates: DEFAULT_TEMPLATES,
     },
     templatesChanged: changed.includes("templates"),
-    remoteChanged: changed.includes("remote"),
+    // Máy cá nhân nhận cả hai mục này trong `welcome.policy`, nên đổi mục nào cũng phải cho máy nối lại.
+    remoteChanged: changed.includes("remote") || changed.includes("secretInjection"),
   };
 }
 
@@ -170,4 +176,5 @@ export function machineSlots(policy: Policy, capacity: number): number {
 export const jobPolicyOf = (policy: Policy): JobPolicy => ({
   hooks: policy.hooks,
   managedHooksOnly: policy.managedHooksOnly,
+  secretInjection: policy.secretInjection,
 });

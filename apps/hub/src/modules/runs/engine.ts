@@ -624,7 +624,9 @@ function buildSpec(
     runPermissions: run.kind === "sdlc" ? "workspace" : ctx.runPermissions,
     fullAllowed: ctx.fullAllowed,
     // Bỏ khi không có gì để worker cũ (chưa biết trường này) và worker mới nhận cùng một spec như trước.
-    ...(ctx.policy.hooks.length || ctx.policy.managedHooksOnly ? { policy: ctx.policy } : {}),
+    ...(ctx.policy.hooks.length || ctx.policy.managedHooksOnly || ctx.policy.secretInjection !== "allow"
+      ? { policy: ctx.policy }
+      : {}),
     repoUrl: project.repoHttpUrl,
     baseBranch: project.defaultBranch,
     branch: run.branch,
