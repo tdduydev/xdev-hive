@@ -153,7 +153,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 - [x] T029 [P] [US3] Khoá máy trong keychain (file 0600 khi không có) · `worker/internal/machinekey/`
 - [x] T030 [US3] Worker chuyển `hwm_` sang khoá, đổi token 2 phút trước hạn · `worker/internal/hubclient/register.go`,
   `worker/internal/channel/channel.go`
-- [ ] T031 [US3] Token git theo run (GitHub App, GitLab), `requireRunGitToken` · `apps/hub/src/modules/scm/run-token.ts`,
+- [x] T031 [US3] Token git theo run (GitHub App, GitLab), `requireRunGitToken` · `apps/hub/src/modules/scm/run-token.ts`,
   `scm/schema.ts`, `runs/engine.ts`, `packages/contracts/src/policies.ts`
 - [ ] T032 [US3] PAT không rơi ra `hive.json`; máy không có keychain thì hướng dẫn `HIVE_TOKEN` ·
   `worker/cmd/hive/login.go`

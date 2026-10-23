@@ -135323,6 +135323,20 @@
                         "totpFallback": true
                       }
                     },
+                    "git": {
+                      "type": "object",
+                      "properties": {
+                        "requireRunGitToken": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "requireRunGitToken"
+                      ],
+                      "default": {
+                        "requireRunGitToken": false
+                      }
+                    },
                     "updatedAt": {
                       "anyOf": [
                         {
@@ -136227,6 +136241,20 @@
                     "default": {
                       "totpFallback": true
                     }
+                  },
+                  "git": {
+                    "type": "object",
+                    "properties": {
+                      "requireRunGitToken": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "requireRunGitToken"
+                    ],
+                    "default": {
+                      "requireRunGitToken": false
+                    }
                   }
                 },
                 "required": [
@@ -136699,6 +136727,20 @@
                       ],
                       "default": {
                         "totpFallback": true
+                      }
+                    },
+                    "git": {
+                      "type": "object",
+                      "properties": {
+                        "requireRunGitToken": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "requireRunGitToken"
+                      ],
+                      "default": {
+                        "requireRunGitToken": false
                       }
                     },
                     "updatedAt": {

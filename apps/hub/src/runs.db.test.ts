@@ -1958,6 +1958,129 @@ describe("chính sách agent của tổ chức", () => {
     expect(status).toBe(409);
     expect(data.data?.code).toBe("SANDBOX_IMAGE_REQUIRED");
   });
+
+  describe("token git theo run (specs/027 R9)", () => {
+    const revoked: string[] = [];
+    let issued = 0;
+    const gitlabTokens = (fail = false) =>
+      Object.assign(provider, {
+        async issueRunToken() {
+          if (fail) throw new Error("GitLab lỗi");
+          issued += 1;
+          return {
+            host: "gitlab.com",
+            username: "oauth2",
+            token: `glpat-run-${issued}`,
+            expiresAt: new Date(Date.now() + 86_400_000),
+            externalId: String(issued),
+          };
+        },
+        async revokeRunToken(_ref: unknown, id: string) {
+          revoked.push(id);
+        },
+      });
+    afterEach(() => {
+      delete provider.issueRunToken;
+      delete provider.revokeRunToken;
+    });
+
+    it("bắt buộc mà kết nối không cấp được: run chờ, báo một lần; bỏ bắt buộc thì giao", async () => {
+      await setPolicy({ git: { requireRunGitToken: true } });
+      const m = await seedMachine(`git-none-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const run = await startRun((await newTask("Cần token git")).id);
+        await new Promise((r) => setTimeout(r, 800));
+        expect(w.has("job_offer")).toBe(false);
+        w.send({ type: "heartbeat", load: 0, runs: [] });
+        await w.next("heartbeat_ack");
+        const events = await policyEvents(run.id);
+        expect(events.map((e) => e.type)).toEqual(["policy_git_token"]);
+        expect(events[0]?.data.message).toContain("token git theo run");
+        await setPolicy({});
+        w.send({ type: "heartbeat", load: 0, runs: [] });
+        await w.next("job_offer", (o) => o.runId === run.id);
+      } finally {
+        await w.close();
+      }
+    });
+
+    it("lease mang token git, máy xin lại được, run xong thì thu hồi; không lưu giá trị token", async () => {
+      gitlabTokens();
+      await setPolicy({ git: { requireRunGitToken: true } });
+      const m = await seedMachine(`git-issue-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const run = await startRun((await newTask("Có token git")).id);
+        await w.next("job_offer", (o) => o.runId === run.id);
+        w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+        const lease = await w.next("lease", (l) => l.runId === run.id);
+        expect(lease.git).toMatchObject({ host: "gitlab.com", username: "oauth2", repo: expect.any(String) });
+        const first = lease.git?.token;
+        w.send({ type: "git_token_request", runId: run.id, attempt: 1 });
+        const renewed = await w.next("git_token", (g) => g.runId === run.id);
+        expect(renewed.git.token).not.toBe(first);
+        const stored = await admin.query("select * from hive.run_git_tokens where run_id = $1", [run.id]);
+        expect(stored.rows).toHaveLength(2);
+        expect(JSON.stringify(stored.rows)).not.toContain("glpat-run");
+        const s = w.sendRun({
+          type: "run_result",
+          runId: run.id,
+          attempt: 1,
+          exit: 0,
+          headSha: sha,
+          report: { commitCount: 1, changedFiles: ["src/a.ts"] },
+        });
+        await w.next("ack", (a) => a.uptoSeq === s);
+        const ids = stored.rows.map((r) => r.external_id as string);
+        await until(async () => ids.every((id) => revoked.includes(id)));
+        const open = () =>
+          admin.query("select 1 from hive.run_git_tokens where run_id = $1 and revoked_at is null", [run.id]);
+        await until(async () => (await open()).rows.length === 0);
+      } finally {
+        await w.close();
+      }
+    });
+
+    it("bắt buộc mà cấp lỗi lúc nhận lease: huỷ trên máy, run về hàng đợi", async () => {
+      gitlabTokens(true);
+      await setPolicy({ git: { requireRunGitToken: true } });
+      const m = await seedMachine(`git-fail-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const task = await newTask("Cấp token lỗi");
+        const run = await startRun(task.id);
+        await w.next("job_offer", (o) => o.runId === run.id);
+        w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+        await w.next("cancel", (c) => c.runId === run.id);
+        expect(w.has("lease")).toBe(false);
+        const row = await runRow(run.id);
+        expect([row.state, row.machine_id]).toEqual(["queued", null]);
+        expect(await taskStatus(task.id)).toBe("queued");
+        expect((await policyEvents(run.id)).map((e) => e.type)).toEqual(["policy_git_token"]);
+        const leases = await admin.query("select 1 from hive.run_leases where run_id = $1", [run.id]);
+        expect(leases.rows).toHaveLength(0);
+      } finally {
+        await w.close();
+        await setPolicy({});
+      }
+    });
+
+    it("không bắt buộc mà kết nối không cấp được: lease báo git null, máy dùng thông tin git của máy", async () => {
+      await setPolicy({});
+      const m = await seedMachine(`git-null-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const run = await startRun((await newTask("Không token git")).id);
+        await w.next("job_offer", (o) => o.runId === run.id);
+        w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+        const lease = await w.next("lease", (l) => l.runId === run.id);
+        expect(lease.git).toBeNull();
+      } finally {
+        await w.close();
+      }
+    });
+  });
 });
 
 describe("run kiểm tài liệu (gate AI của quy trình duyệt)", () => {

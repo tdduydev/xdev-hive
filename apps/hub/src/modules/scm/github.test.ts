@@ -1129,3 +1129,32 @@ describe("GitHub Actions", () => {
     expect(http.calls[0]?.body).toMatchObject({ events: ["push", "workflow_run", "workflow_job"] });
   });
 });
+
+describe("GitHub token theo run", () => {
+  it("GitHub App cấp token cài đặt chỉ cho repo của run", async () => {
+    http = mockHttp();
+    const expires = new Date(Date.now() + 3600_000).toISOString();
+    http.agent
+      .get(API)
+      .intercept({ path: "/app/installations/42/access_tokens", method: "POST" })
+      .reply(201, http.json({ token: "ghs_run", expires_at: expires }), JSON_HEADERS);
+    const gh = createGitHubProvider({ appId: 1, privateKey, installationId: 42, fetch: http.fetch });
+    expect(await gh.issueRunToken?.(ref, "hive-run-r1-1")).toEqual({
+      host: "github.com",
+      username: "x-access-token",
+      token: "ghs_run",
+      expiresAt: new Date(expires),
+      externalId: null,
+    });
+    expect(http.calls[0]?.body).toEqual({
+      repositories: ["web"],
+      permissions: { contents: "write", pull_requests: "read" },
+    });
+  });
+
+  it("PAT không cấp được token theo run", () => {
+    http = mockHttp();
+    const gh = createGitHubProvider({ token: "ghp_test", fetch: http.fetch });
+    expect(gh.issueRunToken).toBeUndefined();
+  });
+});

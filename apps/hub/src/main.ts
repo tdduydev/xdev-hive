@@ -88,6 +88,7 @@ import {
   defaultProviderFactory,
   onScmEvent,
   registerScmEventWorker,
+  runGitTokenQueue,
   scmEventQueue,
   scmEvents,
 } from "./modules/scm/index.ts";
@@ -173,6 +174,7 @@ jobs = config.jobsDatabaseUrl
         provisionQueue,
         mergeQueue,
         runsTimerQueue,
+        runGitTokenQueue,
         scmEventQueue,
         embedQueue,
         notifyQueue,

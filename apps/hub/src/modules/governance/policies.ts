@@ -64,8 +64,13 @@ export async function saveAgentPolicy(
 ): Promise<{ policy: AgentPolicy; templatesChanged: boolean; remoteChanged: boolean }> {
   await allowWith(tx, userId, "policies.write", () => requireOrgRole(tx, userId, "admin"));
   const before = await loadPolicy(tx);
-  // Client chưa biết mục `remote` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt.
-  const next = agentPolicyInput.parse(input.remote === undefined ? { ...input, remote: before.remote } : input);
+  // Client chưa biết mục `remote` hay `git` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt, hay
+  // bỏ yêu cầu token git theo run.
+  const next = agentPolicyInput.parse({
+    ...input,
+    remote: input.remote ?? before.remote,
+    git: input.git ?? before.git,
+  });
   if (allowsFull(next) && !allowsFull(before)) {
     const granted = await effectivePermissions(tx, userId);
     if (!granted.has("policies.fullaccess")) {

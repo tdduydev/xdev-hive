@@ -190,6 +190,36 @@ type Lease struct {
 	LeaseID   string `json:"leaseId"`
 	ExpiresAt string `json:"expiresAt"`
 	RunToken  string `json:"runToken"`
+	// Nil khi hub không cấp token theo run (kết nối PAT, hub cũ): máy dùng thông tin git sẵn có.
+	Git *GitCredential `json:"git,omitempty"`
+}
+
+// GitCredential là token git chỉ dùng cho một run (specs/027 R9). Chỉ đưa cho git qua askpass, không ghi ra đĩa.
+type GitCredential struct {
+	Host      string `json:"host"`
+	Username  string `json:"username"`
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
+	Repo      string `json:"repo"`
+}
+
+// GitTokenRequest xin token git mới khi token của run sắp hết hạn. Chỉ gửi khi lease có Git, vì hub cũ đóng kết nối
+// khi gặp loại gói lạ.
+type GitTokenRequest struct {
+	Type    string `json:"type"`
+	V       int    `json:"v"`
+	ID      string `json:"id"`
+	RunID   string `json:"runId"`
+	Attempt int    `json:"attempt"`
+}
+
+type GitToken struct {
+	Type    string        `json:"type"`
+	V       int           `json:"v"`
+	ID      string        `json:"id"`
+	RunID   string        `json:"runId"`
+	Attempt int           `json:"attempt"`
+	Git     GitCredential `json:"git"`
 }
 
 type Ack struct {
@@ -617,6 +647,10 @@ func newMessage(msgType string) any {
 		return &JobOffer{}
 	case "lease":
 		return &Lease{}
+	case "git_token_request":
+		return &GitTokenRequest{}
+	case "git_token":
+		return &GitToken{}
 	case "ack":
 		return &Ack{}
 	case "steer":
