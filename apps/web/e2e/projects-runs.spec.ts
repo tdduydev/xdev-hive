@@ -399,11 +399,31 @@ test("cấu hình dự án: định tuyến model hiện mặc định, sửa m�
 });
 
 test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async ({ page }) => {
-  await open(page, "admin", { "policies/get": () => ok({ allowFullPermission: false }) });
+  await open(page, "admin", {
+    "layeredConfig/effective": () =>
+      ok({
+        orgId: "0a0a0a0a-0000-4000-8000-00000000000a",
+        projectId: PROJECT.id,
+        schemaVersion: 1,
+        generatedAt: NOW,
+        configVersion: "locked",
+        settings: [
+          {
+            key: "agent.permissionMode",
+            value: "workspace",
+            source: { layer: "org", targetId: "0a0a0a0a-0000-4000-8000-00000000000a" },
+            locked: true,
+            chain: [],
+          },
+        ],
+      }),
+  });
   await page.goto("/projects/PAY/settings");
-  await expect(page.getByText("Chính sách agent của tổ chức không cho dự án bật toàn quyền")).toBeVisible();
+  await expect(
+    page.getByText("Tổ chức đã khoá quyền CLI. Xem giá trị hiệu lực ở phần cấu hình tổ chức và dự án."),
+  ).toBeVisible();
   await expect(page.getByLabel(/Toàn quyền/)).toBeDisabled();
-  await expect(page.getByLabel(/Trong worktree/)).toBeEnabled();
+  await expect(page.getByLabel(/Trong worktree/)).toBeDisabled();
 });
 
 test("cấu hình dự án: quản trị đội thấy máy đã gắn repo local và máy bật toàn quyền", async ({ page }) => {

@@ -426,11 +426,12 @@ async function existingByIdempotencyKey(
   };
 }
 
-/** Settings của dự án mới: quyền CLI mặc định theo Chính sách agent của tổ chức. */
+/** Giữ dạng settings cũ nhưng để dự án mới nhận các lần đổi cấu hình chung về sau. */
 async function initialSettings(tx: Tx, requiredApprovals: number) {
   const settings = defaultProjectSettings(requiredApprovals);
   const policy = await loadPolicy(tx);
   if (policy.defaultPermissionMode === "full" && policy.allowFullPermission) settings.runPermissions = { mode: "full" };
+  settings.inheritedConfigKeys = ["agent.permissionMode", "limits.perRunUsd", "merge.mode", "merge.requireCi"];
   return settings;
 }
 

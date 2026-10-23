@@ -58,6 +58,7 @@ import {
   reviewQueue,
   skillGitQueue,
 } from "./modules/knowledge/index.ts";
+import { resolveProjectSettings } from "./modules/layers/index.ts";
 import { appendLeaderSystemMessage, queuedLeaderPrompt } from "./modules/leader/index.ts";
 import {
   inboxCleanupQueue,
@@ -256,7 +257,7 @@ if (roles.includes("jobs") && jobs) {
     };
     await registerProvisionWorker(jobs, catalogDeps);
     // `catalog` không import `codereview` (vòng phụ thuộc), nên cổng chờ phiên review được tiêm ở đây.
-    await registerMergeWorker(jobs, { ...catalogDeps, reviewGate });
+    await registerMergeWorker(jobs, { ...catalogDeps, reviewGate, resolveSettings: resolveProjectSettings });
     await registerTemplateSyncWorker(jobs, catalogDeps);
     await registerReviewWorker(jobs, {
       pool,

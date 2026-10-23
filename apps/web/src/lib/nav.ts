@@ -333,6 +333,15 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "policies.write",
       },
       {
+        id: "org-config",
+        label: { vi: "Cấu hình tổ chức", en: "Organization configuration" },
+        icon: SettingsIcon,
+        to: route("/admin/config"),
+        match: "/admin/config",
+        adminOnly: true,
+        permission: "policies.write",
+      },
+      {
         id: "public-links",
         label: { vi: "Link công khai", en: "Public links" },
         icon: LayersIcon,

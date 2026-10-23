@@ -1,6 +1,5 @@
 // Chính sách agent của tổ chức (specs/002-agent-policies). Module khác chỉ import file này.
 export {
-  clampBudget,
   getAgentPolicy,
   jobPolicyOf,
   loadPolicy,
