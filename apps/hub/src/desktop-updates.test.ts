@@ -50,6 +50,22 @@ describe("desktop updates", () => {
     expect((await app.request(base.replace("macos", "freebsd"))).status).toBe(400);
     expect((await app.request(base.replace("2.0.0-rc.1", "nope"))).status).toBe(400);
   });
+  it("app cài từ .deb nhận gói .deb, không có thì rơi về AppImage", async () => {
+    directory = await mkdtemp(join(tmpdir(), "hive-release-"));
+    const file = join(directory, "release.json");
+    const appImage = { url: "https://example.com/app.AppImage", signature: "sig-appimage" };
+    const deb = { url: "https://example.com/app.deb", signature: "sig-deb" };
+    await writeFile(
+      file,
+      JSON.stringify({ ...manifest, platforms: { "linux-x86_64": appImage, "linux-x86_64-deb": deb } }),
+    );
+    const app = createApp({ config: { port: 0, version: "test", desktopReleases: file } });
+    const base = "/api/v1/desktop/updates/linux/x86_64/1.0.0";
+    expect(await (await app.request(`${base}?installer=deb`)).json()).toMatchObject(deb);
+    expect(await (await app.request(base)).json()).toMatchObject(appImage);
+    expect(await (await app.request(`${base}?installer=rpm`)).json()).toMatchObject(appImage);
+    expect(await (await app.request(`${base}?installer=../x`)).json()).toMatchObject(appImage);
+  });
   it("manifest lỗi được xem như không có bản mới", async () => {
     directory = await mkdtemp(join(tmpdir(), "hive-release-"));
     const file = join(directory, "bad.json");

@@ -52,7 +52,13 @@ export class DesktopReleaseCache {
   }
 }
 
-export async function findDesktopUpdate(cache: DesktopReleaseCache, os: string, arch: string, currentVersion: string) {
+export async function findDesktopUpdate(
+  cache: DesktopReleaseCache,
+  os: string,
+  arch: string,
+  currentVersion: string,
+  installer?: string,
+) {
   if (
     !["macos", "linux", "windows"].includes(os) ||
     !["aarch64", "x86_64"].includes(arch) ||
@@ -60,7 +66,11 @@ export async function findDesktopUpdate(cache: DesktopReleaseCache, os: string, 
   )
     return { kind: "bad-request" as const };
   const manifest = await cache.get();
-  const platform = manifest?.platforms[`${os === "macos" ? "darwin" : os}-${arch}`];
+  const key = `${os === "macos" ? "darwin" : os}-${arch}`;
+  // App cài từ .deb/.rpm chỉ nhận đúng loại gói đó, như updater tự tìm `{os}-{arch}-{installer}` trước `{os}-{arch}`.
+  const platform =
+    (installer && ["deb", "rpm"].includes(installer) ? manifest?.platforms[`${key}-${installer}`] : undefined) ??
+    manifest?.platforms[key];
   if (!manifest || !platform || !newerVersion(manifest.version, currentVersion)) return { kind: "none" as const };
   try {
     const url = new URL(platform.url);
