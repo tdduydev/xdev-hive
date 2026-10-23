@@ -31,9 +31,12 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0023](0023-artifacts.md) | Store versioned artifacts in the hub and run interactive ones in a sandboxed frame on a separate CSP | Accepted |
 | [0024](0024-chat-channels.md) | Reach Hive from Telegram and Slack through commands that skip the LLM, and send free text to Leader only | Proposed |
 | [0025](0025-agent-skill-learning.md) | Let agents propose skills after hard tasks, in cheap daily batches that a team admin approves | Proposed |
-| [0027](0027-vscode-extension.md) | Extension VS Code | Accepted |
+| [0027](0027-vscode-extension.md) | Extension VS Code | Withdrawn |
 | [0028](0028-docs-repo-sync.md) | Keep documents in the hub and synchronize them with repository folders | Accepted |
 | [0030](0030-hub-deploys-over-ssh.md) | Run deploy steps from the hub over SSH with `ssh2`, one encrypted key per server and a pinned host key | Proposed |
 | [0031](0031-external-ci-and-deploy-sources.md) | Read and drive Jenkins, GitLab, Argo CD and Kubernetes from the hub with per-person Jenkins tokens, and do not store CI logs | Proposed |
+| [0032](0032-client-events-and-outbox.md) | Give every client write an idempotency key, and queue machine writes in the worker outbox | Accepted |
+| [0033](0033-machine-keys-and-run-git-tokens.md) | Authenticate machines with a key pair, and give each run its own git token | Accepted |
 | [0036](0036-machine-sends-token-score.md) | Send the token score as a machine client event with an idempotency key, opt-in per machine, numbers only | Accepted |
 | [0037](0037-shared-context-local-files.md) | Share project context through one source written into local, untracked files, in a marked block | Proposed |
+| [0038](0038-local-secrets-keyring.md) | Keep local secrets in the OS keyring, owned by the worker, and send the hub only a count | Proposed |

@@ -750,6 +750,7 @@ export function MarkdownEditor({
   label,
   onKeyDown,
   className,
+  docKey,
 }: {
   value: string;
   onChange: (markdown: string) => void;
@@ -757,8 +758,18 @@ export function MarkdownEditor({
   label: string;
   onKeyDown?: ((e: KeyboardEvent<HTMLDivElement>) => void) | undefined;
   className?: string | undefined;
+  /** Tài liệu hub đang soạn: có thì ảnh và link tương đối phân giải qua `DocEditorProvider`; file trên máy thì bỏ trống. */
+  docKey?: string | undefined;
 }) {
-  const h = useMarkdownEditor({ value, onChange, editable: true, lang, label, slashKinds: FILE_SLASH });
+  const h = useMarkdownEditor({
+    value,
+    onChange,
+    editable: true,
+    lang,
+    label,
+    slashKinds: FILE_SLASH,
+    docKey,
+  });
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: bắt phím tắt lưu (Mod-S) nổi lên từ vùng soạn bên trong.
     <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", className)} onKeyDown={onKeyDown}>

@@ -15,7 +15,8 @@ import { and, avg, count, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
 import { auditByData, recordAudit } from "../audit/index.ts";
 import { loadProject, type ProjectRow } from "../catalog/index.ts";
 import { isConnected, sendToMachine, sharedWorkerMachines } from "../fleet/index.ts";
-import { loadPolicy, resolvePermission } from "../governance/index.ts";
+import { loadPolicy } from "../governance/index.ts";
+import { runSettingsOf } from "../layers/index.ts";
 import { approvals, chatThreads, TIER_RULE } from "../leader/index.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { runs } from "../runs/index.ts";
@@ -185,7 +186,7 @@ export async function terminalOptions(
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
   const allowed = await canOpenTerminal(tx, userId, project.teamId);
   const policy = await loadPolicy(tx);
-  const mode = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace").mode;
+  const mode = (await runSettingsOf(tx, project)).permission.mode;
   const list = (await sharedWorkerMachines(tx, project.teamId)).filter((m) =>
     m.capabilities.includes(TERMINAL_CAPABILITY),
   );
@@ -283,7 +284,7 @@ export async function openSession(
   if (input.accountId && (account?.cli !== "claude" || !account.enabled))
     throw new NotFoundError("ACCOUNT_NOT_FOUND", "Không tìm thấy gói Claude đang bật trên máy.");
   const policy = await loadPolicy(tx);
-  const runPermissions = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace").mode;
+  const runPermissions = (await runSettingsOf(tx, project)).permission.mode;
   const routing = projectRouting(project);
   const advisor = input.model === "sonnet" && routing.enabled ? routing.tiers.medium.advisor : null;
   const [thread] = await tx

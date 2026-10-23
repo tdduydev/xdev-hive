@@ -148,3 +148,50 @@ Kết luận SC-001 trên bộ này: không file lỗi, không codec lỗi, 99,9
 | | | |
 
 Với 17 tài liệu chênh giữa 278 và 261: ghi mã tài liệu và nguyên nhân (mã chép hai thư mục, tài liệu mới trên OneDrive, hay khác cách chọn của `srs2md`). Không ghi nội dung.
+
+## 7. Kết quả kiểm tổng (T023, phần chạy tự động)
+
+Chạy ngày 2026-10-23 trên nhánh `ai/DOCS018B` (từ `origin/main`) bằng máy dev Windows: pandoc 3.12, có Docker nên test DB chạy thật; không có LibreOffice. Chỉ chạy các lệnh liên quan tới Word, **không** chạy `pnpm check` hay `pnpm ci:local` đầy đủ (CI của PR là nơi chạy). Phần cần người, máy chủ thật hay dữ liệu thật ghi "chưa làm" kèm lý do, không điền số.
+
+### Lệnh đã chạy
+
+| Lệnh | Kết quả |
+|---|---|
+| `vitest run src/modules/docsync/word` trong `apps/hub` (gồm test DB) | 205 đạt, 1 bỏ qua (`pandoc trong CI`: chỉ chạy khi có biến CI) |
+| `vitest run src/modules/docsync/word/filter.test.ts … fixtures src/modules/platform/config.test.ts` | 140 đạt, 1 bỏ qua |
+| `vitest run src/word-upload-pat.db.test.ts` trong `apps/hub` | 2 đạt |
+| `vitest run src/doc-sync.test.ts` trong `packages/contracts` | 31 đạt |
+| `vitest run src/components/word-import-dialog.test.tsx src/pages/knowledge` trong `apps/web` | 80 đạt (11 file) |
+| desktop: `word-import.test.ts`, `word-import-screen.test.tsx`, `nav.test.ts`, `app-shell.test.tsx` | đạt (T019) |
+| `pnpm deps` | không có vi phạm ranh giới module |
+
+### Theo tiêu chí thành công
+
+| SC | Có test | Kết quả hôm nay | Còn thiếu |
+|---|---|---|---|
+| SC-001 | `filter.test.ts` (bộ mẫu vàng, kiểm không còn thẻ HTML ngoài `<br>` trong ô bảng) | Đạt trên bộ mẫu. Bộ thật: kết quả lần 1 ở mục 6 (ngày 2026-10-19) | **Chưa chạy lại `word:corpus` trên bộ thật với bản cuối**: máy này không có thư mục SRS (T024, việc của người) |
+| SC-002 | `filter.test.ts` mẫu vàng cho `.docx` (`srs.docx`, `inline-lists.docx`, `no-h1.docx`) và `.odt` (`srs.odt`) | Đạt | Không có `.doc` mẫu vì T014 ngoài phạm vi (quyết định 2026-10-23) |
+| SC-003 | Không | **Chưa đo** | Cần hub dev thật: xem trước file SRS 3 MB và lượt 50 file. [Unverified] chưa có số |
+| SC-004 | `update.db.test.ts` ("tải lại đúng file … không phiên bản, không commit") | Đạt | Không |
+| SC-005 | `convert.db.test.ts` (pandoc treo → `TIMEOUT`; zip bomb → `FILE_TOO_LARGE`), `upload.db.test.ts` (mật khẩu, file đổi đuôi, quá giới hạn), `pandoc.test.ts` (tiến trình bị giết đúng hạn) | Đạt cho pandoc, mật khẩu, zip bomb, quá lớn | LibreOffice treo: không có test vì T014 ngoài phạm vi |
+| SC-006 | `convert.db.test.ts` (`blocked_secret`), `commit.db.test.ts` (xác nhận mới tạo, có audit), `staging.db.test.ts` | Đạt | Không |
+| SC-007 | `upload.db.test.ts` (không có quyền đề xuất thì từ chối), `original.db.test.ts` (người không đọc được nhận 404), `preview.db.test.ts`, `staging.db.test.ts` | Đạt | Không |
+
+### Theo yêu cầu
+
+Dựa vào bảng "Theo yêu cầu" trong tasks.md và tên test ở các file trên. [Inference] Chỉ đối chiếu ở mức nhóm FR với file test; chưa đọc từng assert để chứng minh từng câu của FR.
+
+- Có test và đạt: FR-001 (web `word-import-dialog.test.tsx`), FR-002, FR-004 (`upload.db.test.ts`, `multipart.test.ts`), FR-003 và FR-023 cho pandoc (`pandoc.test.ts`, `config.test.ts`), FR-005…FR-013 (`filter.test.ts`, `postprocess.test.ts`, `names.test.ts`, `preview.db.test.ts`), FR-017…FR-019 (`commit.db.test.ts`), FR-020 (`original.db.test.ts`), FR-021 (audit trong `commit.db.test.ts`, `update.db.test.ts`, `original.db.test.ts`), FR-024…FR-026 (`update.db.test.ts`), FR-027 (`staging.db.test.ts`), FR-028 (`link.db.test.ts`), FR-029…FR-032 (desktop Vitest; phía Rust đã gộp ở T017 với test riêng của nó).
+- FR-014: `filter.test.ts` kiểm `FILTER_VERSION` và commit gốc của `srs.lua`. Việc **bàn giao** `FILTER_VERSION` cho chủ dự án để chép sang `tools/srs2md` (repo `acme-ai/docs`) **chưa làm**: là việc của người ở repo kia.
+- FR-015, FR-016: đã có từ PR #416 (giai đoạn 0).
+- FR-003 và FR-023 cho LibreOffice: không có (T014 ngoài phạm vi). `.doc` bị từ chối khi hub chưa có LibreOffice, đã có test (`upload.db.test.ts`).
+- FR-022 (lỗi tiếng Việt có cách sửa): có trong hợp đồng (`doc-sync.test.ts`) và hiện ở web, desktop.
+
+### Chưa làm trong phần kiểm tổng
+
+- `pnpm check` đầy đủ và CI xanh trên nhánh đã gộp: chạy ở PR.
+- `word:corpus` trên bộ thật (SC-001), đo SC-003: cần máy có dữ liệu và hub dev.
+- Cargo (Rust của T017 và `src-tauri`): máy này không có cargo, chưa kiểm lại.
+- Chạy `app:dev` với thư mục mẫu và hub thật cho màn "Nhập Word" của T019.
+- Bàn giao `FILTER_VERSION` cho chủ dự án (FR-014).
+- T022 (ADR 0029, SRS 3.24, tài liệu kỹ thuật): [Unverified] nhánh `ai/WORD019H` có commit `e6e5e553` "docs: ADR and SRS for Word import (spec 019 T022)" đã chứa các file này, chưa gộp vào `main`; nhánh này không làm lại để tránh trùng.

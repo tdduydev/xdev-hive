@@ -165,7 +165,7 @@ describe("welcome cho phiên máy cá nhân", () => {
     expect(welcome).toMatchObject({
       features: ["subagents", "terminal"],
       owner: { userId: org.user("tmember"), shared: false },
-      policy: { totpFallback: true },
+      policy: { totpFallback: true, secretInjection: "allow" },
     });
   });
 

@@ -7,10 +7,11 @@ import type { LibManifest } from "./manifest.ts";
 import { MAX_FRAME_TEXT } from "./messages.ts";
 
 /**
- * Loại đã có nhánh dựng; `pdf` do T062 thêm vào đây. `csv` là nhánh `csv-chart`: khung chỉ vẽ biểu đồ, bảng do trình xem
- * dựng ngoài khung (chữ thuần, không cần cách ly), nên khoá loại giữ đúng tên loại artifact để route khung dùng chung.
+ * Loại đã có nhánh dựng. `csv` là nhánh `csv-chart`: khung chỉ vẽ biểu đồ, bảng do trình xem dựng ngoài khung (chữ thuần,
+ * không cần cách ly), nên khoá loại giữ đúng tên loại artifact để route khung dùng chung. `image` và `pdf` (T062) đọc
+ * tệp từ `blobUrl`, vì tệp nhị phân không nằm trong `content`.
  */
-export const FRAME_TYPES = ["html", "mermaid", "svg", "react", "markdown", "code", "csv"] as const;
+export const FRAME_TYPES = ["html", "mermaid", "svg", "react", "markdown", "code", "csv", "image", "pdf"] as const;
 export type FrameType = (typeof FRAME_TYPES)[number];
 export type FrameTheme = "light" | "dark";
 
@@ -25,6 +26,8 @@ export interface FrameDocumentInput {
   manifest: LibManifest;
   /** Thư mục thư viện: `https://<hub>/_artifact/lib/` hoặc `hive-artifact://…/lib/` ở app. */
   libBase: string;
+  /** URL tệp của `image` và `pdf` (đã kèm vé); phải nằm dưới `blobBase` của CSP. */
+  blobUrl?: string | undefined;
 }
 
 const REACT_MODULES = ["react", "react/jsx-runtime", "react-dom", "react-dom/client", "recharts", "lucide-react"];
@@ -264,6 +267,83 @@ createRoot(document.getElementById("root")).render(h(App));`;
   );
 }
 
+function imagePage({ theme, blobUrl }: FrameDocumentInput): string {
+  if (!blobUrl) return errorPage(theme, "runtime", "Chưa có tệp", "Phiên bản này không có tệp ảnh.");
+  const style = `<style>${themeCss(theme)}body{display:flex;justify-content:center;padding:1rem}img{max-width:100%;height:auto}</style>`;
+  // Lỗi nạp ảnh không phải lỗi script nên bootstrap không bắt; báo thẳng để khung bên cạnh hiện "Tải lại trang".
+  const onError = `window.parent.postMessage({type:"error",kind:"runtime",message:"Không tải được ảnh."},"*")`;
+  return page(theme, style, `<img alt="Ảnh" src="${escapeHtml(blobUrl)}" onerror="${escapeHtml(onError)}">`);
+}
+
+/** Tối đa chừng này trang vẽ; PDF dài hơn vẫn mở được nhưng chỉ phần đầu, để khung không ngốn bộ nhớ. */
+const PDF_MAX_PAGES = 300;
+
+function pdfPage({ theme, manifest, blobUrl }: FrameDocumentInput, base: string): string {
+  if (!blobUrl) return errorPage(theme, "runtime", "Chưa có tệp", "Phiên bản này không có tệp PDF.");
+  const style = `<style>${themeCss(theme)}#pages{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:.75rem}.page{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);max-width:100%}.page canvas{display:block;max-width:100%;height:auto}.note{text-align:center;color:rgba(127,127,127,1)}</style>`;
+  // pdf.js chạy worker trên luồng chính: khung là origin mờ nên `new Worker(url)` sang origin khác bị chặn. Đặt sẵn
+  // `pdfjsWorker` để nó dùng bộ xử lý này thay vì thử tạo Worker. Tệp tải một lần, không đọc theo đoạn, vì vé chỉ sống 5 phút.
+  const script = `import * as pdfjs from "pdfjs-dist";
+import * as worker from "pdfjs-dist/worker";
+globalThis.pdfjsWorker = worker;
+const root = document.getElementById("pages");
+const fail = (message) => {
+  root.textContent = message;
+  window.parent.postMessage({ type: "error", kind: "runtime", message }, "*");
+};
+try {
+  const response = await fetch(${jsonForScript(blobUrl)});
+  if (!response.ok) throw new Error("Không tải được tệp PDF (" + response.status + ").");
+  const data = new Uint8Array(await response.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data, isEvalSupported: false, enableXfa: false }).promise;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const total = Math.min(doc.numPages, ${PDF_MAX_PAGES});
+  const pageWidth = () => Math.max(200, document.documentElement.clientWidth - 24);
+  const render = async (holder, number) => {
+    const page = await doc.getPage(number);
+    const natural = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: (pageWidth() / natural.width) * dpr });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    canvas.style.width = Math.floor(viewport.width / dpr) + "px";
+    holder.style.minHeight = "0";
+    holder.replaceChildren(canvas);
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  };
+  const seen = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      seen.unobserve(entry.target);
+      render(entry.target, Number(entry.target.dataset.page)).catch((error) => fail(error instanceof Error ? error.message : String(error)));
+    }
+  }, { rootMargin: "800px 0px" });
+  const first = (await doc.getPage(1)).getViewport({ scale: 1 });
+  const height = Math.round((pageWidth() * first.height) / first.width);
+  for (let number = 1; number <= total; number++) {
+    const holder = document.createElement("div");
+    holder.className = "page";
+    holder.dataset.page = String(number);
+    holder.style.minHeight = height + "px";
+    root.append(holder);
+    seen.observe(holder);
+  }
+  if (doc.numPages > total) {
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = "Chỉ hiện " + total + " trang đầu trong tổng " + doc.numPages + " trang.";
+    root.append(note);
+  }
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}`;
+  return page(
+    theme,
+    `${importMap(manifest, base, ["pdfjs-dist", "pdfjs-dist/worker"])}${style}`,
+    `<div id="pages"></div><script type="module">${escapeInlineScript(script)}</script>`,
+  );
+}
+
 /**
  * Tài liệu HTML đầy đủ cho một khung cách ly. Hub dựng (route khung, trang công khai) và app dùng lại qua
  * `artifacts.frameDocument`, nên không có bản sao logic ở hai nơi. Nội dung của agent không bao giờ đi qua `innerHTML` của
@@ -286,6 +366,10 @@ export function buildFrameDocument(input: FrameDocumentInput): string {
       return codePage(input);
     case "csv":
       return csvChartPage(input, base);
+    case "image":
+      return imagePage(input);
+    case "pdf":
+      return pdfPage(input, base);
     default:
       throw new Error(`Loại "${input.type as string}" chưa có khung cách ly`);
   }

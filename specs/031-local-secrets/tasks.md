@@ -64,7 +64,9 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Linux không có Secret Service thì `go-keyring` trả lỗi gì.
 
   Kết quả "không đạt" thì sửa plan và task liên quan trước Phase 2.
-- [ ] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
+
+  Tiến độ: cỡ khối trên Windows đã kiểm (2560 byte mỗi mục, khối 1800 byte đạt). macOS và các điểm còn lại chưa kiểm.
+- [x] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
   - fixture mới `packages/contracts/fixtures/local-secrets.json` (reserved exact/prefixes, tên hợp lệ, không hợp lệ);
   - `packages/contracts/src/local-secrets.ts` (`RESERVED_SECRET_NAMES`, `isValidSecretName`, `isReservedSecretName`,
     `normalizeSecretName`);
@@ -79,7 +81,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 ## Phase 2: Foundational (chặn mọi user story)
 
-- [ ] T003 A·nặng — Gói `worker/internal/secretstore`, phần tên và kho:
+- [x] T003 A·nặng — Gói `worker/internal/secretstore`, phần tên và kho:
   - `names.go`: `ValidName`, `Reserved`, `ValidValue`, theo FR-003 và FR-005 ("dài 8 ký tự đến 8 KiB, không chứa byte
     NUL, và có thể chứa xuống dòng"). Test đọc `packages/contracts/fixtures/local-secrets.json`.
   - `keyring.go`: interface `backend{Get,Set,Delete}` bọc `go-keyring`; dịch vụ `dev.xdev.hive.secrets`; chia khối
@@ -89,7 +91,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     rút ngắn giá trị xoá khối thừa; khối thiếu trả `ErrCorrupt`.
 
   Sau T002.
-- [ ] T004 A·vừa — `worker/internal/secretstore/{catalog.go,grants.go}`:
+- [x] T004 A·vừa — `worker/internal/secretstore/{catalog.go,grants.go}`:
   - danh mục `secrets.json` (version 1, khoá file, ghi nguyên tử 0600; FR-002: "KHÔNG ĐƯỢC chứa giá trị, băm của giá trị
     hay độ dài giá trị");
   - tối đa 64 gán mỗi `localId`;
@@ -99,7 +101,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     `deleted`, cắt tỉa 90 ngày hoặc 10 000 dòng, `Clear` (data-model §4).
 
   Sau T003.
-- [ ] T005 [P] A2·nặng — Gói mới `worker/internal/secretmask/{mask.go,stream.go}`:
+- [x] T005 [P] A2·nặng — Gói mới `worker/internal/secretmask/{mask.go,stream.go}`:
   - `New(values)` với các dạng: gốc, base64 std/raw/url/rawurl, `url.QueryEscape`/`PathEscape`, JSON escape, shell-quote
     đơn và kép, khối nhiều dòng `\n`/`\r\n`, từng dòng ≥8 byte (FR-031, FR-033);
   - mặt nạ mặc định `[đã che]`, tuỳ chọn `***`;
@@ -108,7 +110,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test bảng gồm giá trị bị cắt đôi qua hai khối, và giá trị ngắn hơn 8 không bị che. Có benchmark 16 KiB/khối.
 
   Không phụ thuộc task khác.
-- [ ] T006 [P] A2·vừa — `worker/internal/projects/projects.go`:
+- [x] T006 [P] A2·vừa — `worker/internal/projects/projects.go`:
   - thêm `LocalID string \`json:"localId"\``, 16 hex ngẫu nhiên, sinh trong `AddFolder`, `Bind`;
   - `Load` gặp dòng thiếu thì sinh trong `WithLock` và ghi lại;
   - `Unbind` và `UnbindFolder` trả `LocalID` đã gỡ;
@@ -127,7 +129,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 2.
 
-- [ ] T007 [US1] A·vừa — Lệnh sidecar quản lý trong file mới `worker/cmd/hive-worker/secrets.go`, gồm `status`, `list`,
+- [x] T007 [US1] A·vừa — Lệnh sidecar quản lý trong file mới `worker/cmd/hive-worker/secrets.go`, gồm `status`, `list`,
   `set`, `rename`, `describe`, `assign`, `unassign`, `delete`, theo [contracts/sidecar-cli.md](contracts/sidecar-cli.md).
   - Giá trị đọc từ stdin `{"value"}` (FR-009).
   - Mã lỗi theo bảng của contract.
@@ -179,7 +181,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1 và 4.
 
-- [ ] T012 [US2] A·nặng — File mới `worker/internal/secretstore/grant.go`, hàm `Grant(ctx, GrantRequest)`. Bản này chỉ
+- [x] T012 [US2] A·nặng — File mới `worker/internal/secretstore/grant.go`, hàm `Grant(ctx, GrantRequest)`. Bản này chỉ
   có nhánh `allow`; `approve` và `deny` thêm ở T028.
   - Đọc danh mục theo `localId`, đọc mọi giá trị trong một lần (tối đa 4 song song, 5 giây mỗi mục).
   - Lọc tên dành riêng; kiểm ≤24 KiB trên Windows (`ErrEnvTooLarge`).
@@ -334,7 +336,7 @@ không chứa giá trị.
   - nút xoá toàn bộ, có xác nhận.
 
   Thêm chữ vào `i18n.ts`. Kèm test. Sau T010.
-- [ ] T025 [P] [US6] D·vừa — Hub nhận số lượng.
+- [x] T025 [P] [US6] D·vừa — Hub nhận số lượng.
   - `packages/contracts/src/runs.ts`: `secretsInjected?: number` trong kiểu xem kết quả run.
     **[Inference]** Tên kiểu chính xác xem lại khi làm.
   - `apps/hub/src/modules/runs/engine.ts` hoặc `queries.ts`: đọc `report.secretsInjected` (int 0–64).
@@ -353,7 +355,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 5.
 
-- [ ] T026 [US7] D·vừa — Contracts.
+- [x] T026 [US7] D·vừa — Contracts.
   - `packages/contracts/src/policies.ts`:
     - `secretInjection = z.enum(["allow","approve","deny"])`;
     - `agentPolicyInput.secretInjection.default("allow")`;
@@ -365,7 +367,7 @@ không chứa giá trị.
   - Chạy `pnpm openapi`. Thêm test contracts.
 
   Không phụ thuộc task khác, nên làm ngay từ Phase 2.
-- [ ] T027 [US7] D·vừa — Hub.
+- [x] T027 [US7] D·vừa — Hub.
   - `apps/hub/src/modules/governance/policies.ts`: `jobPolicyOf` thêm trường.
   - `apps/hub/src/modules/runs/engine.ts`: gửi `policy` khi
     `hooks.length || managedHooksOnly || secretInjection !== "allow"`.
@@ -407,7 +409,7 @@ không chứa giá trị.
   - Chữ vi/en ở `i18n.ts`.
 
   Sau T009.
-- [ ] T033 [P] [US7] D·vừa — `apps/web/src/pages/admin/policies-page.tsx`: mục "Bí mật tại máy" với nhóm radio "Cho
+- [x] T033 [P] [US7] D·vừa — `apps/web/src/pages/admin/policies-page.tsx`: mục "Bí mật tại máy" với nhóm radio "Cho
   phép" / "Hỏi trước" / "Không cho"; chỉ xem khi thiếu quyền `policies.write`. Kèm test Playwright web theo vai trò và
   tên.
 
@@ -481,7 +483,7 @@ không chứa giá trị.
 
 ## Phase 12: Polish và việc chung
 
-- [ ] T040 [P] D·nhẹ — Tài liệu:
+- [x] T040 [P] D·nhẹ — Tài liệu:
   - ADR mới `docs/adr/0038-local-secrets-keyring.md` (kho hệ điều hành, worker là chủ, chia khối, `secrets exec`, chỉ
     gửi số lượng);
   - `docs/architecture.md`: gói `secretstore`, `secretmask`;

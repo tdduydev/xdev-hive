@@ -1,4 +1,5 @@
 // Task của dự án và kế hoạch của plan mode. Module khác chỉ import file này.
+export { createTaskLinkTarget } from "./artifact-link.ts";
 export {
   dependenciesOf,
   setTaskDependencies,

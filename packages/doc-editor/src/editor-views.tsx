@@ -16,6 +16,7 @@ import type { DocEditorEnv, DocLinkTarget, Lang } from "./env.tsx";
 import { DocEmbed, docExtensions, Image, type MarkdownCodec } from "./markdown.ts";
 import {
   cleanPastedHtml,
+  isInlineImageUrl,
   isRelativeHref,
   isSafeImageUrl,
   looksLikeMarkdown,
@@ -138,12 +139,13 @@ function ImageView({ node, selected }: ReactNodeViewProps) {
   const alt = String(node.attrs.alt ?? "");
   const [broken, setBroken] = useState<string | null>(null);
   const resolved = useLinkTarget(env, docKey, src);
-  const url = isRelativeHref(src)
+  const relative = isRelativeHref(src);
+  const url = relative
     ? resolved?.status === "ready" && resolved.target.kind !== "doc"
       ? resolved.target.url
       : null
     : src;
-  const usable = url && isSafeImageUrl(url) && broken !== url ? url : null;
+  const usable = url && (isSafeImageUrl(url) || (relative && isInlineImageUrl(url))) && broken !== url ? url : null;
   return (
     <NodeViewWrapper
       as="span"

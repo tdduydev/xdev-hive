@@ -35,6 +35,8 @@ export const DOC_RULE_CHECKS = [
   "breakdown",
   "coverage",
   "ears",
+  "qa-cases",
+  "qa-tests",
 ] as const;
 export const CODE_RULE_CHECKS = [
   "command",
@@ -57,6 +59,8 @@ export const ruleCheck = z.enum([
   "breakdown",
   "coverage",
   "ears",
+  "qa-cases",
+  "qa-tests",
 ]);
 export type RuleCheck = z.output<typeof ruleCheck>;
 export const rejectRoute = z.enum(["author", "agent", "previous"]);

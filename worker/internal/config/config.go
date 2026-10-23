@@ -1,4 +1,5 @@
-// Package config đọc và ghi file cấu hình của worker: địa chỉ hub, tên máy và machine token nhận khi đăng ký.
+// Package config đọc và ghi file cấu hình của worker: địa chỉ hub, tên máy, id máy, và machine token khi máy chưa có
+// khoá.
 package config
 
 import (
@@ -10,11 +11,23 @@ import (
 )
 
 type Config struct {
-	HubURL       string `json:"hubUrl"`
-	MachineID    string `json:"machineId"`
-	MachineToken string `json:"machineToken"`
+	HubURL    string `json:"hubUrl"`
+	MachineID string `json:"machineId"`
+	// ID là id máy trên hub, dùng để xin access token bằng khoá máy (spec 027 US3).
+	ID string `json:"id,omitempty"`
+	// MachineToken chỉ còn ở máy chưa có khoá (cài trước spec 027, hub cũ); gửi khoá xong thì xoá khỏi file.
+	MachineToken string `json:"machineToken,omitempty"`
+	// KeyStorage là nơi giữ khoá máy: `keychain` hay `file`; rỗng khi máy chưa có khoá.
+	KeyStorage string `json:"keyStorage,omitempty"`
 	// TeamID chỉ để hiển thị; hub xác định đội từ token.
 	TeamID string `json:"teamId,omitempty"`
+	// Path là file đã đọc, để tìm khoá máy nằm cạnh nó; không ghi ra file.
+	Path string `json:"-"`
+}
+
+// Registered là máy đã đăng ký và còn cách xác thực với hub: khoá máy, hay machine token khi chưa có khoá.
+func (c Config) Registered() bool {
+	return c.HubURL != "" && c.MachineID != "" && ((c.ID != "" && c.KeyStorage != "") || c.MachineToken != "")
 }
 
 // DefaultPath là file cấu hình theo hệ điều hành: ~/.config trên Linux, ~/Library/Application Support trên macOS,
@@ -45,6 +58,7 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return c, fmt.Errorf("file cấu hình %s hỏng: %w", path, err)
 	}
+	c.Path = path
 	return c, nil
 }
 

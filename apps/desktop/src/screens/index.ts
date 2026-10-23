@@ -14,6 +14,7 @@ import { SetupScreen } from "@/screens/setup-screen.tsx";
 import { SkillsScreen } from "@/screens/skills-screen.tsx";
 import { SshScreen } from "@/screens/ssh-screen.tsx";
 import { TokensScreen } from "@/screens/tokens-screen.tsx";
+import { WordImportScreen } from "@/screens/word-import-screen.tsx";
 
 /** Màn của cửa sổ app theo mục AppNav; đủ mọi mục nên không còn trang "Sắp có". */
 export const SCREENS: Record<ScreenId, ComponentType> = {
@@ -31,6 +32,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   ssh: SshScreen,
   tokens: TokensScreen,
   tree: DelegationTreeScreen,
+  "word-import": WordImportScreen,
 };
 
 /**

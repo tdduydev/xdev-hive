@@ -63,8 +63,14 @@ export const machines = hive
       fullProjects: text("full_projects").array().notNull().default(sql`'{}'::text[]`),
       status: machineStatus("status").notNull().default("offline"),
       pausedAt: timestamp("paused_at", { withTimezone: true }),
-      /** Khoá công khai máy gửi lúc đăng ký (mục 6). Chưa dùng tới khi có access token ngắn hạn. */
+      /**
+       * Khoá công khai Ed25519 (base64url) máy dùng để đổi chữ ký lấy access token 15 phút (ADR 0033). null: máy cũ còn
+       * xác thực bằng machine token tới khi đăng ký khoá.
+       */
       publicKey: text("public_key"),
+      publicKeyAt: timestamp("public_key_at", { withTimezone: true }),
+      /** `file`: máy không có keychain, khoá nằm trong file 0600. Trang Máy hiện để quản trị biết. */
+      keyStorage: text("key_storage"),
       lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
       offlineNotifiedAt: timestamp("offline_notified_at", { withTimezone: true }),
       /** Người tạo mã đăng ký mà máy đã dùng. */
@@ -94,12 +100,23 @@ export const machines = hive
       unique("machines_id_org").on(t.id, t.orgId),
       foreignKey({ columns: [t.teamId, t.orgId], foreignColumns: [teams.id, teams.orgId] }).onDelete("cascade"),
       index("machines_team").on(t.teamId),
+      check("machines_key_storage", sql`${t.keyStorage} in ('keychain', 'file')`),
       pgPolicy("machines_rw", { as: "permissive", for: "all", to: hiveApp, using: inOrg, withCheck: inOrg }),
+      // Đổi chữ ký lấy access token chưa biết tổ chức, chỉ biết id máy: cho đọc đúng dòng đó (như byToken).
+      pgPolicy("machines_by_id", {
+        as: "permissive",
+        for: "select",
+        to: hiveApp,
+        using: sql`id::text = hive.ctx_fleet_machine()`,
+      }),
     ],
   )
   .enableRLS();
 
-/** Token lâu dài của máy. Chỉ lưu băm; thu hồi bằng cách xoá dòng. */
+/**
+ * Token lâu dài của máy. Chỉ lưu băm; thu hồi bằng cách xoá dòng. Máy đăng ký khoá thì đặt superseded_at: token không
+ * dùng được nữa nhưng giữ dòng để biết máy từng dùng token nào.
+ */
 export const machineTokens = hive
   .table(
     "machine_tokens",
@@ -109,6 +126,7 @@ export const machineTokens = hive
       teamId: uuid("team_id").notNull(),
       machineId: uuid("machine_id").notNull(),
       tokenHash: text("token_hash").notNull().unique(),
+      supersededAt: timestamp("superseded_at", { withTimezone: true }),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },
     (t) => [

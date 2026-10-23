@@ -6,7 +6,6 @@ import {
   DEFAULT_ORG_SDLC_POLICY,
   type JobPolicy,
   type OrgSdlcPolicy,
-  type ProjectBudget,
   type TemplateSyncResult,
 } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
@@ -18,6 +17,7 @@ import { agentPolicies } from "./schema.ts";
 import { DEFAULT_TEMPLATES } from "./templates.ts";
 
 export type Policy = z.output<typeof agentPolicyInput>;
+export type PolicyGuard = (tx: Tx, userId: string, before: Policy, next: Policy) => Promise<void>;
 type Cli = keyof Policy["allowedModels"];
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -61,12 +61,24 @@ export async function saveAgentPolicy(
   tx: Tx,
   userId: string,
   input: AgentPolicyInput,
+  guard?: PolicyGuard,
 ): Promise<{ policy: AgentPolicy; templatesChanged: boolean; remoteChanged: boolean }> {
   await allowWith(tx, userId, "policies.write", () => requireOrgRole(tx, userId, "admin"));
+  // Cùng khoá với layers, lấy trước khi đọc để kiểm quyền và tăng phiên bản trên chính sách mới nhất.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(hive.ctx_org()::text, 33))`);
   const before = await loadPolicy(tx);
-  // Client chưa biết mục `remote` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt.
-  const next = agentPolicyInput.parse(input.remote === undefined ? { ...input, remote: before.remote } : input);
-  if (allowsFull(next) && !allowsFull(before)) {
+  // Client chưa biết mục `remote`, `git` hay `secretInjection` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ
+  // chức đã tắt, bỏ yêu cầu token git theo run, hay lặng lẽ gỡ lệnh cấm bí mật tại máy.
+  const next = agentPolicyInput.parse({
+    ...input,
+    remote: input.remote ?? before.remote,
+    git: input.git ?? before.git,
+    secretInjection: input.secretInjection ?? before.secretInjection,
+  });
+  if (
+    (allowsFull(next) && !allowsFull(before)) ||
+    (next.defaultPermissionMode === "full" && before.defaultPermissionMode !== "full")
+  ) {
     const granted = await effectivePermissions(tx, userId);
     if (!granted.has("policies.fullaccess")) {
       throw new ForbiddenError(
@@ -75,6 +87,7 @@ export async function saveAgentPolicy(
       );
     }
   }
+  await guard?.(tx, userId, before, next);
   const [row] = await tx
     .insert(agentPolicies)
     .values({ orgId: sql`hive.ctx_org()`, policy: next, updatedBy: userId, updatedAt: sql`now()` })
@@ -105,7 +118,8 @@ export async function saveAgentPolicy(
       defaultTemplates: DEFAULT_TEMPLATES,
     },
     templatesChanged: changed.includes("templates"),
-    remoteChanged: changed.includes("remote"),
+    // Máy cá nhân nhận cả hai mục này trong `welcome.policy`, nên đổi mục nào cũng phải cho máy nối lại.
+    remoteChanged: changed.includes("remote") || changed.includes("secretInjection"),
   };
 }
 
@@ -154,14 +168,6 @@ export function resolvePermission(
   return { mode, notice: null };
 }
 
-/** Trần mỗi run của dự án, hạ về trần của tổ chức nếu cao hơn hoặc bỏ trống. */
-export function clampBudget(policy: Policy, budget: ProjectBudget | undefined): ProjectBudget | undefined {
-  const cap = policy.limits.perRunUsd;
-  if (cap === null) return budget;
-  const perRunUsd = budget?.perRunUsd === undefined ? cap : Math.min(budget.perRunUsd, cap);
-  return { ...budget, perRunUsd };
-}
-
 /** Số run cùng lúc của máy theo chính sách. */
 export function machineSlots(policy: Policy, capacity: number): number {
   const max = policy.limits.maxParallelPerMachine;
@@ -171,4 +177,5 @@ export function machineSlots(policy: Policy, capacity: number): number {
 export const jobPolicyOf = (policy: Policy): JobPolicy => ({
   hooks: policy.hooks,
   managedHooksOnly: policy.managedHooksOnly,
+  secretInjection: policy.secretInjection,
 });

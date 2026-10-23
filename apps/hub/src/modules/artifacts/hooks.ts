@@ -55,8 +55,21 @@ export interface LinkTarget {
   existing?(tx: Tx, targetIds: string[]): Promise<Set<string>>;
 }
 
+/**
+ * Tạo đề xuất tài liệu (module `knowledge` cài, specs/012 T066). `artifacts` không import `knowledge` vì
+ * `knowledge/artifact-link.ts` đã import `artifacts`; lỗi quyền, xung đột bản và bí mật do `knowledge` ném, giữ nguyên.
+ */
+export interface DocProposer {
+  /** Đề xuất `content` làm bản mới của tài liệu `key` (tạo mới nếu chưa có), thay mặt `userId`. */
+  propose(
+    tx: Tx,
+    input: { userId: string; key: string; title: string | undefined; content: string; reason: string },
+  ): Promise<{ proposalId: string }>;
+}
+
 let threadHost: ThreadHost | undefined;
 let terminalHost: TerminalHost | undefined;
+let docProposer: DocProposer | undefined;
 const linkTargets = new Map<ArtifactLinkKind, LinkTarget>();
 
 export function provideThreadHost(host: ThreadHost | undefined): void {
@@ -67,6 +80,10 @@ export function provideTerminalHost(host: TerminalHost | undefined): void {
   terminalHost = host;
 }
 
+export function provideDocProposer(proposer: DocProposer | undefined): void {
+  docProposer = proposer;
+}
+
 /** Cài (hoặc gỡ khi `target` undefined) đích của một loại. */
 export function provideLinkTarget(kind: ArtifactLinkKind, target: LinkTarget | undefined): void {
   if (target) linkTargets.set(kind, target);
@@ -75,5 +92,6 @@ export function provideLinkTarget(kind: ArtifactLinkKind, target: LinkTarget | u
 
 export const threadHostOf = () => threadHost;
 export const terminalHostOf = () => terminalHost;
+export const docProposerOf = () => docProposer;
 export const linkTargetOf = (kind: ArtifactLinkKind) => linkTargets.get(kind);
 export const allLinkTargets = () => [...linkTargets.values()];

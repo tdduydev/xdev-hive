@@ -22,7 +22,7 @@ func TestStartLocalIPC(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	path := filepath.Join(dir, "run", "hive.sock")
 	t.Setenv(localipc.PathEnv, path)
-	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, nil)
+	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, nil, nil)
 	c, h, err := localipc.Dial(path, "hive/test")
 	if err != nil {
 		t.Fatal(err)
@@ -61,10 +61,10 @@ func TestWorkerStatusOp(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	path := filepath.Join(dir, "run", "hive.sock")
 	t.Setenv(localipc.PathEnv, path)
-	status := newWorkerStatus(config.Config{MachineID: "may-1", MachineToken: "hwm_x"}, ownerVSCode, dir)
-	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, status)
+	status := newWorkerStatus(config.Config{HubURL: "https://hub.example", MachineID: "may-1", MachineToken: "hwm_x"}, ownerDesktop, dir)
+	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, status, nil)
 	t.Cleanup(stop)
-	c, _, err := localipc.Dial(path, "vscode/test")
+	c, _, err := localipc.Dial(path, "desktop/test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestWorkerStatusOp(t *testing.T) {
 	}
 
 	got := ask()
-	want := statusReply{State: "starting", Registered: true, MachineID: "may-1", Version: version.Version, Owner: "vscode"}
+	want := statusReply{State: "starting", Registered: true, MachineID: "may-1", Version: version.Version, Owner: "desktop"}
 	if got != want {
 		t.Fatalf("trước khi nối hub: %+v, muốn %+v", got, want)
 	}
@@ -128,7 +128,7 @@ func TestRunRejectsUnknownOwner(t *testing.T) {
 	if code := run([]string{"--owner", "ai-do"}); code != 2 {
 		t.Fatalf("mã thoát = %d, muốn 2", code)
 	}
-	for _, o := range []string{"desktop", "vscode", "cli"} {
+	for _, o := range []string{"desktop", "cli"} {
 		if !validOwner(o) {
 			t.Errorf("%s bị từ chối", o)
 		}

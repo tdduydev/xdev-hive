@@ -103,8 +103,16 @@ export async function recordSecretBlocked(
 
 // ---- Ghi phiên bản -------------------------------------------------------------------------------------------------
 
+/** Tệp ảnh/PDF đã nằm trong `BlobStore`; phiên bản chỉ giữ tham chiếu (T062), nên `content` của dòng để null. */
+export interface BlobInput {
+  id: string;
+  sha256: string;
+  size: number;
+}
+
 export interface VersionInput {
   content: string;
+  blob?: BlobInput | undefined;
   compiled: Compiled;
   origin: ArtifactOrigin;
   message?: string | null | undefined;
@@ -112,6 +120,10 @@ export interface VersionInput {
 }
 
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+
+/** Dung lượng tính vào hạn mức: cỡ tệp với blob, ngược lại cỡ chữ cộng bản biên dịch. */
+export const versionBytes = (input: Pick<VersionInput, "content" | "compiled" | "blob">): number =>
+  input.blob ? input.blob.size : byteSize(input.content, input.compiled.compiled);
 
 /** Kiểm cỡ và bí mật, trước mọi khoá (D13: biên dịch và quét chạy ngoài phần giữ khoá). */
 export function checkContent(
@@ -155,15 +167,16 @@ export async function insertVersion(
   version: number,
   input: VersionInput,
 ): Promise<VersionRow> {
-  const bytes = byteSize(input.content, input.compiled.compiled);
-  const hash = sha256(input.content);
+  const bytes = versionBytes(input);
+  const hash = input.blob ? input.blob.sha256 : sha256(input.content);
   const [row] = await tx
     .insert(artifactVersions)
     .values({
       orgId: artifact.orgId,
       artifactId: artifact.id,
       version,
-      content: input.content,
+      content: input.blob ? null : input.content,
+      blobId: input.blob?.id ?? null,
       compiled: input.compiled.compiled,
       compileError: input.compiled.compileError,
       sha256: hash,
@@ -210,7 +223,7 @@ export async function appendVersion(
   input: VersionInput & { baseVersion?: number | undefined; title?: string | undefined },
   deps: ArtifactDeps,
 ): Promise<{ artifact: ArtifactRow; version: VersionRow }> {
-  const bytes = byteSize(input.content, input.compiled.compiled);
+  const bytes = versionBytes(input);
   const used = await reserve(tx, reader, policy, bytes, { newArtifact: false });
   const [locked] = await tx.select().from(artifacts).where(eq(artifacts.id, id)).for("update");
   if (!locked || locked.deletedAt) throw artifactError("ARTIFACT_NOT_FOUND");
@@ -243,7 +256,7 @@ export async function appendVersion(
       latestVersion: next,
       title,
       sizeBytes: sql`${artifacts.sizeBytes} + ${bytes}`,
-      search: searchVector(title, input.content),
+      search: searchVector(title, input.blob ? null : input.content),
       updatedAt: sql`now()`,
     })
     .where(eq(artifacts.id, id))
@@ -283,6 +296,7 @@ export function versionMeta(row: VersionRow, names: Map<string, string>): Artifa
     version: row.version,
     sha256: row.sha256,
     sizeBytes: row.sizeBytes,
+    hasBlob: row.blobId !== null,
     authorUser: row.authorUserId
       ? { id: row.authorUserId, name: names.get(row.authorUserId) ?? row.authorUserId }
       : null,

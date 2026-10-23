@@ -51,17 +51,23 @@ func hostMemoryMB() uint64 {
 type Config struct {
 	HubURL  string
 	Machine string
-	// Token là machine token nhận khi đăng ký, gửi trong header Authorization lúc mở WSS.
-	Token      string
-	Version    string
-	CLIs       []string
-	Capacity   int
-	RunnerMode string
-	Sandbox    *runner.SandboxConfig
-	Logger     *slog.Logger
-	HTTP       *http.Client
-	MinBackoff time.Duration
-	MaxBackoff time.Duration
+	// Token là machine token nhận khi đăng ký, gửi trong header Authorization lúc mở WSS. Chỉ dùng khi không có
+	// AccessToken (máy chưa có khoá, hub cũ).
+	Token string
+	// AccessToken lấy access token của khoá máy (hubclient.TokenSource.Token); fresh là đòi token mới thay vì token đang
+	// giữ. Lỗi hubclient.IsAuthFailed là hub đã từ chối khoá.
+	AccessToken func(ctx context.Context, fresh bool) (string, time.Time, error)
+	// RefreshBefore ghi đè lúc đổi token trước hạn; 0 là hubclient.RefreshBefore. Chỉ dùng trong test.
+	RefreshBefore time.Duration
+	Version       string
+	CLIs          []string
+	Capacity      int
+	RunnerMode    string
+	Sandbox       *runner.SandboxConfig
+	Logger        *slog.Logger
+	HTTP          *http.Client
+	MinBackoff    time.Duration
+	MaxBackoff    time.Duration
 	// Heartbeat ghi đè chu kỳ heartbeat hub gửi trong welcome; 0 là theo hub. Chỉ dùng trong test.
 	Heartbeat time.Duration
 	// DataDir chứa repo cache, worktree của run, gói chờ ack (pending) và marker run đang chạy (active).
@@ -331,7 +337,12 @@ func (c Config) Run(ctx context.Context) error {
 		err := c.connect(ctx, jobs)
 		var upgrade *UpgradeError
 		var rejected *RejectedError
-		if errors.As(err, &upgrade) || errors.As(err, &rejected) {
+		if errors.As(err, &rejected) && c.expired(ctx, rejected) {
+			// Access token hết hạn giữa chừng (máy ngủ quá giờ reauth) chứ máy không bị thu hồi: token mới đã có, nối lại.
+			err = fmt.Errorf("access token hết hạn: %s", rejected.Reason)
+			rejected = nil
+		}
+		if errors.As(err, &upgrade) || rejected != nil {
 			c.status("stopped", err)
 			return err
 		}
@@ -376,13 +387,22 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 		return err
 	}
 	header := http.Header{}
-	if c.Token != "" {
-		header.Set("Authorization", "Bearer "+c.Token)
+	token := c.Token
+	if c.AccessToken != nil {
+		if token, _, err = c.AccessToken(ctx, false); err != nil {
+			if hubclient.IsAuthFailed(err) {
+				return &RejectedError{Code: http.StatusUnauthorized, Reason: "hub không nhận khoá của máy (máy đã bị thu hồi hay khoá đã đổi); chạy lại `hive-worker register`"}
+			}
+			return fmt.Errorf("xin access token: %w", err)
+		}
+	}
+	if token != "" {
+		header.Set("Authorization", "Bearer "+token)
 	}
 	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPClient: c.healthHTTP(), HTTPHeader: header})
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			return &RejectedError{Code: resp.StatusCode, Reason: "machine token không hợp lệ hoặc đã bị thu hồi; chạy lại `hive-worker register`"}
+			return &RejectedError{Code: resp.StatusCode, Reason: "token máy không hợp lệ hoặc máy đã bị thu hồi; chạy lại `hive-worker register`"}
 		}
 		return fmt.Errorf("kết nối WSS tới hub: %w", err)
 	}
@@ -479,6 +499,10 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 			}
 		}
 	}()
+	// Hub chỉ nhận reauth khi kết nối mở bằng access token, và khi đó welcome có accessTokenExp.
+	if exp, err := time.Parse(time.RFC3339Nano, welcome.AccessTokenExp); err == nil && c.AccessToken != nil {
+		go c.reauth(ctx, jobs, exp)
+	}
 	for {
 		_, payload, err := conn.Read(ctx)
 		if err != nil {
@@ -539,6 +563,49 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 			c.Logger.Info("Chưa xử lý gói từ hub", "type", fmt.Sprintf("%T", m))
 		}
 	}
+}
+
+// reauth đổi access token trước hạn và gửi cho hub trên kết nối đang mở, để run đang chạy không bị ngắt mỗi 15 phút.
+// Đổi không được thì thử lại sau 30 giây; tới hạn mà vẫn hỏng thì hub đóng 4401 và Run nối lại bằng token mới.
+func (c Config) reauth(ctx context.Context, jobs *jobs, exp time.Time) {
+	before := c.RefreshBefore
+	if before <= 0 {
+		before = hubclient.RefreshBefore
+	}
+	wait := time.Until(exp) - before
+	for {
+		timer := time.NewTimer(max(wait, 0))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		token, next, err := c.AccessToken(ctx, true)
+		if err != nil {
+			c.Logger.Warn("Không đổi được access token, sẽ thử lại", "error", err)
+			wait = 30 * time.Second
+			continue
+		}
+		id, err := messageID()
+		if err != nil {
+			return
+		}
+		if jobs.write(Reauth{Type: "reauth", V: protocolVersion, ID: id, AccessToken: token}) != nil {
+			return
+		}
+		wait = time.Until(next) - before
+	}
+}
+
+// expired cho biết hub đóng vì access token hết hạn chứ không phải vì máy bị thu hồi: đổi được token mới thì máy còn
+// hợp lệ. Hub vắng lúc đổi thì cũng nối lại, vì dừng hẳn worker chỉ vì mạng chập là quá tay.
+func (c Config) expired(ctx context.Context, r *RejectedError) bool {
+	if c.AccessToken == nil || (r.Code != 4401 && r.Code != http.StatusUnauthorized) {
+		return false
+	}
+	_, _, err := c.AccessToken(ctx, true)
+	return err == nil || !hubclient.IsAuthFailed(err)
 }
 
 // closeError đổi lỗi đọc thành RejectedError khi hub đóng bằng mã cho biết nối lại vô ích.

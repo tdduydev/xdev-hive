@@ -97,4 +97,4 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 - [ ] T017 [US1] X — Nối `channel`: nhận `deliveryJobSpec` qua lease, gửi `deliveryEvent` qua outbox, báo khả năng ở `hello`
   (thuộc specs/034; hub đã có `worker-jobs.ts` chờ phía worker)
 - [ ] T018 [US10] X — Test hợp đồng trên ba hệ điều hành trong CI
-- [x] T019 H — Sinh migration (`0087`), `pnpm openapi`. Đánh lại số nếu `main` có migration mới trước khi merge
+- [x] T019 H — Sinh migration (`0090_delivery_jobs`, đánh lại số sau khi gộp `main`), `pnpm openapi`

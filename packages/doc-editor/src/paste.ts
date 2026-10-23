@@ -60,6 +60,14 @@ export const isRelativeHref = (href: string) => !!href && !/^([a-z][a-z0-9+.-]*:
 /** Địa chỉ ảnh trình duyệt được phép tải: http(s) hoặc đường dẫn cùng gốc; chặn `javascript:` và `data:` trong `src` của ảnh. */
 export const isSafeImageUrl = (url: string) => /^(https?:\/\/|\/(?!\/))/i.test(url);
 
+/**
+ * Ảnh raster nhúng thẳng (base64). Chỉ nhận khi app chủ trả qua `resolveLink`, không nhận trong `src` của tài liệu: app
+ * desktop không tải ảnh từ hub bằng thẻ img được (token nằm trong Rust, CSP chặn `blob:`), nên đọc byte rồi đưa vào đây.
+ * Không có SVG vì SVG chạy được script.
+ */
+export const isInlineImageUrl = (url: string) =>
+  /^data:image\/(png|jpe?g|gif|webp|avif);base64,[a-z0-9+/=]+$/i.test(url);
+
 /** File trong sự kiện dán hoặc thả. Dán ảnh chụp màn hình hay ảnh sao chép có `items`; thả file có `files`. */
 export function transferFiles(data: DataTransfer | null): File[] {
   if (!data) return [];

@@ -29,6 +29,7 @@ import { teams } from "../tenancy/index.ts";
 import { activeItemProjects, requireItemManage } from "./access.ts";
 import { onBreakdownBaseline } from "./breakdown.ts";
 import { contractCheckpointTeams } from "./contracts.ts";
+import { onQaBaseline, qaState } from "./qa.ts";
 import {
   sdlcArtifactSyncs,
   sdlcArtifacts,
@@ -157,8 +158,14 @@ async function phaseRows(tx: Tx, itemId: string): Promise<PhaseRow[]> {
  * Không có tài liệu bắt buộc thì đạt khi các bước tự chạy đã xong. Triển khai không bao giờ tự đạt ở đây. Giai đoạn
  * trước còn tài liệu đang duyệt lại sau thu hồi tự duyệt thì chưa đạt (D26): bản này dựa trên tài liệu có thể đổi.
  */
+const needsQa = (phase: SdlcPhase) =>
+  phase.kind === "verification" &&
+  (phase.steps.some((s) => s.action === "test-run") ||
+    phase.gate.some((p) => p.gates.some((g) => g.rules?.includes("qa-tests"))));
+
 async function phaseReady(tx: Tx, item: SdlcItemRow, phase: SdlcPhase): Promise<boolean> {
   if (phase.kind === "implementation") return false;
+  if (needsQa(phase) && !(await qaState(tx, item.id)).checks.every((c) => c.passed)) return false;
   const index = item.mode.phases.findIndex((p) => p.id === phase.id);
   const revoked = await tx
     .select({ phaseId: sdlcArtifacts.phaseId })
@@ -283,6 +290,7 @@ export async function advance(tx: Tx, itemId: string, deps: SdlcDeps = {}): Prom
       return item;
     }
     if (row.status === "skipped" || row.status === "approved") {
+      if (needsQa(phase) && !(await qaState(tx, item.id)).checks.every((c) => c.passed)) return item;
       item = await moveNext(tx, item, rows, deps);
       if (item.status !== "active") return item;
       continue;
@@ -328,6 +336,9 @@ export async function approvePhase(
 ): Promise<void> {
   const item = await lockItem(tx, itemId);
   if (!item) return;
+  const phase = item.mode.phases.find((p) => p.id === phaseId);
+  if (phase && needsQa(phase) && !(await qaState(tx, item.id)).checks.every((c) => c.passed))
+    throw new ConflictError("QA_GATE_BLOCKED", "TC bắt buộc chưa đạt hoặc chưa được miễn.");
   const [row] = await tx
     .select()
     .from(sdlcItemPhases)
@@ -387,6 +398,7 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
   if (!event.reaffirm) await markSyncPending(tx, item, artifact.id, deps);
   // Bản tách đọc từ chính baseline này (T030); lỗi đọc thì rollback cả baseline để không có baseline mà thiếu task.
   if (!event.reaffirm) await onBreakdownBaseline(tx, item, artifact, event.version);
+  if (!event.reaffirm) await onQaBaseline(tx, item, artifact, event.version);
   // Lần tự duyệt ghi lúc checkpoint đạt, chưa biết phiên bản; thu hồi cần phiên bản để biết baseline nào bị bác.
   if (event.autoApproved && !event.reaffirm)
     await tx
@@ -462,6 +474,7 @@ export async function skipPhase(
     throw new ConflictError("SDLC_ITEM_CLOSED", "Hạng mục đã xong hoặc đã huỷ.");
   const phase = item.mode.phases.find((p) => p.id === input.phaseId);
   if (!phase) throw new NotFoundError("SDLC_PHASE_NOT_FOUND", "Không tìm thấy giai đoạn.");
+  if (needsQa(phase)) throw new BadRequestError("QA_GATE_REQUIRED", "Cổng QA cần TC đạt hoặc quyết định miễn từng TC.");
   if (!phase.optional)
     throw new BadRequestError(
       "SDLC_PHASE_NOT_OPTIONAL",

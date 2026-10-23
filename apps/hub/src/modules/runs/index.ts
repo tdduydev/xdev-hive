@@ -1,4 +1,6 @@
 // Run của task: giao job cho máy, lease, chính sách kết quả, log và luồng SSE. Module khác chỉ import file này.
+// Đích gắn artifact (specs/012 T065): hub cài vào module artifacts ở app.ts.
+export { createRunLinkTarget } from "./artifact-link.ts";
 export {
   createRunsEngine,
   RUNS_TIMER_QUEUE,

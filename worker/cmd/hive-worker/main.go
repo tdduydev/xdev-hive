@@ -31,6 +31,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/gitgroups"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/instancelock"
+	"github.com/tdduydev/xdev-hive/worker/internal/machinekey"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/repolock"
@@ -77,6 +78,8 @@ func main() {
 		os.Exit(optimizeCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "projects":
 		os.Exit(projectsCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "secrets":
+		os.Exit(secretsCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "gitgroups":
 		os.Exit(gitgroupsCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "branches":
@@ -102,7 +105,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | outbox [status | submit | flush | drop] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | secrets [status | list | set | rename | describe | assign | unassign | delete] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | outbox [status | submit | flush | drop] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -126,7 +129,7 @@ func serviceCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	if action == "install" {
 		cfg, err := config.Load(path)
-		if err != nil || cfg.MachineToken == "" {
+		if err != nil || !cfg.Registered() {
 			fmt.Fprintf(stderr, "Máy chưa đăng ký; chạy `hive-worker register --hub URL --token MÃ --config %s` trước.\n", path)
 			return 1
 		}
@@ -271,19 +274,37 @@ func register(args []string, stdout, stderr io.Writer) int {
 	if len(dropped) > 0 {
 		fmt.Fprintf(stderr, "Hub chưa nhận CLI %s; cập nhật hub để giao run cho chúng.\n", strings.Join(dropped, ", "))
 	}
-	reg, err := client.Register(ctx, hubclient.RegisterRequest{
+	req := hubclient.RegisterRequest{
 		RegistrationToken: *token,
 		MachineID:         *machine,
 		OS:                runtime.GOOS,
 		Version:           version.Version,
 		CLIs:              clis,
 		Capacity:          *capacity,
-	})
+	}
+	// Đăng ký lại cùng hub và tên máy thì dùng lại khoá cũ: tạo khoá mới trước khi hub nhận mã thì mã sai hay hết hạn
+	// cũng làm mất khoá của máy đang chạy.
+	store := newKeyStore(path)
+	key, keyErr := store.Load(*hub, *machine)
+	if errors.Is(keyErr, machinekey.ErrNoKey) {
+		key, keyErr = store.Create(*hub, *machine)
+	}
+	if keyErr != nil {
+		fmt.Fprintf(stderr, "Không tạo được khoá máy (%v); máy dùng machine token dài hạn.\n", keyErr)
+	} else {
+		req.PublicKey, req.KeyStorage = key.PublicKey(), key.Storage
+	}
+	reg, err := client.Register(ctx, req)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if err := config.Save(path, config.Config{HubURL: *hub, MachineID: reg.MachineID, MachineToken: reg.MachineToken, TeamID: reg.TeamID}); err != nil {
+	cfg := config.Config{HubURL: *hub, MachineID: reg.MachineID, ID: reg.ID, MachineToken: reg.MachineToken, TeamID: reg.TeamID}
+	if key != nil && keyWorks(ctx, client, *hub, reg.ID, key) {
+		// Hub nhận khoá thì machine token đã bị vô hiệu; không giữ nó trên đĩa.
+		cfg.KeyStorage, cfg.MachineToken = key.Storage, ""
+	}
+	if err := config.Save(path, cfg); err != nil {
 		// Hub chỉ trả token một lần; không lưu được thì người dùng phải xin mã mới, nên báo rõ.
 		fmt.Fprintf(stderr, "Đã đăng ký nhưng không lưu được token: %v\nXin admin đội tạo mã mới rồi chạy lại.\n", err)
 		return 1
@@ -353,13 +374,13 @@ func run(args []string) int {
 	hub := fs.String("hub", envOr("HIVE_HUB_URL", ""), "địa chỉ hub (mặc định lấy từ file cấu hình)")
 	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
 	statusJSON := fs.Bool("status-json", false, "in trạng thái kết nối ra stdout, mỗi dòng một JSON (cho app desktop); log vẫn ra stderr")
-	owner := fs.String("owner", ownerCLI, "ai chạy worker này: desktop, vscode hoặc cli (hiện ở op worker.status của socket nội bộ)")
+	owner := fs.String("owner", ownerCLI, "ai chạy worker này: desktop hoặc cli (hiện ở op worker.status của socket nội bộ)")
 	stdinControl := fs.Bool("stdin-control", false, `dừng khi đọc dòng "stop" hoặc hết stdin (app desktop chạy worker làm sidecar)`)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if !validOwner(*owner) {
-		fmt.Fprintf(os.Stderr, "--owner phải là %s, %s hoặc %s.\n", ownerDesktop, ownerVSCode, ownerCLI)
+		fmt.Fprintf(os.Stderr, "--owner phải là %s hoặc %s.\n", ownerDesktop, ownerCLI)
 		return 2
 	}
 	lock, code := lockWorker()
@@ -395,8 +416,17 @@ func run(args []string) int {
 			cancel()
 		}()
 	}
-	// Việc dồn trong hộp thư đi lúc máy ngoại tuyến (điểm máy, đề xuất ghi nhớ) được gửi dần khi hub nối lại.
-	go outboxLoop(ctx, cfg, outboxFlushEvery)
+	// Gửi khoá máy (máy cài trước spec 027) trước khi hộp thư đi chép cfg, để nó không giữ machine token đã bị vô hiệu.
+	// Lỗi thì startWorker báo.
+	_, _ = machineAuth(ctx, &cfg)
+	// Việc dồn trong hộp thư đi lúc hub vắng (điểm máy, đề xuất ghi nhớ, lần ghi của người dùng qua socket) được gửi
+	// dần khi hub nối lại.
+	ob, err := newOutboxService(ctx, cfg)
+	if err != nil {
+		slog.Warn("không mở được hộp thư đi", "err", err)
+	} else {
+		go ob.loop(outboxFlushEvery)
+	}
 	dataDir, err := repolock.DataDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -409,7 +439,7 @@ func run(args []string) int {
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
 	// newWorkerStatus còn nhận thư mục cache gốc, hai cấp trên DataDir.
 	status := newWorkerStatus(cfg, *owner, filepath.Dir(filepath.Dir(dataDir)))
-	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status)
+	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status, ob)
 	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
@@ -642,7 +672,16 @@ func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, 
 	}
 	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: dataDir, Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile, Terminal: term}
 	cc.OnStatus = onStatus
-	err := cc.Run(ctx)
+	ts, err := machineAuth(ctx, &cfg)
+	if err != nil {
+		// Thiếu khoá hay id máy thì chạy lại cũng vậy; mã 3 như khi hub từ chối máy để dịch vụ không khởi động lại mãi.
+		fmt.Fprintln(os.Stderr, err)
+		return 3
+	}
+	if ts != nil {
+		cc.Token, cc.AccessToken, cc.RefreshBefore = "", ts.Token, hubclient.RefreshBefore
+	}
+	err = cc.Run(ctx)
 	var requested *channel.UpdateRequest
 	var upgrade *channel.UpgradeError
 	if errors.As(err, &requested) {

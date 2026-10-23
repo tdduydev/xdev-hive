@@ -316,19 +316,23 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     (nhánh `csv-chart`)
   - **Phụ thuộc**: MVP (Recharts đã có trong bộ đóng gói từ T004) · **Mức**: vừa
 
-- [ ] T062 [US3] Ảnh và PDF: `BlobStore`, tải lên, trình xem
+- [x] T062 [US3] Ảnh và PDF: `BlobStore`, tải lên, trình xem
   - Dùng chung `apps/hub/src/modules/platform/blob-store.ts` (giao diện + bản PostgreSQL `bytea` chia đoạn 512 KiB),
     bảng `blobs`, `blob_chunks` với spec 018 (ADR 0028, rủi ro R4). Task làm trước tạo bản chung; task sau dùng lại,
     không tạo `artifacts/blob-store.ts` hay bảng `artifact_blobs` riêng. Schema/migration chung do spec 018 T005
     phụ trách; bản BlobStore do T007 phụ trách, cần phối hợp nếu T062 làm trước.
   - Route tải lên (multipart, kiểm magic bytes, ≤ `maxBlobBytes`), `/_artifact/blob/:ticket`, pdf.js
     trong bộ đóng gói, `viewer/{image,pdf}.tsx`; bộ đệm app cho blob.
+  - Đã làm: `upload.ts` (POST `/api/v1/artifacts/upload`), `blob-types.ts`, route `/_artifact/blob/:ticket` (cùng vé với khung,
+    kiểm lại link/thùng rác), pdf.js trong khung (`FRAME_TYPES` += `image`, `pdf`), nút tải lên ở thư viện. Không cần migration:
+    `artifact_versions.blob_id` có từ T003. Ảnh và PDF cần mạng tới hub: app không đệm tài liệu khung của hai loại này
+    (`frameDocument` trả `ARTIFACT_FRAME_UNAVAILABLE`), nên không đổi `src-tauri/src/artifacts.rs`.
   - **Scope**: tích hợp qua `apps/hub/src/modules/platform/index.ts`, `apps/hub/src/modules/artifacts/{schema.ts,frame-routes.ts}`
     (migration số kế tiếp nếu cần thay đổi riêng cho artifact),
     `packages/artifacts-runtime/**`, `packages/artifacts-ui/src/viewer/{image,pdf}.tsx`, `apps/desktop/src-tauri/src/artifacts.rs`
   - **Phụ thuộc**: MVP · **Mức**: nặng
 
-- [ ] T063 [US4] Phạm vi `team` và `org`
+- [x] T063 [US4] Phạm vi `team` và `org`
   - **Scope**: `apps/hub/src/modules/artifacts/access.ts` + test, `packages/artifacts-ui/src/share-dialog.tsx`
   - **Phụ thuộc**: MVP · **Mức**: vừa
 
@@ -337,25 +341,43 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `ArtifactPanel`.
   - **Scope**: file của LEADTERM (theo nhánh LEADTERM khi đã merge), `apps/hub/src/main.ts` (đăng ký hook)
   - **Phụ thuộc**: LEADTERM, MVP · **Mức**: vừa
+  - ngoài phạm vi (quyết định 2026-10-23: web chỉ giữ bốn nhóm Kho, Cấu hình, Duyệt, Quản trị; Terminal Leader và khung
+    bên cạnh thuộc desktop/worker, không làm trên hub và web)
 
-- [ ] T065 [US10] Liên kết task, run, hạng mục AI SDLC, tài liệu
+- [x] T065 [US10] Liên kết task, run, hạng mục AI SDLC, tài liệu
   - `LinkTarget` của `tasks`, `runs`, `sdlc`, `knowledge`; mục Artifact ở trang task, run, dự án, hạng mục (`sdlc-ui`), tài
     liệu; prompt run có task liệt kê artifact liên kết (`runs/engine.ts` dựng prompt).
   - **Scope**: `apps/hub/src/modules/{tasks,runs,sdlc,knowledge}/index.ts` (đăng ký), `apps/hub/src/modules/runs/engine.ts`
     (prompt), `apps/web/src/pages/{tasks-page,run-page,project-settings-page}.tsx`, `packages/sdlc-ui/src/item-detail.tsx`
   - **Phụ thuộc**: MVP; spec 011 T051 (màn hạng mục) cho phần `sdlc` · **Mức**: vừa
+  - Đã làm: `createTaskLinkTarget`, `createRunLinkTarget`, `createSdlcItemLinkTarget`, `createDocLinkTarget` (mỗi module một
+    `artifact-link.ts`, đăng ký ở `app.ts`); bộ lọc `sdlcItemId` và `docId` cho `artifacts.list`; `LinkedArtifacts` trong
+    `packages/artifacts-ui/src/linked.tsx`; mục Artifact ở trang kế hoạch của task, run, dự án, tài liệu và hạng mục.
+    Trang hạng mục đặt ở `apps/web/src/pages/sdlc/sdlc-pages.tsx` (không sửa `sdlc-ui`) để không thêm phụ thuộc gói và
+    không đụng phần SPEC035; `sdlc` chỉ đăng ký `LinkTarget`.
+  - ngoài phạm vi (quyết định 2026-10-23: prompt run liệt kê artifact liên kết ở `runs/engine.ts` thuộc thực thi, nằm ở
+    desktop/worker; liên kết chỉ là siêu dữ liệu và hiển thị)
 
-- [ ] T066 [US11] Chuyển thành tài liệu, Lưu vào repo
+- [x] T066 [US11] Chuyển thành tài liệu, Lưu vào repo
   - Route `toDoc` (hook `createProposal` từ `knowledge`), `toRepo` (`GitProvider.commitFiles` + `openPR`, nhánh
     `hive/artifact/<id>-v<n>`, kiểm đường dẫn như spec 011 FR-003); nút trong panel/chi tiết.
   - **Scope**: `apps/hub/src/modules/artifacts/convert.ts` + test, `packages/artifacts-ui/src/convert-dialog.tsx`
   - **Phụ thuộc**: MVP · **Mức**: vừa
+  - **Đã làm** (`toDoc`): hook `DocProposer` ở `artifacts/hooks.ts`, `knowledge/artifact-link.ts` cài bằng
+    `createDocProposer` (tránh vòng `artifacts` → `knowledge`); `convert.ts` chỉ nhận Markdown còn nội dung, base lấy
+    trong cùng transaction, ghi audit `artifact.to_doc`; hộp `ConvertDialog` và nút trong `ArtifactPanel`. Test:
+    `apps/hub/src/artifact-to-doc.db.test.ts`, `convert-dialog.test.tsx`.
+  - ngoài phạm vi (quyết định 2026-10-23: "Lưu vào repo" (`toRepo`) mở PR vào repo, là thao tác thực thi/giao hàng,
+    không nằm trong bốn nhóm Kho, Cấu hình, Duyệt, Quản trị của web; route `toRepo` giữ trong hợp đồng, chưa có handler)
 
-- [ ] T067 [US12] Chính sách và dung lượng trên web
+- [x] T067 [US12] Chính sách và dung lượng trên web
   - Mục Artifacts trong trang Chính sách agent (loại, phạm vi, giới hạn; bật/tắt link công khai đã có ở T031 — trang chính
     sách dẫn tới đó); màn Dung lượng artifact (`usage`); thông báo `artifact.quota`.
   - **Scope**: `apps/web/src/pages/admin/policies-page.tsx`, `apps/web/src/pages/admin/artifact-usage-page.tsx`,
     `apps/hub/src/modules/artifacts/limits.ts` (thông báo; loại thông báo đã có từ T001)
+  - **Đã làm**: thông báo `artifact.quota` đã có ở hub (`warnQuota` trong `limits.ts`: từ 80% hạn mức, một lần mỗi ngày,
+    có test ở `artifacts.db.test.ts`). Web: mục Artifact tự lưu ở `pages/admin/policies/artifacts-section.tsx` (policies-page
+    chỉ thêm import, mục nav và chỗ đặt), màn `/admin/artifact-usage`, e2e `artifact-admin.spec.ts`.
   - **Phụ thuộc**: MVP · **Mức**: vừa
 
 - [ ] T068 [US9] Soạn tay đầy đủ
@@ -364,6 +386,8 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Scope**: `packages/artifacts-ui/src/editor.tsx`, `packages/doc-editor/src/**` (chỉ cờ chế độ artifact, phối hợp làn
     doc-editor)
   - **Phụ thuộc**: Tiptap #204, MVP · **Mức**: vừa
+  - ngoài phạm vi (quyết định 2026-10-23: soạn tay đầy đủ là thao tác thực thi/soạn thảo, không nằm trong bốn nhóm của
+    web; web chỉ xem, chia sẻ và quản trị artifact)
 
 - T069 ("Nhờ Leader sửa") **đã chuyển vào MVP** theo quyết định PO 2026-10-14: hub ở T016, giao diện ở T020/T023, web ở
   T030/T031, app ở T041.

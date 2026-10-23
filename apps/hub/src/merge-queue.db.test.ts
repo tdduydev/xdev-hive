@@ -17,6 +17,7 @@ import {
 } from "./modules/catalog/index.ts";
 import { mergeQueueEntries } from "./modules/catalog/schema.ts";
 import { reviewGate } from "./modules/codereview/index.ts";
+import { resolveProjectSettings, setOrgEntry } from "./modules/layers/index.ts";
 import { createChannel } from "./modules/notify/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "./modules/platform/index.ts";
 import { createRunsEngine } from "./modules/runs/index.ts";
@@ -35,6 +36,7 @@ let other: Org;
 let provider: MemoryProvider;
 let now: Date | null = null;
 const deps: MergeDeps = {
+  resolveSettings: resolveProjectSettings,
   pool: app,
   masterKey,
   providerFactory: () => provider,
@@ -190,6 +192,24 @@ describe("vào hàng và bỏ khỏi hàng", () => {
 });
 
 describe("xử lý hàng", () => {
+  it("dùng yêu cầu CI đã bị tổ chức khoá thay cho giá trị riêng của dự án", async () => {
+    const p = await newProject(settings({ requireCi: false }));
+    const n = await openPR(p, "ai/ci-org-lock");
+    await enqueue(p, n);
+    try {
+      await as("owner", (tx) =>
+        setOrgEntry(tx, org.user("owner"), { key: "merge.requireCi", value: true, locked: true }),
+      );
+      expect(await step(p)).toBe("wait");
+      expect(await entry(p, n)).toMatchObject({ state: "waiting", note: expect.stringContaining("Chờ CI") });
+      const sha = provider.setPull(p.ref, n, {}).headSha;
+      provider.setChecks(p.ref, sha, "success");
+      expect(await step(p)).toBe("next");
+      expect(await entry(p, n)).toMatchObject({ state: "merged" });
+    } finally {
+      await admin.query("delete from hive.config_layer_entries where org_id = $1", [org.orgId]);
+    }
+  });
   it("FIFO: hai PR merge lần lượt, điền URL, nhánh, sha từ PR", async () => {
     const p = await newProject();
     const a = await openPR(p, "ai/fifo-a");

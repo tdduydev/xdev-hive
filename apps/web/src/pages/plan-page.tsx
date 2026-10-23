@@ -25,6 +25,7 @@ import {
   sameContent,
 } from "@/lib/plan-view.ts";
 import { cliLabel, shortId } from "@/lib/run-view.ts";
+import { LinkedArtifactsSection, useCanWriteTeam } from "@/pages/artifacts/linked-section.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -354,6 +355,7 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
   const t = useT(text);
   const lang = useLang();
   const { api } = useOrg();
+  const canLinkArtifacts = useCanWriteTeam(task.teamId);
   const runs = useQuery(
     api.runs.latest.queryOptions({ input: { projectId: task.projectId }, refetchInterval: REFRESH_MS }),
   );
@@ -492,6 +494,7 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
           <aside aria-label={t.details} className="grid min-w-0 gap-4">
             <DecisionCard plan={latest} planningRun={planningRun.data} nameOf={nameOf} />
             <HistoryCard plans={plans} nameOf={nameOf} />
+            <LinkedArtifactsSection target={{ kind: "task", id: task.id }} canLink={canLinkArtifacts} />
           </aside>
         </div>
       </PageBody>
