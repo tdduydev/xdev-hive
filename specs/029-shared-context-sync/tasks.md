@@ -202,7 +202,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/screens/memory-screen.tsx`.
   - **Kiểm**: Vitest với hub giả: đồng bộ, lỗi mạng, hẹn giờ.
 
-- [ ] **T018 [US4] [vừa] · 1 ngày — Desktop: chính sách dự án vào "Tối ưu", hiện lệch chính sách** (sau T010, T014)
+- [x] **T018 [US4] [vừa] · 1 ngày — Desktop: chính sách dự án vào "Tối ưu", hiện lệch chính sách** (sau T010, T014)
   - **Goal**: đọc `settings.devOptimizer` của các dự án đã gắn (`projects.get`), truyền `--policy-file` cho xem trước;
     thẻ điểm hiện "Lệch chính sách: …" theo từng mục; dòng xem trước ghi "Theo chính sách dự án …".
   - **PHẠM VI**: `apps/desktop/src/lib/hub-context.ts` (thêm hàm chính sách), `apps/desktop/src/components/token-score-card.tsx`,
