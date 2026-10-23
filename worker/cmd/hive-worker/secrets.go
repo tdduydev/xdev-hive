@@ -25,6 +25,8 @@ const secretsUsage = `Cách dùng: hive-worker secrets <lệnh> [--config FILE] 
   assign    --name TÊN --project LOCAL_ID
   unassign  --name TÊN --project LOCAL_ID
   delete    --name TÊN
+  log       [--name TÊN] [--project LOCAL_ID] [--limit 200]
+  log clear                                 xoá nhật ký cấp tại máy
 Giá trị chỉ đọc từ stdin, không bao giờ từ tham số hay biến môi trường.`
 
 // Kiểu ra của lệnh, khớp contracts/sidecar-cli.md và fixture testdata/cli của secretstore.
@@ -84,6 +86,10 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		action, args = args[0], args[1:]
 	}
+	clearLog := action == "log" && len(args) > 0 && args[0] == "clear"
+	if clearLog {
+		args = args[1:]
+	}
 	usage := func() int {
 		fmt.Fprintln(stderr, secretsUsage)
 		return 2
@@ -98,6 +104,7 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	to := fs.String("to", "", "tên mới")
 	project := fs.String("project", "", "localId của dự án trên máy")
 	descFile := fs.String("description-file", "", "file chứa mô tả")
+	limit := fs.Int("limit", secretstore.DefaultLogLimit, "số dòng nhật ký")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
 		fmt.Fprintln(stderr, "Tham số không hợp lệ.")
 		return usage()
@@ -142,6 +149,24 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 			return usage()
 		}
 		view, err = cmd.delete(*name)
+	case "log":
+		if clearLog {
+			var n int
+			n, err = secretstore.ClearLog(secretstore.GrantsPath(path))
+			view = struct {
+				Cleared int `json:"cleared"`
+			}{n}
+		} else {
+			var cat secretstore.Catalog
+			cat, err = secretstore.LoadCatalog(cmd.catalog)
+			if err == nil {
+				var entries []secretstore.LogEntry
+				entries, err = secretstore.ReadLog(secretstore.GrantsPath(path), secretstore.LogFilter{Name: *name, Project: *project, Limit: *limit}, cat)
+				view = struct {
+					Entries []secretstore.LogEntry `json:"entries"`
+				}{entries}
+			}
+		}
 	default:
 		return usage()
 	}

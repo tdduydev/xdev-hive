@@ -322,7 +322,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 2 (nhật ký và "Dùng 1 bí mật tại máy").
 
-- [ ] T022 [US6] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: thêm `secrets log [--name] [--project] [--limit]` và
+- [x] T022 [US6] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: thêm `secrets log [--name] [--project] [--limit]` và
   `secrets log clear` (FR-042). Fixture `testdata/cli/log.json`.
 
   Sau T007, T004.
