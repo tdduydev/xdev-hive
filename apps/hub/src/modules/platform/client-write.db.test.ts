@@ -54,7 +54,11 @@ describe("runClientWrite", () => {
     };
     const first = request({ "Idempotency-Key": k });
     await expect(runClientWrite(app, tenant, first, "memory.write", fn)).rejects.toBeInstanceOf(ForbiddenError);
-    expect(eventOf(first)).toMatchObject({ outcome: "rejected", code: "AGENT_MEMORY_OFF" });
+    expect(eventOf(first)).toMatchObject({
+      outcome: "rejected",
+      code: "AGENT_MEMORY_OFF",
+      reason: "Chính sách của tổ chức không cho agent ghi memory.",
+    });
     const again = request({ "Idempotency-Key": k });
     const error = await runClientWrite(app, tenant, again, "memory.write", fn).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConflictError);

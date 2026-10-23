@@ -152,7 +152,8 @@ describe("tool có ghi với khoá chống trùng", () => {
     expect(first.isError).toBe(false);
     expect(first.event?.outcome).toBe("accepted");
     expect(again.event?.outcome).toBe("duplicate");
-    expect(again.text).toBe(first.text);
+    // Kết quả lưu ở jsonb nên thứ tự khoá có thể khác, giá trị phải như nhau.
+    expect(JSON.parse(again.text)).toEqual(JSON.parse(first.text));
     expect(runs.count - before).toBe(1);
     expect(await eventRow(key)).toMatchObject({
       outcome: "accepted",

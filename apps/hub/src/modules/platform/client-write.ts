@@ -69,8 +69,14 @@ export async function runClientWrite<T>(
       }
     },
   );
-  request.resHeaders?.set(CLIENT_EVENT_HEADERS.result, JSON.stringify(event));
+  request.resHeaders?.set(CLIENT_EVENT_HEADERS.result, asciiJson(event));
   // Lần đầu bị từ chối giữ đúng lỗi (và mã HTTP) như client cũ thấy; lần gửi lại chỉ còn mã đã lưu nên trả 409.
   if (event.code) throw original ?? new ConflictError(event.code, event.reason ?? "Hub không nhận lần ghi này.");
   return response as T;
+}
+
+// Giá trị header chỉ nhận ByteString; lý do từ chối tiếng Việt làm `Headers.set` ném lỗi. Escape `\uXXXX` vẫn là JSON
+// hợp lệ nên client không phải giải mã thêm.
+function asciiJson(value: unknown): string {
+  return JSON.stringify(value).replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
