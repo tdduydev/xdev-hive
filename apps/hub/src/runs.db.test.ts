@@ -558,6 +558,62 @@ describe("lệnh kiểm của chính sách kết quả (RUN-07)", () => {
   });
 });
 
+describe("bí mật tại máy (specs/031)", () => {
+  const rogue = {
+    secretNames: ["STRIPE_KEY"],
+    secrets: { STRIPE_KEY: "sk_live_do_not_store" },
+    secretValues: ["sk_live_do_not_store"],
+  };
+
+  it.each([
+    { name: "số hợp lệ", sent: 2, stored: 2 },
+    { name: "số 0", sent: 0, stored: 0 },
+    { name: "vượt trần 64", sent: 65, stored: undefined },
+    { name: "không phải số nguyên", sent: 1.5, stored: undefined },
+    { name: "không phải số", sent: "2", stored: undefined },
+    { name: "worker cũ không báo", sent: undefined, stored: undefined },
+  ])("run_result báo $name: hub chỉ giữ số lượng, không giữ tên hay giá trị", async ({ sent, stored }) => {
+    const w = await FakeWorker.connect(await seedMachine(`sec-${randomUUID().slice(0, 6)}`));
+    const task = await newTask("Dùng bí mật tại máy");
+    const run = await startRun(task.id);
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    w.sendRun({
+      type: "run_result",
+      runId: run.id,
+      attempt: 1,
+      exit: 0,
+      headSha: sha,
+      report: {
+        commitCount: 1,
+        changedFiles: ["src/a.ts"],
+        ...rogue,
+        ...(sent === undefined ? {} : { secretsInjected: sent }),
+      },
+    });
+    await until(async () => (await runRow(run.id)).state === "succeeded");
+
+    const view = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(view.data.result?.secretsInjected).toBe(stored);
+    const events = await api<unknown[]>("GET", `/v1/runs/${run.id}/events?after=0`);
+    const stores = JSON.stringify([
+      await runRow(run.id),
+      (await admin.query("select * from hive.run_events where run_id = $1", [run.id])).rows,
+      view.data,
+      events.data,
+    ]);
+    // Cả cơ sở dữ liệu lẫn mọi route đọc đều không có tên, giá trị hay khoá nào ngoài số lượng.
+    expect(stores).not.toMatch(/STRIPE_KEY|sk_live_do_not_store|secretNames|secretValues/);
+    expect(stores).not.toMatch(/"secrets"/);
+    const row = await runRow(run.id);
+    expect(Object.keys(row.result.report).filter((k) => /secret/i.test(k))).toEqual(
+      stored === undefined ? [] : ["secretsInjected"],
+    );
+    await w.close();
+  });
+});
+
 describe("model theo cấu hình dự án", () => {
   it("đưa model cấu hình vào spec và cho người giao ghi đè", async () => {
     const m = await seedMachine(`model-${tag}`);

@@ -398,6 +398,9 @@ function PolicyCard({ run }: { run: Run }) {
           ))}
         </ul>
       )}
+      {run.result?.secretsInjected !== undefined && run.result.secretsInjected > 0 && (
+        <p className="text-xs text-muted-foreground">Dùng {formatInt(run.result.secretsInjected)} bí mật tại máy</p>
+      )}
       {run.result && run.result.reasons.length > 0 && (
         <Alert variant="destructive">
           <ul className="grid gap-1">

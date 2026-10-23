@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import type { ProjectRow } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
 import { runEvents, runs } from "./schema.ts";
+import { secretsInjectedOf } from "./secrets-report.ts";
 
 export type RunRow = typeof runs.$inferSelect;
 
@@ -22,6 +23,7 @@ function routingOf(snapshot: Record<string, unknown> | null): Run["routing"] {
 
 /** `machineName` để null; truy vấn trả run cho người xem điền tên qua withMachineNames (queries.ts). */
 export function toRun(r: RunRow): Run {
+  const secretsInjected = secretsInjectedOf(r.result?.report);
   return {
     id: r.id,
     taskId: r.taskId,
@@ -48,6 +50,7 @@ export function toRun(r: RunRow): Run {
           changedFiles: r.result.changedFiles,
           checks: r.result.checks,
           reasons: r.result.reasons,
+          ...(secretsInjected === undefined ? {} : { secretsInjected }),
         }
       : null,
     headSha: r.headSha,

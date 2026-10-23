@@ -155,6 +155,7 @@ import { type RoutedRun, routeRun } from "./routing.ts";
 import { createMcpRunTokens } from "./run-tokens.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
 import { registerScmHandlers } from "./scm-events.ts";
+import { sanitizeSecretsReport } from "./secrets-report.ts";
 import {
   hubEvent,
   lockRun,
@@ -1261,6 +1262,7 @@ export function createRunsEngine(deps: RunsDeps) {
     let cancelledRun: RunRow | null = null;
     // Gán trong callback của transaction; ép kiểu để TypeScript không thu hẹp về null.
     let briefRun = null as { orgId: string; id: string } | null;
+    const report = sanitizeSecretsReport(msg.report);
     const next = await tenant(machine.orgId, async (tx) => {
       const run = await lockRun(tx, msg.runId);
       if (!run || run.attempt !== msg.attempt || run.machineId !== machine.id) return null;
@@ -1272,7 +1274,7 @@ export function createRunsEngine(deps: RunsDeps) {
           attempt: run.attempt,
           seq: msg.seq,
           type: "result",
-          data: { exit: msg.exit, headSha: msg.headSha, report: msg.report, diffStats: msg.diffStats },
+          data: { exit: msg.exit, headSha: msg.headSha, report, diffStats: msg.diffStats },
         })
         .onConflictDoNothing()
         .returning({ id: runEvents.id });
@@ -1280,7 +1282,7 @@ export function createRunsEngine(deps: RunsDeps) {
       if (inserted.length === 0 || !ON_MACHINE.includes(run.state)) return null;
       // Agent đã xong: máy không cần giữ lease nữa, slot trống cho run khác.
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
-      briefRun = await onRepoReport(tx, run, msg.report);
+      briefRun = await onRepoReport(tx, run, report);
       if (run.state === "cancelling") {
         cancelledRun = await finishCancelled(tx, run, {});
         return "cancelled" as const;

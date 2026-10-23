@@ -238,6 +238,12 @@ export const reportRepo = z.object({
 export type ReportRepo = z.output<typeof reportRepo>;
 
 /**
+ * `run_result.report.secretsInjected` (specs/031): số bí mật tại máy đã đưa vào agent. Chỉ số lượng; tên và giá trị
+ * bí mật không bao giờ rời máy dev. Trần 64 bằng số bí mật tối đa của một dự án.
+ */
+export const reportSecretsInjected = z.number().int().min(0).max(64);
+
+/**
  * `data` của sự kiện `steer_result`. `applied` chỉ true khi CLI đã nhận chỉ dẫn vào phiên đang chạy; false khi CLI
  * không nhận tin giữa chừng (codex exec, gemini -p) hoặc agent đã xong trước khi đọc tới, và `reason` nói vì sao.
  */
