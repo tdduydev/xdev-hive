@@ -3,6 +3,7 @@ import { desktopConnectContract, fleetContract } from "@xdev-hive/contracts";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
 import { ForbiddenError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
+import { requireOrgRole } from "../tenancy/index.ts";
 import {
   cancelAccountLogin,
   getAccountLogin,
@@ -84,10 +85,16 @@ export function fleetRouter(deps: FleetDeps) {
     return { pool, userId: session.user.id, orgId };
   };
 
-  /** Chạy fn trong transaction của tổ chức đang chọn, với người đang đăng nhập. Quyền đội do fn tự kiểm. */
+  /**
+   * Chạy fn trong transaction của tổ chức đang chọn, với người đang đăng nhập. RLS chỉ cắt theo tổ chức trong header,
+   * không theo thành viên, nên phải đòi tư cách thành viên ở đây (spec 034 FR-092); quyền đội do fn tự kiểm.
+   */
   const inOrg = async <T>(headers: Headers, fn: (tx: Tx, userId: string) => Promise<T>): Promise<T> => {
     const { pool, userId, orgId } = await orgContext(headers);
-    return withTenant(pool, { userId, orgId }, (tx) => fn(tx, userId)).catch(toORPC);
+    return withTenant(pool, { userId, orgId }, async (tx) => {
+      await requireOrgRole(tx, userId, "member");
+      return fn(tx, userId);
+    }).catch(toORPC);
   };
 
   /** Như inOrg, rồi chạy `after` sau khi commit (gửi lệnh xuống máy), đổi lỗi nghiệp vụ của nó như nhau. */

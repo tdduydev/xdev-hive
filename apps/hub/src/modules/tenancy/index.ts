@@ -17,7 +17,14 @@ export {
   teamRolesOf,
   visibleTeamIds,
 } from "./permissions.ts";
-export { ORG_HEADER, type OrgDeps, orgMiddlewares, type SessionUser, type TenancyDeps } from "./procedures.ts";
+export {
+  ORG_HEADER,
+  type OrgDeps,
+  orgMiddlewares,
+  type SessionUser,
+  type TenancyDeps,
+  tokenOrgMismatch,
+} from "./procedures.ts";
 export { allowWith, customPermissions, effectivePermissions, rolesRouter } from "./roles.ts";
 export { tenancyRouter } from "./router.ts";
 // Bảng của module khác cần khoá ngoại kép (team_id, org_id) tới teams.
