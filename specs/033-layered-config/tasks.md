@@ -19,7 +19,7 @@ The MVP is Phases 1 to 4. Later phases are listed so nothing is lost; they are n
 
 ## Phase 2: Sources and storage (MVP)
 
-- [ ] T005 [US8] Adapters from org policy and project settings to flat values; golden test that the engine matches `clampBudget`, `resolvePermission` and `machineSlots` (`apps/hub/src/modules/layers/sources.ts`, `sources.test.ts`)
+- [x] T005 [US8] Adapters from org policy and project settings to flat values; golden test that the engine matches `clampBudget`, `resolvePermission` and `machineSlots` (`apps/hub/src/modules/layers/sources.ts`, `sources.test.ts`)
 - [ ] T006 [US3] Table `config_layer_entries` with forced RLS (`apps/hub/src/modules/layers/schema.ts`)
 - [ ] T007 [US3] Service: effective config for a project, team entries read and write with permission, ceiling and lock checks, optimistic version, audit (`apps/hub/src/modules/layers/service.ts`)
 - [ ] T008 [US2] Org lock write path with audit (`apps/hub/src/modules/layers/service.ts`)
