@@ -49,6 +49,7 @@ import { cx } from "@/lib/cx.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { ArtifactsPolicySection } from "@/pages/admin/policies/artifacts-section.tsx";
 import { SdlcPolicyStats } from "@/pages/admin/policies-sdlc-stats.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -805,6 +806,7 @@ function PolicyEditor({
       { id: "templates", label: t.instr },
       { id: "limits", label: t.limits },
       { id: "sdlc", label: "AI SDLC" },
+      { id: "artifacts", label: "Artifact" },
     ],
     [t],
   );
@@ -1298,6 +1300,8 @@ function PolicyEditor({
           </div>
           <SdlcPolicyStats />
         </SettingsSection>
+
+        <ArtifactsPolicySection policy={policy} canWrite={canWrite} />
       </SettingsLayout>
 
       <Dialog open={confirmFull} onOpenChange={setConfirmFull}>

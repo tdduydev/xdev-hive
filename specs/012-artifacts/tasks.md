@@ -364,11 +364,14 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Scope**: `apps/hub/src/modules/artifacts/convert.ts` + test, `packages/artifacts-ui/src/convert-dialog.tsx`
   - **Phụ thuộc**: MVP · **Mức**: vừa
 
-- [ ] T067 [US12] Chính sách và dung lượng trên web
+- [x] T067 [US12] Chính sách và dung lượng trên web
   - Mục Artifacts trong trang Chính sách agent (loại, phạm vi, giới hạn; bật/tắt link công khai đã có ở T031 — trang chính
     sách dẫn tới đó); màn Dung lượng artifact (`usage`); thông báo `artifact.quota`.
   - **Scope**: `apps/web/src/pages/admin/policies-page.tsx`, `apps/web/src/pages/admin/artifact-usage-page.tsx`,
     `apps/hub/src/modules/artifacts/limits.ts` (thông báo; loại thông báo đã có từ T001)
+  - **Đã làm**: thông báo `artifact.quota` đã có ở hub (`warnQuota` trong `limits.ts`: từ 80% hạn mức, một lần mỗi ngày,
+    có test ở `artifacts.db.test.ts`). Web: mục Artifact tự lưu ở `pages/admin/policies/artifacts-section.tsx` (policies-page
+    chỉ thêm import, mục nav và chỗ đặt), màn `/admin/artifact-usage`, e2e `artifact-admin.spec.ts`.
   - **Phụ thuộc**: MVP · **Mức**: vừa
 
 - [ ] T068 [US9] Soạn tay đầy đủ
