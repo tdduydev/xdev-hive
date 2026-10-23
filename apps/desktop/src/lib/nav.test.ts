@@ -16,6 +16,7 @@ describe("menu theo hồ sơ", () => {
       "tokens",
       "projects",
       "setup",
+      "secrets",
       "ssh",
       "docs",
       "word-import",
@@ -27,13 +28,23 @@ describe("menu theo hồ sơ", () => {
 
   it("writer: không có worker, gói, môi trường; Skills và Tài liệu từ code chỉ đọc", () => {
     const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual(["home", "agents", "skills", "memory", "tokens", "ssh", "docs", "settings"]);
+    expect(items.map((i) => i.id)).toEqual([
+      "home",
+      "agents",
+      "skills",
+      "memory",
+      "tokens",
+      "secrets",
+      "ssh",
+      "docs",
+      "settings",
+    ]);
     expect(items.filter((i) => i.readOnly).map((i) => i.id)).toEqual(["skills", "docs"]);
   });
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(15);
+    expect(items).toHaveLength(16);
     expect(items.some((i) => i.readOnly)).toBe(false);
   });
 
@@ -43,7 +54,7 @@ describe("menu theo hồ sơ", () => {
       ["Máy này", true, ["Máy này"]],
       ["Chạy", false, ["Agent trên máy", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"]],
       ["Agent", false, ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"]],
-      ["Dự án", false, ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code", "Nhập Word"]],
+      ["Dự án", false, ["Dự án trên máy", "Môi trường", "Bí mật", "Máy chủ SSH", "Tài liệu từ code", "Nhập Word"]],
     ]);
     expect(groups.map((g) => g.label.en)).toEqual(["This machine", "Runs", "Agents", "Projects"]);
   });

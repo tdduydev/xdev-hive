@@ -4,6 +4,7 @@ import { AccountDialog } from "@/components/account-dialog.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
 import { ScreenErrorBoundary } from "@/components/screen-error-boundary.tsx";
+import { SecretApprovalDialog } from "@/components/secret-approval-dialog.tsx";
 import { SignOutDialog } from "@/components/sign-out-dialog.tsx";
 import { UpdateBanner } from "@/components/update-banner.tsx";
 import { AccountContext, ConnectContext, profileOf, SignOutContext, useAccount } from "@/lib/account.ts";
@@ -102,7 +103,14 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           onChanged={setStatus}
           onSignOut={askSignOut}
         />
-        <SignOutDialog open={signOutOpen} onOpenChange={setSignOutOpen} onSignedOut={setStatus} />
+        <SignOutDialog
+          open={signOutOpen}
+          onOpenChange={setSignOutOpen}
+          onSignedOut={setStatus}
+          orgName={account?.orgName}
+        />
+        {/* Ở vỏ app chứ không ở màn Bí mật: run xin duyệt khi người dùng đang ở màn nào cũng phải thấy. */}
+        <SecretApprovalDialog />
         <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>
           <header className="flex h-13 shrink-0 items-center gap-3 border-b px-5">
             <button

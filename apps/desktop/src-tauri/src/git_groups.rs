@@ -504,8 +504,18 @@ pub async fn open_folder(folder: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn open_folder_terminal(folder: String) -> Result<(), String> {
+pub async fn open_folder_terminal(
+    app: AppHandle,
+    folder: String,
+    project_local_id: Option<String>,
+) -> Result<(), String> {
     let dir = existing_dir(&folder)?;
+    // Dự án có bí mật gán thì mở shell qua `secrets exec` để bí mật vào môi trường của shell đó (FR-015).
+    if let Some(job) = crate::secrets::shell_launch(&app, &dir, project_local_id.as_deref()).await? {
+        return tauri::async_runtime::spawn_blocking(move || crate::profiles::open_terminal(&job))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")

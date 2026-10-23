@@ -8,6 +8,7 @@ import {
   FileUpIcon,
   FolderGitIcon,
   GlobeIcon,
+  KeyRoundIcon,
   type LucideIcon,
   MonitorIcon,
   NetworkIcon,
@@ -70,6 +71,7 @@ export type ScreenId =
   | "projects"
   | "setup"
   | "ssh"
+  | "secrets"
   | "docs"
   | "word-import"
   | "settings";
@@ -181,6 +183,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         needs: "runs.local",
       },
       { id: "setup", label: { vi: "Môi trường", en: "Environment" }, icon: CpuIcon, needs: "env.manage" },
+      {
+        // Bí mật tại máy (specs/031-local-secrets): giá trị nằm trong kho của hệ điều hành, không theo vai trò trên hub nên
+        // mọi hồ sơ đều thấy (FR-008).
+        id: "secrets",
+        label: { vi: "Bí mật", en: "Secrets" },
+        icon: KeyRoundIcon,
+      },
       {
         // Chuyển đăng nhập SSH từ mật khẩu sang khoá (specs/023-desktop-ssh-keys). Khoá SSH là của người dùng trên máy,
         // không theo vai trò trên hub, nên mọi hồ sơ đều thấy.
