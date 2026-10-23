@@ -29,9 +29,9 @@ import {
 } from "./doc-sync.ts";
 import { fleetContract } from "./fleet.ts";
 import { briefContract, docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
+import { layeredConfigContract } from "./layered-config.ts";
 import { leaderContract } from "./leader.ts";
 import { mcpAdminContract } from "./mcp-admin.ts";
-import { layeredConfigContract } from "./layered-config.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { policiesContract } from "./policies.ts";
 import { projectMembersContract, projectsContract } from "./projects.ts";
