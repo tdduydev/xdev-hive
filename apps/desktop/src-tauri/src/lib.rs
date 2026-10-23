@@ -1306,7 +1306,6 @@ pub fn run() {
             git_groups::start_auto_fetch(app.handle().clone());
             remote::start(app.handle());
             token_score::start_daily(app.handle().clone());
-
             let tray = build_tray(app)?;
             app.manage(tray);
             notices::register_actions(app.handle(), false);
