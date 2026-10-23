@@ -32,9 +32,9 @@ The MVP is Phases 1 to 4. Later phases are listed so nothing is lost; they are n
 
 ## Phase 4: Wrap up (MVP)
 
-- [ ] T012 Run `pnpm openapi`, commit `openapi.json`
-- [ ] T013 `git fetch && git merge origin/main`, then generate the migration (`apps/hub/db/migrations`)
-- [ ] T014 biome, typecheck, `pnpm deps`, vitest for the module
+- [x] T012 Run `pnpm openapi`, commit `openapi.json`
+- [x] T013 `git fetch && git merge origin/main`, then generate the migration (`apps/hub/db/migrations`)
+- [x] T014 biome, typecheck, `pnpm deps`, vitest for the module
 
 ## Phase 5: Later (not in the MVP)
 

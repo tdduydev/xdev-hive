@@ -86,7 +86,7 @@ describe("team layer", () => {
   it("lets org owner and admin write for any team", async () => {
     expect(await setLimit("owner", 3)).toMatchObject({ value: 3 });
     expect(await setLimit("admin", 2)).toMatchObject({ value: 2 });
-    expect(await errorCode(() => setLimit("oadmin", 1))).toBe("TEAM_ROLE_REQUIRED");
+    expect(await errorCode(() => setLimit("oadmin", 1))).toBe("NOT_TEAM_MEMBER");
   });
 
   it("lets team viewers read entries but not write", async () => {
