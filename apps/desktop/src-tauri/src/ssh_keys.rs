@@ -12,6 +12,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 
+use crate::profiles::{Launch, open_terminal};
 use crate::sidecar_json;
 
 /// Sidecar tự dừng sau 55 giây; app chờ thêm chút để nhận lỗi của nó trước khi giết tiến trình.
@@ -112,6 +113,27 @@ fn wipe_bytes(bytes: &mut [u8]) {
 fn wipe(secret: String) {
     let mut bytes = secret.into_bytes();
     wipe_bytes(&mut bytes);
+}
+
+/// Dòng báo ở đầu cửa sổ terminal; chữ cố định vì cmd của Windows hiểu `&`, `%` trong echo.
+const OPEN_NOTE: &str = "xDev Hive: phiên SSH tới máy chủ. Gõ exit để đóng.";
+
+/// `ssh <alias>` chứ không ghép user@host:port: ssh tự áp khối của alias trong ~/.ssh/config (khoá, cổng, ProxyJump),
+/// giống hệt lúc người dùng gõ tay. Alias đi vào script sh hay cmd nên chỉ nhận ký tự an toàn của `name_ok`.
+pub fn open_launch(alias: &str) -> Result<Launch, String> {
+    alias_arg(alias)?;
+    Ok(Launch::plain(vec!["ssh".into(), alias.trim().into()], OPEN_NOTE))
+}
+
+/// Nút "Mở remote" của màn SSH: mở terminal của máy (cmd/Windows Terminal, Terminal.app, x-terminal-emulator…) chạy
+/// ssh tới một alias. Không dùng điều khiển từ xa của remote.rs: tính năng đó cho thiết bị khác điều khiển máy này,
+/// còn đây là đi ra máy chủ khác.
+#[tauri::command]
+pub async fn ssh_open_terminal(alias: String) -> Result<(), String> {
+    let job = open_launch(&alias)?;
+    tauri::async_runtime::spawn_blocking(move || open_terminal(&job))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Khoá của máy và các khối Host trong ~/.ssh/config, kèm đường dẫn ssh của máy (rỗng: chưa có OpenSSH client).
@@ -322,6 +344,14 @@ mod tests {
             ]
         );
         assert!(setup_args("192.0.2.10", 22, "deploy", "a*", FP).is_err());
+    }
+
+    #[test]
+    fn open_launch_runs_ssh_on_the_alias_only() {
+        assert_eq!(open_launch(" hive-prod ").unwrap().argv, ["ssh", "hive-prod"]);
+        for bad in ["", "-oProxyCommand=x", "a b", "a&calc", "a;rm", "a%PATH%", "a\nb"] {
+            assert!(open_launch(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

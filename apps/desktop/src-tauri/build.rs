@@ -130,6 +130,7 @@ fn main() {
         "ssh_scan",
         "ssh_setup",
         "ssh_remove",
+        "ssh_open_terminal",
         "folder_tree",
         "folder_docs",
         "propose_doc",

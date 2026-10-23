@@ -305,6 +305,19 @@ pub(crate) struct Launch {
     note: &'static str,
 }
 
+impl Launch {
+    /// Lệnh mà nơi gọi đã kiểm từng tham số, không cần biến môi trường hay thư mục làm việc (ssh tới một alias).
+    pub(crate) fn plain(argv: Vec<String>, note: &'static str) -> Self {
+        Launch {
+            argv,
+            env: None,
+            path: None,
+            cwd: None,
+            note,
+        }
+    }
+}
+
 const LOGIN_NOTE: &str = "xDev Hive: đăng nhập gói agent. Xong thì quay lại app, app tự kiểm lại.";
 
 fn unquote(s: &str) -> &str {
@@ -493,7 +506,7 @@ fn write_script(body: &str, ext: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn open_terminal(job: &Launch) -> Result<(), String> {
+pub(crate) fn open_terminal(job: &Launch) -> Result<(), String> {
     let shown = job.argv.join(" ");
     // Đọc PATH của shell đăng nhập lúc mở (đã nhớ từ khi app khởi động), không đặt trong hàm dựng để test không phụ
     // thuộc shell của máy.

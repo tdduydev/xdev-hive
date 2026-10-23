@@ -77,12 +77,29 @@ export interface SshTarget {
   alias: string;
 }
 
-export const sshList = () => invoke<SshList>("ssh_list");
+/**
+ * Worker bản cũ in `"hosts": null` khi máy chưa có ~/.ssh/config (Linux mới cài), và màn SSH trắng vì đọc `.length`
+ * của null. Chuẩn hoá ở đây để màn luôn nhận mảng, kể cả khi app chạy cùng sidecar khác bản.
+ */
+export function normalizeSshList(raw: SshList | null | undefined): SshList {
+  const list: Partial<SshList> = raw ?? {};
+  const key: Partial<SshKey> = list.key ?? {};
+  return {
+    ssh: list.ssh ?? "",
+    configPath: list.configPath ?? "",
+    key: { ...key, path: key.path ?? "", exists: !!key.exists, encrypted: !!key.encrypted },
+    hosts: Array.isArray(list.hosts) ? list.hosts : [],
+  };
+}
+
+export const sshList = () => invoke<SshList>("ssh_list").then(normalizeSshList);
 export const sshCheck = (alias: string) => invoke<SshCheck>("ssh_check", { alias });
 export const sshScan = (host: string, port: number) => invoke<SshScan>("ssh_scan", { host, port });
 export const sshSetup = (target: SshTarget, fingerprint: string, password: string) =>
   invoke<SshSetup>("ssh_setup", { ...target, fingerprint, password });
-export const sshRemove = (alias: string) => invoke<SshList>("ssh_remove", { alias });
+export const sshRemove = (alias: string) => invoke<SshList>("ssh_remove", { alias }).then(normalizeSshList);
+/** Mở terminal của hệ điều hành chạy `ssh <alias>`: ssh tự đọc khối trong ~/.ssh/config, kể cả ProxyJump. */
+export const sshOpenTerminal = (alias: string) => invoke<void>("ssh_open_terminal", { alias });
 
 export type SshTone = "ok" | "warn" | "bad";
 
