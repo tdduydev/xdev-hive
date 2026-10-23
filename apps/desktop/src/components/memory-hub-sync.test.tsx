@@ -5,7 +5,7 @@ import { MemoryHubSync } from "@/components/memory-hub-sync.tsx";
 import { type Account, AccountContext } from "@/lib/account.ts";
 import { queryClient } from "@/lib/hub-query.tsx";
 import { setLang } from "@/lib/i18n.ts";
-import type { OutboxFlush, OutboxItem, OutboxStatus } from "@/lib/outbox.ts";
+import type { OutboxItem, OutboxStatus } from "@/lib/outbox.ts";
 
 const ACCOUNT: Account = {
   name: "Phạm Hà",
@@ -54,23 +54,10 @@ const queuedItem: OutboxItem = {
   attempts: 0,
   createdAt: at,
 };
-const emptyStatus: OutboxStatus = { registered: true, pending: 0, rejected: 0, expired: 0, sentRecent: 0, items: [] };
-const noFlush: OutboxFlush = {
-  registered: true,
-  accepted: 0,
-  duplicate: 0,
-  rejected: 0,
-  expired: 0,
-  held: 0,
-  retry: 0,
-  waiting: 0,
-  offline: false,
-  items: [],
-  remaining: 0,
-};
+const emptyStatus: OutboxStatus = { hub: "up", pending: 0, held: 0, rejected: 0, expired: 0, items: [] };
 
 /** Hộp thư đi giả sau các lệnh `outbox_*`; mỗi lệnh có thể trả giá trị hay ném lỗi. */
-type FakeOutbox = Partial<Record<"outbox_status" | "outbox_submit" | "outbox_flush" | "outbox_drop", unknown>>;
+type FakeOutbox = Partial<Record<"outbox_status" | "outbox_submit" | "outbox_drop", unknown>>;
 
 /** Lệnh `outbox_*` đã gọi trong test hiện tại. */
 const outboxCalls: { command: string; args?: Record<string, unknown> | undefined }[] = [];
@@ -81,8 +68,7 @@ function fakeHub(replies: Record<string, unknown>, outbox: FakeOutbox = {}) {
   outboxCalls.length = 0;
   const outboxReplies: FakeOutbox = {
     outbox_status: emptyStatus,
-    outbox_submit: queuedItem,
-    outbox_flush: noFlush,
+    outbox_submit: { key: queuedItem.key, state: "queued" },
     outbox_drop: { dropped: queuedItem.key },
     ...outbox,
   };
@@ -164,13 +150,7 @@ describe("MemoryHubSync", () => {
   }
 
   it("Gửi lên hub xếp đề xuất memory vào hộp thư đi của dự án, không ghi thẳng lên hub", async () => {
-    const calls = fakeHub(hubReplies, {
-      outbox_flush: {
-        ...noFlush,
-        accepted: 1,
-        items: [{ key: queuedItem.key, kind: "memory.propose", state: "accepted" }],
-      },
-    });
+    const calls = fakeHub(hubReplies, { outbox_submit: { key: queuedItem.key, state: "accepted" } });
     renderSync(ACCOUNT);
     const send = await clickSend();
     expect(await screen.findByText("Đã gửi, đang chờ người trong đội duyệt.")).toBeTruthy();
@@ -183,7 +163,7 @@ describe("MemoryHubSync", () => {
   });
 
   it("mất mạng khi gửi thì báo đã xếp hàng và vẫn giữ việc trong hàng đợi", async () => {
-    fakeHub(hubReplies, { outbox_flush: new Error("Không gọi được hub") });
+    fakeHub(hubReplies);
     renderSync(ACCOUNT);
     await clickSend();
     expect(await screen.findByText("Đã xếp hàng, sẽ gửi khi có mạng.")).toBeTruthy();
@@ -191,7 +171,7 @@ describe("MemoryHubSync", () => {
   });
 
   it("hub vắng (offline) thì cũng báo đã xếp hàng", async () => {
-    fakeHub(hubReplies, { outbox_flush: { ...noFlush, offline: true, retry: 1, remaining: 1 } });
+    fakeHub(hubReplies, { outbox_submit: { key: queuedItem.key, state: "queued", hub: "down" } });
     renderSync(ACCOUNT);
     await clickSend();
     expect(await screen.findByText("Đã xếp hàng, sẽ gửi khi có mạng.")).toBeTruthy();
@@ -199,18 +179,10 @@ describe("MemoryHubSync", () => {
 
   it("hub từ chối thì hiện lý do của hub trên dòng vừa gửi", async () => {
     fakeHub(hubReplies, {
-      outbox_flush: {
-        ...noFlush,
-        rejected: 1,
-        items: [
-          {
-            key: queuedItem.key,
-            kind: "memory.propose",
-            state: "rejected",
-            code: "FORBIDDEN",
-            reason: "Không có quyền.",
-          },
-        ],
+      outbox_submit: {
+        key: queuedItem.key,
+        state: "rejected",
+        result: { code: "FORBIDDEN", reason: "Không có quyền." },
       },
     });
     renderSync(ACCOUNT);
@@ -218,18 +190,26 @@ describe("MemoryHubSync", () => {
     expect(await screen.findByText("Hub không nhận: Không có quyền.")).toBeTruthy();
   });
 
-  it("xếp hàng hỏng (máy chưa đăng ký) thì báo lỗi, không báo đã xếp hàng", async () => {
-    fakeHub(hubReplies, { outbox_submit: new Error("Máy chưa đăng ký với hub.") });
+  it("mục đang giữ hướng người dùng tới Hộp thư đi, không báo đã gửi", async () => {
+    fakeHub(hubReplies, { outbox_submit: { key: queuedItem.key, state: "held", heldReason: "login_required" } });
     renderSync(ACCOUNT);
     await clickSend();
-    expect(await screen.findByText("Máy chưa đăng ký với hub.")).toBeTruthy();
+    expect(await screen.findByText("Đang giữ trên máy; mở Hộp thư đi để xem lý do và gửi lại.")).toBeTruthy();
+    expect(screen.queryByText("Đã gửi, đang chờ người trong đội duyệt.")).toBeNull();
+  });
+
+  it("xếp hàng hỏng (máy chưa đăng ký) thì báo lỗi, không báo đã xếp hàng", async () => {
+    fakeHub(hubReplies, { outbox_submit: new Error("Sidecar hive-worker không chạy; mở worker rồi thử lại.") });
+    renderSync(ACCOUNT);
+    await clickSend();
+    expect(await screen.findByText("Sidecar hive-worker không chạy; mở worker rồi thử lại.")).toBeTruthy();
     expect(screen.queryByText("Đã xếp hàng, sẽ gửi khi có mạng.")).toBeNull();
   });
 
-  it("mở màn thì thử gửi phần còn đọng từ lần trước", async () => {
+  it("mở màn chỉ đọc hộp thư đi; worker tự gửi phần còn đọng", async () => {
     fakeHub(hubReplies);
     renderSync(ACCOUNT, []);
-    await waitFor(() => expect(outboxCalls.some((c) => c.command === "outbox_flush")).toBe(true));
+    await waitFor(() => expect(outboxCalls.some((c) => c.command === "outbox_status")).toBe(true));
   });
 
   it("thẻ Đang chờ gửi hiện số việc chờ", async () => {

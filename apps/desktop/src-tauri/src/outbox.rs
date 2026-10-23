@@ -1,161 +1,236 @@
-//! Hộp thư đi trên máy (spec 029 T024). Hàng đợi là của worker (`hive-worker outbox`, spec 027): nó giữ việc trên đĩa,
-//! gửi lại khi có mạng và gắn khoá chống trùng. Ở đây chỉ bọc lệnh của sidecar, không dựng hàng đợi thứ hai, nên app
-//! tắt hay hub vắng thì việc đã xếp vẫn còn. Giao diện chỉ xếp được loại việc trong danh sách đóng; số liệu token và
-//! điểm máy do worker tự xếp.
-
+//! CLI Hive qua socket để chỉ worker đang chạy sở hữu hàng đợi và thứ tự gửi của người dùng.
+use std::process::Stdio;
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_shell::ShellExt;
+use tokio::io::AsyncWriteExt;
 
-use crate::sidecar_json;
-
-/// Loại việc giao diện được xếp. `machine.token_score` và `project.token_usage` do worker tự xếp từ số đo của nó.
-const SUBMIT_KINDS: &[&str] = &["memory.propose"];
-/// Đề xuất memory tối đa 2000 ký tự; trần này chỉ chặn dữ liệu bất thường trước khi đi vào dòng lệnh.
-const MAX_PAYLOAD_BYTES: usize = 16 * 1024;
-/// Chờ sau khi mở app rồi mới gửi phần còn đọng, để việc gửi không tranh tài nguyên lúc khởi động.
-const START_DELAY: Duration = Duration::from_secs(5);
-
-fn base(sub: &str) -> Vec<String> {
-    vec!["outbox".into(), sub.into(), "--json".into()]
+/// Nội dung lớn đi qua stdin; CLI tự chuyển sang bodyFile khi vượt trần dòng socket.
+pub(crate) async fn hive(
+    app: &AppHandle,
+    args: Vec<String>,
+    input: Option<String>,
+) -> Result<String, String> {
+    let cmd: std::process::Command = app
+        .shell()
+        .sidecar("hive")
+        .map_err(|e| format!("Không mở được lệnh Hive: {e}"))?
+        .args(args)
+        .into();
+    let mut cmd = tokio::process::Command::from(cmd);
+    cmd.kill_on_drop(true)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Không chạy được lệnh Hive: {e}"))?;
+    tokio::time::timeout(Duration::from_secs(45), async move {
+        if let Some(mut stdin) = child.stdin.take()
+            && let Some(input) = input
+        {
+            stdin
+                .write_all(input.as_bytes())
+                .await
+                .map_err(|e| format!("Không gửi được nội dung cho Hive: {e}"))?;
+        }
+        let out = child
+            .wait_with_output()
+            .await
+            .map_err(|e| format!("Không đọc được kết quả Hive: {e}"))?;
+        if !out.status.success() {
+            let message = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(if message.is_empty() {
+                "Sidecar hive-worker không chạy; mở worker rồi thử lại.".into()
+            } else {
+                message
+            });
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    })
+    .await
+    .map_err(|_| "Hive chưa trả lời; kiểm tra worker rồi thử lại.".to_string())?
 }
 
-/// Dùng dạng `--key=value` để nội dung bắt đầu bằng `-` không bị đọc thành cờ.
-fn submit_args(kind: &str, payload: &Value) -> Result<Vec<String>, String> {
-    if !SUBMIT_KINDS.contains(&kind) {
-        return Err("Loại việc này không xếp từ giao diện được.".into());
-    }
+async fn hive_json(
+    app: &AppHandle,
+    args: Vec<String>,
+    input: Option<Value>,
+) -> Result<Value, String> {
+    let raw = hive(app, args, input.map(|v| v.to_string())).await?;
+    serde_json::from_str(&raw).map_err(|e| format!("Không đọc được kết quả Hive: {e}"))
+}
+
+fn submit_request(kind: &str, payload: Value) -> Result<Value, String> {
     if !payload.is_object() {
         return Err("Nội dung gửi không đúng dạng.".into());
     }
-    let body = serde_json::to_string(payload).map_err(|e| e.to_string())?;
-    if body.len() > MAX_PAYLOAD_BYTES {
-        return Err("Nội dung gửi quá lớn.".into());
-    }
-    let mut args = base("submit");
-    args.push(format!("--kind={kind}"));
-    args.push(format!("--payload={body}"));
-    args.push("--source=desktop".into());
-    Ok(args)
+    let (kind, transport, body, target) = match kind {
+        "memory.propose" => ("memory.write", "rpc", json!({
+            "scope": { "level": "project", "projectId": payload["projectId"] },
+            "kind": payload["kind"], "content": payload["content"], "source": "machine",
+        }), json!({ "type": "project", "id": payload["projectId"] })),
+        "doc_propose" => ("doc_propose", "mcp", payload.clone(), json!({ "type": "doc", "id": payload["key"] })),
+        "skill_propose" => ("skill_propose", "mcp", payload.clone(), json!({ "type": "skill", "id": payload["name"] })),
+        _ => return Err("Loại việc này không xếp từ giao diện được.".into()),
+    };
+    Ok(json!({ "kind": kind, "transport": transport, "body": body, "target": target, "source": "desktop", "waitMs": 10000 }))
 }
 
-/// Khoá do worker sinh (`outbox.NewKey`), cùng dạng `idempotencyKey` của contracts: 16–64 ký tự chữ, số, `_`, `-`.
-fn drop_args(key: &str) -> Result<Vec<String>, String> {
-    // `drop` nhận khoá là đối số vị trí, nên khoá bắt đầu bằng `-` bị đọc thành cờ: từ chối.
-    let valid = (16..=64).contains(&key.len())
-        && !key.starts_with('-')
-        && key
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
-    if !valid {
+pub(crate) async fn submit(
+    app: &AppHandle,
+    kind: &str,
+    payload: Value,
+) -> Result<Value, String> {
+    let request = submit_request(kind, payload)?;
+    crate::account::sync_cli_login(app).await?;
+    hive_json(app, submit_args(), Some(request)).await
+}
+
+fn submit_args() -> Vec<String> {
+    vec!["outbox".into(), "submit".into(), "--json".into(), "-".into()]
+}
+
+fn key_args(sub: &str, key: &str) -> Result<Vec<String>, String> {
+    if !(16..=64).contains(&key.len())
+        || key.starts_with('-')
+        || !key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
         return Err("Khoá việc không hợp lệ.".into());
     }
-    Ok(vec!["outbox".into(), "drop".into(), key.into(), "--json".into()])
+    Ok(vec!["outbox".into(), sub.into(), key.into(), "--json".into()])
 }
 
-/// Số việc đang chờ, bị từ chối và quá hạn cùng danh sách việc (không kèm nội dung). Máy chưa đăng ký thì `registered: false`.
+fn status_view(mut raw: Value) -> Value {
+    let mut status = raw["status"].take();
+    let mut items = raw["items"].take();
+    if let Some(items) = items.as_array_mut() {
+        for item in items {
+            item["code"] = item["result"]["code"].clone();
+            item["reason"] = item["result"]["reason"].clone();
+        }
+    }
+    status["items"] = if items.is_array() { items } else { json!([]) };
+    status
+}
+
 #[tauri::command]
 pub async fn outbox_status(app: AppHandle) -> Result<Value, String> {
-    sidecar_json(&app, base("status"), vec![]).await
+    hive_json(&app, vec!["outbox".into(), "--json".into()], None)
+        .await
+        .map(status_view)
 }
 
-/// Xếp một việc vào hộp thư đi. Trả mục vừa xếp (`state: "pending"`); gửi thật diễn ra ở lần `outbox_flush`.
-#[tauri::command]
-pub async fn outbox_submit(app: AppHandle, kind: String, payload: Value) -> Result<Value, String> {
-    sidecar_json(&app, submit_args(&kind, &payload)?, vec![]).await
-}
-
-/// Thử gửi các việc đang chờ; mục nào hub chưa nhận thì ở lại hàng đợi với `nextAttemptAt` của worker.
+/// Giữ command cũ cho sự kiện máy; mục của người dùng chỉ worker đang chạy được phép gửi.
 #[tauri::command]
 pub async fn outbox_flush(app: AppHandle) -> Result<Value, String> {
-    sidecar_json(&app, base("flush"), vec![]).await
+    crate::sidecar_json(
+        &app,
+        vec!["outbox".into(), "flush".into(), "--json".into()],
+        vec![],
+    )
+    .await
 }
 
-/// Gửi phần còn đọng từ lần trước khi mở app. Lỗi (hub vắng, máy chưa đăng ký) chỉ ghi log: việc vẫn nằm trong hàng đợi
-/// và worker thử lại theo nhịp của nó.
-pub fn start_flush(app: AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(START_DELAY).await;
-        if let Err(e) = sidecar_json::<Value>(&app, base("flush"), vec![]).await {
-            eprintln!("Không gửi được hộp thư đi khi mở app: {e}");
-        }
-    });
+#[tauri::command]
+pub async fn outbox_submit(app: AppHandle, kind: String, payload: Value) -> Result<Value, String> {
+    // Tài liệu và skill phải qua kiểm đầu vào của command riêng.
+    if kind != "memory.propose" {
+        return Err("Loại việc này không xếp từ giao diện được.".into());
+    }
+    submit(&app, &kind, payload).await
 }
 
-/// Bỏ một việc khỏi hộp thư đi (người dùng đóng thẻ việc bị từ chối, hay không muốn gửi nữa).
 #[tauri::command]
 pub async fn outbox_drop(app: AppHandle, key: String) -> Result<Value, String> {
-    sidecar_json(&app, drop_args(&key)?, vec![]).await
+    hive_json(&app, key_args("drop", &key)?, None).await
+}
+
+#[tauri::command]
+pub async fn outbox_retry(app: AppHandle, key: String) -> Result<Value, String> {
+    hive_json(&app, key_args("retry", &key)?, None).await
+}
+
+#[tauri::command]
+pub async fn outbox_export(app: AppHandle, key: String) -> Result<Value, String> {
+    let mut args = key_args("export", &key)?;
+    let dialog = app.clone();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        dialog.dialog().file()
+            .set_file_name("hive-outbox.json")
+            .add_filter("JSON", &["json"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|e| format!("Không mở được hộp chọn file: {e}"))?;
+    let Some(path) = path else {
+        return Ok(Value::Null);
+    };
+    let path = path.into_path().map_err(|_| "Đường dẫn xuất không hợp lệ.")?;
+    args.push(format!("-o={}", path.display()));
+    hive_json(&app, args, None).await
+}
+
+pub(crate) fn logout_args(action: &str) -> Result<Vec<String>, String> {
+    if !["send", "keep", "drop"].contains(&action) {
+        return Err("Chọn Gửi trước, Giữ lại hoặc Bỏ.".into());
+    }
+    Ok(vec!["logout".into(), format!("--outbox={action}")])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    fn payload() -> Value {
-        json!({
-            "projectId": "0a0a0a0a-0000-4000-8000-000000000001",
-            "kind": "note",
-            "content": "--dùng pnpm"
-        })
-    }
-
     #[test]
-    fn status_and_flush_args_are_fixed() {
-        assert_eq!(base("status"), ["outbox", "status", "--json"]);
-        assert_eq!(base("flush"), ["outbox", "flush", "--json"]);
-    }
-
-    #[test]
-    fn submit_passes_kind_and_payload_as_one_argument_each() {
-        let args = submit_args("memory.propose", &payload()).unwrap();
-        assert_eq!(&args[..3], ["outbox", "submit", "--json"]);
-        assert_eq!(args[3], "--kind=memory.propose");
-        assert_eq!(args[5], "--source=desktop");
-        // Nội dung bắt đầu bằng `-` vẫn là giá trị của `--payload=`, không thành cờ.
-        let body: Value = serde_json::from_str(args[4].strip_prefix("--payload=").unwrap()).unwrap();
-        assert_eq!(body, payload());
-    }
-
-    #[test]
-    fn submit_rejects_kinds_the_worker_owns() {
-        for kind in [
-            "machine.token_score",
-            "project.token_usage",
-            "memory.write",
-            "",
-            "memory.propose ",
-            "--config=/tmp/x",
-        ] {
-            assert!(submit_args(kind, &payload()).is_err(), "{kind}");
+    fn proposals_use_stdin_and_fixed_kinds() {
+        assert_eq!(submit_args(), ["outbox", "submit", "--json", "-"]);
+        for kind in ["doc_propose", "skill_propose"] {
+            let body = json!({ "key": "project.p.docs", "name": "test", "content": "--flag\nTiếng Việt" });
+            let req = submit_request(kind, body.clone()).unwrap();
+            assert_eq!(req["body"], body);
+            assert_eq!(req["transport"], "mcp");
+            assert_eq!(req["source"], "desktop");
         }
+        assert!(submit_request("task_update", json!({})).is_err());
+        assert!(submit_request("doc_propose", json!("text")).is_err());
+        let large = "x".repeat(200_000);
+        let req = submit_request("doc_propose", json!({ "key": "project.p.docs", "content": large })).unwrap();
+        assert_eq!(req["body"]["content"].as_str().unwrap().len(), 200_000);
+        assert_eq!(submit_args().len(), 4);
     }
-
     #[test]
-    fn submit_rejects_non_object_and_huge_payloads() {
-        assert!(submit_args("memory.propose", &json!("text")).is_err());
-        assert!(submit_args("memory.propose", &json!(["a"])).is_err());
-        let huge = json!({ "content": "x".repeat(MAX_PAYLOAD_BYTES) });
-        assert!(submit_args("memory.propose", &huge).is_err());
+    fn memory_stays_a_machine_proposal_with_user_identity() {
+        let req = submit_request("memory.propose", json!({ "projectId": "p", "kind": "note", "content": "x" })).unwrap();
+        assert_eq!(req["kind"], "memory.write");
+        assert_eq!(req["transport"], "rpc");
+        assert_eq!(req["body"]["source"], "machine");
+        assert_eq!(req["body"]["scope"], json!({ "level": "project", "projectId": "p" }));
     }
-
     #[test]
-    fn drop_accepts_worker_keys_only() {
-        assert!(drop_args("01J9ZQ8M3K4N5P6R7S8T9V0W1X").is_ok());
-        assert!(drop_args("abc_def-ghi_jkl-mno").is_ok());
-        let too_long = "a".repeat(65);
-        for key in [
-            "",
-            "short",
-            "-01J9ZQ8M3K4N5P6R7S8T9V0W1X",
-            "has space 0123456789abcdef",
-            "../../etc/passwd/0123456789",
-            "--config=/tmp/x/0123456789ab",
-            too_long.as_str(),
-        ] {
-            assert!(drop_args(key).is_err(), "{key}");
+    fn validates_keys_and_logout_actions() {
+        let key = "01J9ZQ8M3K4N5P6R7S8T9V0W1X";
+        for sub in ["drop", "retry", "export"] {
+            assert_eq!(key_args(sub, key).unwrap(), ["outbox", sub, key, "--json"]);
+            for bad in ["", "--config=/tmp/x", "../../0123456789abcdef", "has space 0123456789"] {
+                assert!(key_args(sub, bad).is_err());
+            }
         }
+        for action in ["send", "keep", "drop"] {
+            assert_eq!(logout_args(action).unwrap(), vec!["logout".to_string(), format!("--outbox={action}")]);
+        }
+        assert!(logout_args("--help").is_err());
+        assert!(key_args("retry", &"x".repeat(65)).is_err());
+    }
+    #[test]
+    fn exposes_hub_rejection_and_health() {
+        let view = status_view(json!({ "status": { "hub": "down", "pending": 3 }, "items": [
+            { "key": "k", "state": "rejected", "result": { "code": "CONFLICT", "reason": "Đã đổi" } }
+        ] }));
+        assert_eq!(view["hub"], "down");
+        assert_eq!(view["items"][0]["code"], "CONFLICT");
+        assert_eq!(view["items"][0]["reason"], "Đã đổi");
     }
 }

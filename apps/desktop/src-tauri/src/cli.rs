@@ -1261,13 +1261,8 @@ pub async fn propose_doc(
     if content.chars().count() > 200_000 {
         return Err("Tài liệu dài tối đa 200.000 ký tự.".into());
     }
-    let hub = crate::hub_of(&app).ok_or("Máy chưa đăng ký với hub nào.")?;
-    let token = crate::account::stored_token(&hub)
-        .ok_or("Chưa liên kết tài khoản: mở thẻ người dùng ở góc dưới để dán token MCP.")?;
     let args = serde_json::json!({ "key": key, "baseVersion": base_version, "content": content, "note": note });
-    crate::hub::call_tool(&hub, &token, "doc_propose", args)
-        .await
-        .map_err(|e| e.text())
+    crate::outbox::submit(&app, "doc_propose", args).await
 }
 
 #[cfg(test)]

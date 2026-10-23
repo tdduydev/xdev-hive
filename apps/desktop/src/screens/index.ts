@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { OutboxPanel } from "@/components/outbox-panel.tsx";
 import type { ScreenId } from "@/lib/nav.ts";
 import { AgentsScreen } from "@/screens/agents-screen.tsx";
 import { DelegationTreeScreen } from "@/screens/delegation-tree-screen.tsx";
@@ -9,6 +10,7 @@ import { PlansScreen } from "@/screens/plans-screen.tsx";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
 import { RemoteScreen } from "@/screens/remote-screen.tsx";
 import { RunsScreen } from "@/screens/runs-screen.tsx";
+import { SecretsScreen } from "@/screens/secrets-screen.tsx";
 import { SettingsScreen } from "@/screens/settings-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
 import { SkillsScreen } from "@/screens/skills-screen.tsx";
@@ -18,6 +20,7 @@ import { WordImportScreen } from "@/screens/word-import-screen.tsx";
 
 /** Màn của cửa sổ app theo mục AppNav; đủ mọi mục nên không còn trang "Sắp có". */
 export const SCREENS: Record<ScreenId, ComponentType> = {
+  outbox: OutboxPanel,
   agents: AgentsScreen,
   docs: DocsScreen,
   home: HomeScreen,
@@ -26,6 +29,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   projects: ProjectsScreen,
   remote: RemoteScreen,
   runs: RunsScreen,
+  secrets: SecretsScreen,
   settings: SettingsScreen,
   setup: SetupScreen,
   skills: SkillsScreen,
