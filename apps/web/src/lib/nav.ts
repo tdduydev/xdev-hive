@@ -111,6 +111,13 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/artifacts",
         match: "/artifacts",
       },
+      {
+        id: "deploy-approvals",
+        label: { vi: "Duyệt triển khai", en: "Deploy approvals" },
+        icon: ClipboardCheckIcon,
+        to: route("/deploy-approvals"),
+        match: "/deploy-approvals",
+      },
     ],
   },
   {

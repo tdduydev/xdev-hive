@@ -65,6 +65,18 @@ describe("bản nháp", () => {
     expect(Object.keys(validateDraft(draft))).toEqual(["promote.fromEnvironmentId", "promote.buildParam"]);
   });
 
+  it("jenkins và argocd giữ tên credential của máy chạy; bỏ trống thì gửi null", () => {
+    for (const method of ["jenkins-job", "argocd"] as const) {
+      const draft = { ...emptyDraft(method), connectionId: SERVER_ID, jobPath: "a/deploy", application: "a" };
+      const named = targetConfigInput.parse(draftToConfig({ ...draft, credential: " jenkins-ci " }));
+      expect(named).toMatchObject({ credential: "jenkins-ci" });
+      expect(draftFromConfig(named as never).credential).toBe("jenkins-ci");
+      expect(targetConfigInput.parse(draftToConfig(draft))).toMatchObject({ credential: null });
+    }
+    const bad = targetConfigInput.safeParse(draftToConfig({ ...emptyDraft("argocd"), credential: "Có Dấu" }));
+    expect(bad.success).toBe(false);
+  });
+
   it("kubectl cần {{tag}} trong mẫu image", () => {
     const draft = {
       ...emptyDraft("kubectl"),

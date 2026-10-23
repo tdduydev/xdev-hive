@@ -17,6 +17,7 @@ import { DEPLOY_METHOD_LABEL } from "@/lib/delivery-text.ts";
 import { useTeamPermissions } from "@/lib/permissions.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
+import { RunnerForm, runnerSummary } from "./runner-form.tsx";
 import { TargetForm } from "./target-form.tsx";
 import { targetSummary } from "./target-presets.ts";
 
@@ -32,6 +33,9 @@ const VI = {
   envEmpty: "Thêm môi trường đầu tiên, ví dụ dev, staging, prod.",
   colEnv: "Môi trường",
   colPolicy: "Chính sách",
+  colRunner: "Máy chạy",
+  runner: "Máy chạy",
+  runnerOf: (name: string) => `Chọn máy chạy cho ${name}`,
   actions: "Thao tác",
   locked: "Đã khoá",
   approvals: (n: number, h: number) => (n === 0 ? "Không cần duyệt" : `Cần ${n} người duyệt, hết hạn sau ${h} giờ`),
@@ -101,6 +105,7 @@ export function EnvironmentsPage() {
   const infra = useQuery({ ...api.infraConnections.list.queryOptions(), enabled: manage });
 
   const [envDlg, setEnvDlg] = useState<DeployEnvironment | "new" | null>(null);
+  const [runnerDlg, setRunnerDlg] = useState<DeployEnvironment | null>(null);
   const [targetDlg, setTargetDlg] = useState<TargetDlg | null>(null);
   const [reorderFailure, setReorderFailure] = useState<string | null>(null);
 
@@ -197,12 +202,13 @@ export function EnvironmentsPage() {
             />
           ) : (
             <div className="min-w-0 overflow-x-auto rounded-xl border border-border bg-card">
-              <Table className="[&_td]:align-top" style={{ minWidth: 560 }}>
+              <Table className="[&_td]:align-top" style={{ minWidth: 760 }}>
                 <caption className="sr-only">{VI.envTitle}</caption>
                 <thead>
                   <tr>
                     <Th variant="plain">{VI.colEnv}</Th>
                     <Th variant="plain">{VI.colPolicy}</Th>
+                    <Th variant="plain">{VI.colRunner}</Th>
                     {manage && (
                       <Th variant="plain" className="text-right">
                         {VI.actions}
@@ -242,6 +248,9 @@ export function EnvironmentsPage() {
                           </span>
                         </span>
                       </Td>
+                      <Td>
+                        <span className="text-xs text-muted-foreground">{runnerSummary(env.runner)}</span>
+                      </Td>
                       {manage && (
                         <Td className="text-right">
                           <span className="inline-flex items-center gap-1">
@@ -270,6 +279,14 @@ export function EnvironmentsPage() {
                               onClick={() => setEnvDlg(env)}
                             >
                               {VI.edit}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={VI.runnerOf(env.name)}
+                              onClick={() => setRunnerDlg(env)}
+                            >
+                              {VI.runner}
                             </Button>
                           </span>
                         </Td>
@@ -369,6 +386,11 @@ export function EnvironmentsPage() {
               onDone={() => setEnvDlg(null)}
             />
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={runnerDlg !== null} onOpenChange={(open) => !open && setRunnerDlg(null)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-xl">
+          {runnerDlg && <RunnerForm environment={runnerDlg} onDone={() => setRunnerDlg(null)} />}
         </DialogContent>
       </Dialog>
       <Dialog open={targetDlg !== null} onOpenChange={(open) => !open && setTargetDlg(null)}>

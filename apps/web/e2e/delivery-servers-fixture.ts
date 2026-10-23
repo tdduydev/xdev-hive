@@ -24,6 +24,9 @@ export const PROJECT_WEB_ID = "73737373-0000-4000-8000-000000000001";
 export const PROJECT_API_ID = "73737373-0000-4000-8000-000000000002";
 export const TARGET_WEB_DEV_ID = "74747474-0000-4000-8000-000000000001";
 export const JENKINS_ID = "30303030-0000-4000-8000-000000000001";
+/** Máy chạy deploy của đội (specs/032). */
+export const RUNNER_A_ID = "75757575-0000-4000-8000-000000000001";
+export const RUNNER_B_ID = "75757575-0000-4000-8000-000000000002";
 export const FINGERPRINT = "SHA256:fakeFingerprintForTestsOnly0123456789abcdefghi";
 /** Chuỗi giả để test chắc giá trị biến bí mật không hiện lại. */
 export const FAKE_SECRET = "fake-secret-value-never-real-0123";
@@ -130,6 +133,26 @@ export function deliveryServersFixture() {
       updatedBy: null,
       createdAt: NOW,
       updatedAt: NOW,
+    },
+  ];
+  const runnerCandidates = [
+    {
+      machineId: RUNNER_A_ID,
+      name: "runner-hn-01",
+      online: true,
+      labeled: true,
+      methods: ["jenkins-job", "argocd"],
+      credentials: ["jenkins-ci", "argocd-prod"],
+      reportedAt: NOW,
+    },
+    {
+      machineId: RUNNER_B_ID,
+      name: "runner-hcm-02",
+      online: false,
+      labeled: false,
+      methods: ["jenkins-job"],
+      credentials: [],
+      reportedAt: NOW,
     },
   ];
   const state = {
@@ -328,6 +351,15 @@ export function deliveryServersFixture() {
         if (found) found.position = position;
       });
       return ok([...envs].sort((a, b) => a.position - b.position));
+    },
+    "environments/runnerCandidates": () => ok(runnerCandidates),
+    "environments/setRunner": (input) => {
+      record("environments/setRunner", input);
+      const v = input as { id: string; runner: unknown };
+      const found = envs.find((e) => e.id === v.id);
+      if (!found) return notFound();
+      found.runner = v.runner;
+      return ok(found);
     },
 
     "deployTargets/list": () => ok(targets),
