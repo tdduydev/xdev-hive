@@ -11,10 +11,13 @@ import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
 import {
+  ARTIFACT_UPLOAD_PATH,
   registerMcpTools as artifactsMcpTools,
   artifactsRouter,
   frameRoutes,
   frameTicketKey,
+  handleArtifactUpload,
+  provideDocProposer,
   provideLinkTarget,
   provideThreadHost,
 } from "./modules/artifacts/index.ts";
@@ -53,6 +56,8 @@ import { clientMachineOf, fleetRouter, type MachineAuth, WorkerReleaseCache } fr
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
+  createDocLinkTarget,
+  createDocProposer,
   type Embedder,
   handleRunSkills,
   handleSkillWebhook,
@@ -83,6 +88,7 @@ import {
   type Tx,
 } from "./modules/platform/index.ts";
 import {
+  createRunLinkTarget,
   RunNotifier,
   type RunsEngine,
   runForUser,
@@ -92,10 +98,16 @@ import {
 } from "./modules/runs/index.ts";
 import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
-import { reviewSpecFor, type SdlcDeps, registerMcpTools as sdlcMcpTools, sdlcRouter } from "./modules/sdlc/index.ts";
+import {
+  createSdlcItemLinkTarget,
+  reviewSpecFor,
+  type SdlcDeps,
+  registerMcpTools as sdlcMcpTools,
+  sdlcRouter,
+} from "./modules/sdlc/index.ts";
 import { skillLearningRouter } from "./modules/skilllearn/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
-import { tasksRouter } from "./modules/tasks/index.ts";
+import { createTaskLinkTarget, tasksRouter } from "./modules/tasks/index.ts";
 import {
   allowWith,
   orgMiddlewares,
@@ -176,6 +188,11 @@ export function createApp({
   leaderMcpTools(registry, { runs });
   provideThreadHost(createThreadHost(runs));
   provideLinkTarget("chat_thread", createThreadLinkTarget());
+  provideLinkTarget("task", createTaskLinkTarget());
+  provideLinkTarget("run", createRunLinkTarget());
+  provideLinkTarget("sdlc_item", createSdlcItemLinkTarget());
+  provideLinkTarget("doc", createDocLinkTarget());
+  provideDocProposer(createDocProposer());
   artifactsMcpTools(registry, { pool, jobs, publicUrl });
   sdlcMcpTools(registry);
   docsyncMcpTools(registry);
@@ -380,6 +397,8 @@ export function createApp({
   app.post("/hooks/docs/:homeId", (c) => handleDocsWebhook(docSyncDeps, c.req.param("homeId"), c.req.raw));
   app.post("/api/v1/docs/assets", (c) => handleAssetUpload(docSyncDeps, c.req.raw));
   app.get("/api/v1/docs/assets", (c) => handleAssetDownload(docSyncDeps, c.req.raw));
+  // Ảnh và PDF của artifact: tệp nhị phân đi qua Hono như đính kèm tài liệu, metadata vẫn do oRPC `artifacts` trả.
+  app.post(ARTIFACT_UPLOAD_PATH, (c) => handleArtifactUpload({ pool, auth, jobs, publicUrl }, c.req.raw));
   app.get("/api/v1/docs/assets/:id", (c, next) =>
     c.req.param("id") === "list" ? next() : handleAssetDownload(docSyncDeps, c.req.raw, c.req.param("id")),
   );

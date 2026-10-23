@@ -75,6 +75,48 @@ describe("buildFrameDocument · svg và csv", () => {
   });
 });
 
+describe("buildFrameDocument · image và pdf", () => {
+  const blobUrl = "https://hive.example.com/_artifact/blob/ticket.sig";
+
+  it("image: thẻ img trỏ vào blobUrl, không script của runtime", () => {
+    const doc = build({ type: "image", content: "", blobUrl });
+    expect(doc).toContain(`<img alt="Ảnh" src="${blobUrl}"`);
+    expect(modules(doc)).toHaveLength(0);
+    expect(doc).not.toContain("importmap");
+  });
+
+  it("image: blobUrl được escape để không thoát khỏi thuộc tính", () => {
+    const doc = build({ type: "image", content: "", blobUrl: 'https://h.example/b/"><script>1</script>' });
+    expect(doc).not.toContain("<script>1</script>");
+  });
+
+  it("image và pdf không có blobUrl thì hiện trang lỗi, không trang trắng", () => {
+    for (const type of ["image", "pdf"] as const) {
+      const doc = build({ type, content: "" });
+      expect(doc).toContain("Chưa có tệp");
+      expect(doc).toContain('kind:"runtime"');
+    }
+  });
+
+  it("pdf: tải tệp một lần từ blobUrl và dùng pdf.js qua import map có SRI", () => {
+    const doc = build({ type: "pdf", content: "", blobUrl });
+    const [script] = modules(doc);
+    expect(modules(doc)).toHaveLength(1);
+    expect(script).toContain(JSON.stringify(blobUrl));
+    expect(script?.match(/fetch\(/g)).toHaveLength(1);
+    expect(script).toContain("globalThis.pdfjsWorker = worker");
+    expect(script).toContain("isEvalSupported: false");
+    expect(doc).toContain('"pdfjs-dist/worker"');
+    expect(doc).toContain("sha384-");
+  });
+
+  it("pdf: mọi URL ngoài chỉ nằm dưới libBase hoặc blobUrl", () => {
+    const doc = build({ type: "pdf", content: "", blobUrl });
+    const urls = doc.match(/https?:\/\/[^"'\s)]+/g) ?? [];
+    for (const url of urls) expect(url.startsWith(LIB_BASE) || url === blobUrl, url).toBe(true);
+  });
+});
+
 describe("buildFrameDocument · html", () => {
   it("giữ nội dung nguyên văn và đặt bootstrap trước nó", () => {
     const content = "<!doctype html><html><head><title>T</title></head><body><p>x</p><script>1</script></body></html>";
@@ -247,7 +289,7 @@ describe("buildFrameDocument · điều kiện chung", () => {
   });
 
   it("từ chối loại chưa có nhánh dựng", () => {
-    expect(() => build({ type: "pdf" as never, content: "" })).toThrow(/pdf/);
+    expect(() => build({ type: "json" as never, content: "" })).toThrow(/json/);
   });
 
   it("mọi loại dùng cùng CSP với route khung", () => {

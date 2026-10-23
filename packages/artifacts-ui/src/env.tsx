@@ -70,6 +70,11 @@ export interface ArtifactsEnv {
   /** Người xem dùng được Leader ở đây (FR-150); không thì nút "Nhờ Leader sửa" tắt kèm lý do. */
   canAskLeader: boolean;
   onAskLeaderFix?: ((request: FixRequest) => void) | undefined;
+  /**
+   * Tải ảnh hoặc PDF lên làm artifact mới (`POST /api/v1/artifacts/upload`). Web có; app desktop chưa nối nên bỏ trống và
+   * màn thư viện ẩn nút. Lỗi ném ra để màn hiện bằng `errorMessage`.
+   */
+  uploadFile?: ((file: File) => Promise<{ id: string }>) | undefined;
   /** Mở hộp Link công khai (chỉ chủ, chính sách bật). */
   onPublicLinks?: ((artifact: ArtifactSummary, version: number) => void) | undefined;
 }

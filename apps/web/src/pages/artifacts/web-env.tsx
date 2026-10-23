@@ -12,6 +12,7 @@ import { type ReactNode, useState, useSyncExternalStore } from "react";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { useLang } from "@/lib/i18n.ts";
 import { useOrg } from "@/shell/org-context.ts";
+import { uploadArtifactFile } from "./upload.ts";
 
 // Lớp `dark` trên <html> do lib/theme.ts đặt (kể cả khi theo hệ điều hành), nên theo dõi lớp đó là đủ: khung cách ly
 // nhận theme qua vé, không đọc được CSS của trang.
@@ -65,7 +66,7 @@ const link: ArtifactsEnv["link"] = ({ to, className, children }) => {
  * công khai". Web gọi hub bằng cookie cùng origin nên khung lấy origin của trang; web không có bộ đệm offline.
  */
 export function WebArtifacts({ threadId, children }: { threadId?: string | undefined; children: ReactNode }) {
-  const { api } = useOrg();
+  const { api, org } = useOrg();
   const lang = useLang();
   const theme = useDocumentTheme();
   const navigate = useNavigate();
@@ -83,6 +84,7 @@ export function WebArtifacts({ threadId, children }: { threadId?: string | undef
     link,
     frameBase: window.location.origin,
     offline: false,
+    uploadFile: async (file) => (await uploadArtifactFile(org.id, file)).artifact,
     // Mọi thành viên tổ chức dùng được Leader trên web; hub vẫn kiểm quyền đọc artifact khi nhận lời nhờ.
     canAskLeader: true,
     onAskLeaderFix: (request) => {

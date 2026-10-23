@@ -238774,6 +238774,26 @@
             "allowReserved": true
           },
           {
+            "name": "sdlcItemId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "docId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
             "name": "mine",
             "in": "query",
             "schema": {
@@ -239983,6 +240003,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -240081,6 +240104,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -240959,6 +240983,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -241077,6 +241104,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -242806,6 +242834,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -242904,6 +242935,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -243576,6 +243608,9 @@
                         "minimum": 0,
                         "maximum": 9007199254740991
                       },
+                      "hasBlob": {
+                        "type": "boolean"
+                      },
                       "authorUser": {
                         "anyOf": [
                           {
@@ -243674,6 +243709,7 @@
                       "version",
                       "sha256",
                       "sizeBytes",
+                      "hasBlob",
                       "authorUser",
                       "authorRunId",
                       "origin",
@@ -247081,6 +247117,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -247179,6 +247218,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -248708,6 +248748,9 @@
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
+                    "hasBlob": {
+                      "type": "boolean"
+                    },
                     "authorUser": {
                       "anyOf": [
                         {
@@ -248806,6 +248849,7 @@
                     "version",
                     "sha256",
                     "sizeBytes",
+                    "hasBlob",
                     "authorUser",
                     "authorRunId",
                     "origin",
@@ -249683,6 +249727,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -249781,6 +249828,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -250463,6 +250511,9 @@
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
+                    "hasBlob": {
+                      "type": "boolean"
+                    },
                     "authorUser": {
                       "anyOf": [
                         {
@@ -250561,6 +250612,7 @@
                     "version",
                     "sha256",
                     "sizeBytes",
+                    "hasBlob",
                     "authorUser",
                     "authorRunId",
                     "origin",
