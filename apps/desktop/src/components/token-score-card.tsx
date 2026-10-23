@@ -161,9 +161,15 @@ const text: Dict<{
     reportUnregistered: "This machine is not registered with a hub, so the score cannot be sent.",
     reportFailed: "Could not save the setting for sending the score to the hub.",
     driftTitle: "Policy drift",
-    driftItems: { level: "Optimization level", compact: "Context compaction limit", rtk: "RTK", codegraph: "Codegraph" },
+    driftItems: {
+      level: "Optimization level",
+      compact: "Context compaction limit",
+      rtk: "RTK",
+      codegraph: "Codegraph",
+    },
     driftOk: "This machine matches the optimization policy of the linked projects.",
-    policyUnread: (n) => `Could not read the policy of ${n} linked project(s), so this machine is not compared with it.`,
+    policyUnread: (n) =>
+      `Could not read the policy of ${n} linked project(s), so this machine is not compared with it.`,
     note: "The score measures configuration and context size, not the quality of the agent's results.",
   },
 };
