@@ -5,6 +5,7 @@ import { brotliCompress, gzip, constants as zlibConstants } from "node:zlib";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { implement } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
+import { ResponseHeadersPlugin } from "@orpc/server/plugins";
 import { contract, WORD_IMPORT_UPLOAD_PATH } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -335,8 +336,15 @@ export function createApp({
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
-  const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
-  const openapi = new OpenAPIHandler(router, { clientInterceptors: [mapDomainErrors] });
+  // ResponseHeadersPlugin để thủ tục có ghi trả `Hive-Client-Event` (specs/027), kể cả khi trả lỗi.
+  const rpc = new RPCHandler(router, {
+    clientInterceptors: [mapDomainErrors],
+    plugins: [new ResponseHeadersPlugin()],
+  });
+  const openapi = new OpenAPIHandler(router, {
+    clientInterceptors: [mapDomainErrors],
+    plugins: [new ResponseHeadersPlugin()],
+  });
   const app = new Hono();
   // Danh sách của trang chủ và bảng việc cỡ MB với vài nghìn task (JSON nén còn chừng một phần mười, ~6 ms mỗi MB).
   // Luồng SSE (text/event-stream) không bị nén vì phải tới từng sự kiện.

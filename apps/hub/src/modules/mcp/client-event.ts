@@ -1,14 +1,6 @@
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { type ClientEventResult, type ClientSource, MCP_CLIENT_EVENT_META } from "@xdev-hive/contracts";
-import {
-  BadRequestError,
-  type ClientEventMeta,
-  ClientEventRejected,
-  type ClientRequest,
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-} from "../platform/index.ts";
+import type { ClientEventMeta, ClientRequest } from "../platform/index.ts";
 import type { McpPrincipal } from "./principal.ts";
 
 // Phần sự kiện client của cổng MCP (specs/027 US1), tách khỏi server.ts để test không cần database.
@@ -17,19 +9,6 @@ import type { McpPrincipal } from "./principal.ts";
 export interface ToolOutput {
   value: unknown;
   event?: ClientEventResult | undefined;
-}
-
-/** Lỗi do handler ném vì trạng thái hiện tại: với lần ghi có khoá thì lưu thành lần từ chối, gửi lại nhận đúng lỗi đó. */
-export function rejectionOf(error: unknown): ClientEventRejected | null {
-  if (
-    error instanceof ForbiddenError ||
-    error instanceof NotFoundError ||
-    error instanceof ConflictError ||
-    error instanceof BadRequestError
-  ) {
-    return new ClientEventRejected(error.code, error.message);
-  }
-  return null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

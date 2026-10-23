@@ -11,13 +11,14 @@ import {
   INVALID_KEY_MESSAGE,
   NotFoundError,
   noteMissingKey,
+  rejectionOf,
   type Tx,
   withClientEvent,
   withMetaKey,
   withTenant,
 } from "../platform/index.ts";
 import { disabledTools, requireActivePersonalToken, requireEnabledTool } from "./admin-service.ts";
-import { rejectedResult, rejectionOf, sourceOf, type ToolOutput, targetOf, toResult } from "./client-event.ts";
+import { rejectedResult, sourceOf, type ToolOutput, targetOf, toResult } from "./client-event.ts";
 import type { McpPrincipal } from "./principal.ts";
 import type { McpOrgMembership, McpTool, McpToolRegistry } from "./registry.ts";
 

@@ -1,7 +1,7 @@
 import { MCP_CLIENT_EVENT_META } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { ClientEventRejected, ConflictError, NotFoundError } from "../platform/index.ts";
-import { rejectedResult, rejectionOf, sourceOf, targetOf, toResult } from "./client-event.ts";
+import { ClientEventRejected, ConflictError, NotFoundError, rejectionOf } from "../platform/index.ts";
+import { rejectedResult, sourceOf, targetOf, toResult } from "./client-event.ts";
 import type { McpPrincipal } from "./principal.ts";
 
 const KEY = "01JABCDEFGHJKMNPQRSTVWXYZ0";

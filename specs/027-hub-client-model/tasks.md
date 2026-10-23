@@ -79,7 +79,7 @@ description: "Danh sách task: Hub giữ dữ liệu và tiến độ, client l�
   cùng `code` · `apps/hub/src/modules/mcp/server.ts`, `apps/hub/src/modules/mcp/client-event-result.test.ts`
 - [x] T009 [P] [US1] Test database: trùng khoá, rejected sau rollback, máy lạ bị bỏ qua ·
   `apps/hub/src/modules/mcp/client-events.db.test.ts`
-- [ ] T010 [US1] `memory.write` qua `withClientEvent` khi có khoá; header trả `Hive-Client-Event` ·
+- [x] T010 [US1] `memory.write` qua `withClientEvent` khi có khoá; header trả `Hive-Client-Event` ·
   `apps/hub/src/modules/knowledge/router.ts`, `apps/hub/src/app.ts` (đưa `resHeaders` vào context oRPC),
   `apps/hub/src/rpc-context.ts` nếu có
 - [ ] T011 [US1] `tasks.history({taskId})`: gộp `client_events` (task, run của task) và `run_events` loại `state`, sắp

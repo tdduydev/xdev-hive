@@ -35,6 +35,7 @@ export {
   readClientRequest,
   withMetaKey,
 } from "./client-request.ts";
+export { type ClientWriteRequest, rejectionOf, runClientWrite } from "./client-write.ts";
 export {
   type DocStorageLimits,
   type EmbeddingsConfig,
