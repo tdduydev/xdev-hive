@@ -3,7 +3,7 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { type Tx, withTenant } from "../platform/index.ts";
-import { allowWith, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, orgs, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { FleetError, invalidRegistration } from "./errors.ts";
 import { machines, machineTokens, registrationTokens } from "./schema.ts";
 import { hashToken, MACHINE_PREFIX, newToken, REGISTRATION_PREFIX, withTokenLookup } from "./tokens.ts";
@@ -165,7 +165,15 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
         keyStorage: info.keyStorage,
       },
     });
-    return { id: machine.id, orgId: found.orgId, teamId: machine.teamId, machineId: machine.name, machineToken };
+    const [org] = await tx.select({ name: orgs.name }).from(orgs).where(eq(orgs.id, found.orgId));
+    return {
+      id: machine.id,
+      orgId: found.orgId,
+      ...(org ? { orgName: org.name } : {}),
+      teamId: machine.teamId,
+      machineId: machine.name,
+      machineToken,
+    };
   });
 }
 

@@ -109,7 +109,7 @@ describe("đăng ký máy", () => {
   it("đổi mã lấy machine token; token xác thực được máy", async () => {
     const { token } = await newRegistration();
     const out = await register(token, `may-${tag}`);
-    expect(out).toMatchObject({ orgId: orgA, teamId: teamA, machineId: `may-${tag}` });
+    expect(out).toMatchObject({ orgId: orgA, orgName: "A", teamId: teamA, machineId: `may-${tag}` });
     expect(out.machineToken).toMatch(/^hwm_/);
     expect(await authenticateMachine(app, out.machineToken)).toEqual({
       id: out.id,

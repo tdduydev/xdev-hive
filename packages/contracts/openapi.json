@@ -9804,6 +9804,9 @@
                     },
                     "machineToken": {
                       "type": "string"
+                    },
+                    "orgName": {
+                      "type": "string"
                     }
                   },
                   "required": [
