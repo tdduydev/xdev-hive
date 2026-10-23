@@ -86,7 +86,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `delivery` | Bảng điều khiển CI/CD và triển khai (specs/020, ADR 0030, 0031): kết nối Jenkins (token từng người, người theo dõi), Argo CD, Kubernetes; tab CI/CD gộp pipeline GitLab và build Jenkins; máy chủ có khoá SSH do hub sinh, môi trường, đích triển khai (`ssh-script`, `jenkins-job`, `gitlab-manual`, `argocd`, `kubectl`), duyệt, khoá, quay về, log triển khai đã che bí mật. **[Chưa làm]** | `ci_jenkins_connections`, `ci_jenkins_user_tokens`, `ci_project_jobs`, `ci_runs_seen`, `deploy_connections`, `deploy_servers`, `deploy_environments`, `deploy_targets`, `deploys`, `deploy_log_chunks`, `deploy_approvals` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
 | `artifacts` | Artifact (specs/012, ADR 0023): sản phẩm có phiên bản của agent và người (markdown, code, html, mermaid, react), phạm vi, link công khai, biên dịch `react` ở hub, khung cách ly và job dọn thùng rác. MVP chưa có `svg`, `json`, `csv`, ảnh, PDF, phạm vi `team`/`org` và Terminal Leader | `artifacts`, `artifact_versions`, `artifact_links`, `artifact_previews`, `artifact_public_links` |
-| `terminal` | Terminal Leader: phiên Claude CLI tương tác trên máy dùng chung, chuyển tiếp web ↔ worker qua `/ws/terminal`, bản ghi đã che bí mật (specs/010 lát đầu) | `terminal_sessions`, `terminal_chunks` |
+| `terminal` | Phiên CLI tương tác (specs/010, mục 5.3): Terminal Leader trên máy dùng chung; ghi phiên `hive chat` của máy cá nhân; điều khiển từ xa qua web (ghép passkey, xin quyền gõ, mở phiên mới, mã TOTP cho hub HTTP, tắt khẩn cấp); chuyển tiếp web ↔ worker qua `/ws/terminal`, bản ghi đã che bí mật. Hub chỉ chuyển gói: passkey, khoá TOTP và khoá ký phím nằm ở máy | `terminal_sessions`, `terminal_chunks`, `terminal_events`, `remote_devices`, `machine_remote_state`, `push_subscriptions` (chưa dùng) |
 | `mcp` | Cổng MCP: xác thực token, giới hạn tool theo vai trò, ghi audit | — (dùng module khác) |
 | `notify` | Telegram, email, hộp thư trong app | `notification_channels`, `notifications`, `inbox_items` |
 | `cost` | Tổng hợp token, chi phí theo run, đội, dự án, người, CLI. Chỉ theo dõi; cột chi phí nằm trên `runs` | — |
@@ -409,6 +409,61 @@ Phần này cũng không đi qua hub ở đợt P1. Quyết định: [ADR 0037](
 Mọi lần `ctxsync` ghi đi qua kho sao lưu của `memstore`, nên hoàn tác đưa file về đúng byte. Lệnh con `context` của
 `hive-worker` đã có; `optimize all` và các lệnh Tauri tương ứng chưa có.
 
+### 5.3 Phiên terminal và điều khiển từ xa (spec 010)
+
+Thiết kế: [plan.md](../specs/010-hive-cli-remote/plan.md), [ADR 0019](adr/0019-hive-cli-and-remote-sessions.md).
+Hướng dẫn dùng: [hive-cli.md](hive-cli.md). Mô hình đe doạ coi hub là không đáng tin: người giữ hub hay đứng giữa đường
+HTTP thấy mọi gói, nên worker tự kiểm mọi yêu cầu mở phiên và mọi phím gõ từ xa.
+
+```mermaid
+flowchart LR
+  CLI["hive chat / attach / remote"]
+  W["hive-worker<br/>internal/terminal, remoteauth"]
+  H["Hub, module terminal"]
+  B["Web trên điện thoại<br/>passkey, khoá ký phím"]
+  CLI -- "socket nội bộ (Unix socket 0600, named pipe theo SID)" --> W
+  W -- "term_* trên /ws/worker" --> H
+  H -- "/ws/terminal, vé một lần" --> B
+```
+
+Gói `term_*` đi trên cùng kết nối `/ws/worker`, chỉ khi worker khai `terminal` trong `hello.capabilities` và hub trả
+`welcome.features: ["terminal"]`; hub cũ không khai nên worker không gửi gói lạ. `welcome` thêm `owner` (người đăng ký
+máy, máy dùng chung hay không) và `policy.totpFallback`.
+
+| Hướng | Gói | Ý nghĩa |
+|---|---|---|
+| H → W | `term_open{sessionId, projectId, mode, cli, model, mcpToken, …}` | Mở phiên Terminal Leader trên máy dùng chung |
+| W → H | `term_opened{sessionId, permissions, origin?, requestId?, cli?, cwdLabel?, record?, remote?}` | PTY đã chạy. `origin`: `local` (`hive chat` tại máy) hay `remote` (mở từ điện thoại). Chỉ có nhãn thư mục, không có đường dẫn tuyệt đối |
+| W → H | `term_output{sessionId, seq, data}` | Output đã che bí mật worker biết; `seq` tăng từ 0. Hub loại trùng theo `(session, seq)` |
+| H → W | `term_ack{sessionId, upto}` | Hub đã ghi bền tới `upto`; worker xoá phần đệm đĩa |
+| W → H | `term_exit{sessionId, exitCode, reason, by?}` | Phiên kết thúc |
+| W → H | `term_event{sessionId, seq, event, data?}` | `controller`, `resize`, `gap`, `input_rejected`, … |
+| W → H | `term_state{enabled, totp, roots, clis, accounts, devices, sessions, confirmOnMachine}` | Trạng thái từ xa của máy, gửi sau `welcome` và mỗi khi đổi. Chỉ có nhãn, không có đường dẫn hay khoá |
+| H → W | `term_input`, `term_resize` `{sessionId, …, connId?, seq?, mac?}` | Phím và cỡ. Phiên máy cá nhân cần `connId`, `seq` tăng nghiêm ngặt và HMAC 16 byte bằng khoá chỉ điện thoại và máy biết |
+| H → W | `term_close{sessionId, by?}` | Ngắt phiên |
+| H → W | `term_pair{pairId, userId, label, credentialId, spki, tag}` · W → H `term_pair_result{pairId, ok, reason?}` | Ghép thiết bị. `tag` là HMAC bằng bí mật trong mã QR, hub không biết bí mật này |
+| H → W | `term_control{sessionId, connId, userId, deviceId, auth?, resumeToken?}` · W → H `term_granted{connId, workerEphPub, resumeToken}`, `term_revoked{connId, reason}` | Xin quyền gõ bằng passkey hay mã TOTP; worker trả khoá ECDH tạm để hai bên suy ra khoá ký phím |
+| H → W | `term_detach{sessionId, connId}` | Kết nối web rời phiên; worker giữ quyền 2 phút chờ `resumeToken` |
+| H → W | `term_start{requestId, userId, deviceId, cli, rootId, subdir?, prompt?, model?, permissions?, auth}` · W → H `term_denied{requestId, code, reason}` | Mở phiên mới từ điện thoại. Mọi trường trừ `model`, `permissions` nằm trong challenge đã ký |
+| H → W | `term_disable{by}` · `term_device_revoke{deviceId, by}` | Tắt từ xa, gỡ thiết bị. Không có gói bật hay thêm thiết bị: chỉ làm được tại máy |
+
+- **Trình duyệt:** nối `/ws/terminal?ticket=…` bằng vé dùng một lần 60 giây (`terminal.ticket` cho Leader, `remote.ticket`
+  cho máy cá nhân, hai loại không thay nhau) và `Origin` khớp `HIVE_PUBLIC_URL`. Khung trình duyệt gửi: `resume{after}`,
+  `control{auth}`, `release`, `in`, `resize`, `ping`. Khung hub gửi: `hello`, `out{seq, data}`, `sync`, `state`,
+  `granted`, `revoked`, `denied`, `event`, `error`, `pong`.
+- **Ghi phiên:** worker gom output 8 ms hay 32 KiB, giữ phần chưa ack trên đĩa (32 MB mỗi phiên, quá thì báo `gap`) và
+  gửi lại sau khi nối lại. Hub ghi mỗi gói một transaction; chưa gộp 64 KiB/1 s như plan.
+- **Xem trực tiếp:** hub giữ vòng đệm 512 KiB mỗi phiên; nối lại theo `seq` (vòng đệm trước, thiếu thì đọc DB). Người xem
+  chậm (quá 512 KiB/s, máy quá 2 MiB/s, đệm quá 1 MiB) nhận `sync` rồi đuôi 128 KiB.
+- **Xác thực ở máy:** `remoteauth` kiểm assertion WebAuthn ES256 (origin và rpId theo URL hub máy đã đăng ký, UP+UV,
+  `ts` ±120 s, nonce một lần, `connId` trong challenge), hoặc mã TOTP (chỉ khi hub `http://` hay chủ máy bật riêng, chính
+  sách tổ chức cho phép; khoá 5 lần sai, mỗi mã dùng một lần). Quyền gõ hết sau 15 phút không gõ; 3 gói nhập sai thì thu.
+- **Tắt khẩn cấp:** tại máy (app, khay, `hive remote off`) hay qua hub (`term_disable`). Worker thu mọi quyền, kết thúc
+  phiên mở từ xa (SIGHUP, chờ 10 s, kill), giữ phiên `hive chat`; hub đóng mọi người xem.
+- **Hiệu năng (SC-008):** `terminal-perf.db.test.ts` (50 phiên × 3 người xem) đo luồng hub dùng 44–49% một nhân trên máy
+  dev, chưa đạt mục tiêu 15%. Điểm nóng: ghi socket cho từng khung người xem và mỗi chunk một transaction.
+- **Chưa làm (ngoài phạm vi từ 2026-10-23):** PWA đầy đủ, Web Push, tín hiệu "agent cần bạn", chế độ xem `team`.
+
 ## 6. Bảo mật và token
 
 | Token | Cấp cho | Đời sống | Cách cấp |
@@ -420,6 +475,12 @@ Mọi lần `ctxsync` ghi đi qua kho sao lưu của `memstore`, nên hoàn tác
 | Run token | Một run | Hết hạn theo thời gian chờ của run | Hub cấp cùng `lease`. JWT HS256 có `run_id`, `task_id`, `org_id`, `attempt`, `aud`; khoá suy ra từ `HIVE_AUTH_SECRET` bằng HKDF |
 | Token MCP | CLI agent trong run | Như run token | Agent dùng run token với `aud=/mcp`; người dùng ngoài run dùng OAuth (Better Auth + CIMD) |
 | Token git | Push nhánh trong run | Ngắn, chỉ repo của dự án | **[Chưa làm]** Hub đổi từ GitHub App installation token hoặc GitLab project token. Hiện run clone và push bằng thông tin đăng nhập git sẵn có trên máy |
+| Token cá nhân của `hive` | CLI `hive` (`attach`, `ls --all`, tra task) | Đến khi thu hồi | `hive login`: loopback PKCE `desktop-connect` với `purpose: cli`, hoặc đọc từ stdin. Lưu trong keychain (`dev.xdev.hive`), không có keychain thì file 0600 |
+| Vé `/ws/terminal` | Một kết nối WS trình duyệt hay `hive attach` | Một lần, 60 giây | `terminal.ticket` (Leader) hoặc `remote.ticket` (máy cá nhân), 256 bit, gắn người, phiên và loại; bị đốt ngay lần dùng đầu |
+| Bí mật ghép | Một lần ghép thiết bị | Một lần, 10 phút | Máy sinh, chỉ nằm trong mã QR (`#s=` của URL), không qua hub. Web tính `tag` HMAC trên khoá passkey mới |
+| Passkey thiết bị | Điện thoại đã ghép | Đến khi gỡ | WebAuthn có UV; máy giữ khoá công khai trong `remote.json`, hub không giữ |
+| Khoá ký phím | Một lần cấp quyền gõ | Đến khi thu quyền; `resumeToken` giữ 2 phút khi rớt mạng | ECDH P-256 giữa khoá tạm của trình duyệt và của máy, HKDF-SHA256; khoá trên web không xuất được và chỉ nằm trong bộ nhớ trang |
+| Khoá TOTP | Chủ máy (ứng dụng Authenticator) | Đến khi tắt hay đổi tại máy | Worker sinh tại máy (`hive remote totp enroll`, app desktop), lưu `totp.json` 0600; hub chỉ chuyển mã, không lưu |
 
 - Không dùng mTLS cho máy vì proxy công ty hay chặn hoặc làm hỏng. [Suy luận]
 - Cổng MCP kiểm `aud`, không chuyển tiếp token xuống dịch vụ sau, giới hạn tool theo vai trò và theo loại run, ghi audit mọi lời gọi. [14][15]
@@ -511,6 +572,10 @@ sequenceDiagram
 | Saga đổi code giữa chừng | Lưu phiên bản saga theo từng instance, chạy hết bằng bản cũ |
 | Drizzle 1.0, Better Auth, MCP spec mới còn đổi | Khoá phiên bản, bọc sau lớp của mình, theo dõi bản vá |
 | PTY trên Windows | Smoke test worker trên Windows trước mỗi bản phát hành |
+| Hub hay người đứng giữa mở phiên hoặc gõ vào máy dev | Worker kiểm passkey hay mã TOTP, HMAC + `seq` cho từng gói nhập; không có gói bật từ hub; test tấn công `attack_test.go`, `terminal-attack.db.test.ts` |
+| Hub HTTP: mã TOTP và output đi qua mạng không mã hoá | Chỉ là đường lui; cảnh báo trên web, app, CLI; tổ chức tắt được; mã dùng một lần, khoá khi sai. Mã không ràng buộc khoá ký phím ([security-review.md](../specs/010-hive-cli-remote/security-review.md) mục B) |
+| Phát lại passkey sau khi worker khởi động lại | Nonce chỉ nằm trong bộ nhớ: **[Chưa làm]** ghi nonce xuống đĩa. Hub phát lại `control` không gõ được vì thiếu khoá ký phím; `term_start` phát lại thì "Hỏi tại máy" chặn được |
+| Hub chậm khi nhiều người xem | Giới hạn người xem, băng thông, `sync`; **[Chưa làm]** gộp ghi chunk và khung gửi người xem (SC-008 chưa đạt) |
 
 ## 12. Thứ tự xây dựng
 

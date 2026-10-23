@@ -104,6 +104,7 @@ flowchart LR
 | Web app | React, Vite, TanStack Router and Query, Tailwind | User interface, served by the hub | `apps/web` |
 | Contracts | zod, oRPC contracts | API and worker protocol schemas, OpenAPI generation, shared semver helpers | `packages/contracts` |
 | Worker | Go | Runs agent CLIs in git worktrees on developer machines (`hive-worker run`) | `worker` |
+| `hive` CLI | Go (second binary, same release) | Interactive agent sessions on the developer's own machine, attach, remote-control settings; talks to the local worker over a per-user socket (specs/010) | `worker/cmd/hive` |
 | Runner host | Go (same binary) | Runs each sandboxed run in a gVisor container (`hive-worker host`) | `worker/internal/runner` |
 | Egress proxy | Go (in the worker process) | Per-run allowlist proxy reachable only through a Unix socket | `worker/internal/egress` |
 | Desktop app | Tauri 2 | Tray app that registers the machine and runs the worker as a sidecar | `apps/desktop` |
@@ -125,6 +126,7 @@ flowchart LR
 | `knowledge` | Memory (full-text and vector), documents, skills, proposals, legacy import | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals`, `legacy_*` |
 | `sdlc` | AI SDLC mode (specs/011, ADR 0021): modes and presets, items through phases, `sdlc` document runs, questions, repository sync, task breakdown in waves, gate on code runs, traceability, converge, release notes, AI auto-approval, multi-project items, metrics | `sdlc_modes`, `sdlc_items`, `sdlc_item_projects`, `sdlc_item_phases`, `sdlc_artifacts`, `sdlc_artifact_syncs`, `sdlc_questions`, `sdlc_steps`, `sdlc_item_tasks`, `sdlc_trace_links`, `sdlc_overrides`, `sdlc_auto_approvals` |
 | `leader` | Leader chat and proposals that need human approval | `chat_threads`, `chat_messages`, `approvals` |
+| `terminal` | Interactive CLI sessions (specs/010, ADR 0019): Terminal Leader on shared machines, recorded `hive chat` sessions, remote viewing and control from the web (device pairing, control requests, new sessions, TOTP fallback, emergency off), `/ws/terminal` relay, one-time WS tickets. The hub only relays: passkeys, the TOTP key and input keys stay on the machine | `terminal_sessions`, `terminal_chunks`, `terminal_events`, `remote_devices`, `machine_remote_state`, `push_subscriptions` (unused) |
 | `artifacts` | Versioned artifacts (markdown, code, html, mermaid, react), scopes, public links, hub-side React compile, sandboxed-frame routes, trash purge job | `artifacts`, `artifact_versions`, `artifact_links`, `artifact_previews`, `artifact_public_links` |
 | `sandbox` | Egress allowlists, environment images, organization sandbox settings | `sandbox_org_settings`, `egress_allowlists`, `env_images` |
 | `cost` | Token and cost aggregation (cost columns live on `runs`) | — |
@@ -149,6 +151,10 @@ cycles and imports of `app.ts`/`main.ts`.
 | `internal/update` | Release lookup, signature and checksum verification, atomic replacement of the running binary |
 | `internal/hubclient` | REST client for registration and health, generated with oapi-codegen |
 | `internal/config` | Per-user configuration file with hub URL, machine id and machine token |
+| `cmd/hive` | User CLI: `login`, `logout`, `whoami`, `chat`/`run`, `ls`, `attach`, `kill`, `remote …`, `version` |
+| `internal/localipc` | Local socket between `hive` and the worker: Unix socket 0600 in a 0700 directory, or a named pipe whose DACL allows only the current user's SID; the peer's user is checked on both ends |
+| `internal/terminal` | PTY sessions, recording with an on-disk buffer of unacknowledged output, remote state, control grants with per-packet HMAC, remote session start, pairing, audit log, limits |
+| `internal/remoteauth` | Machine-side checks: `remote.json`, WebAuthn ES256 assertions, one-time nonces, TOTP (`totp.json`), ECDH and HKDF for the input key |
 
 ## 6. Runtime view
 
@@ -344,6 +350,45 @@ Specs/011 and ADR 0021; the Vietnamese overview is in [architecture.md §4.4](ar
 The same verification runs for `hive-worker update` on the command line and in the install scripts. A worker bundled
 with the desktop app ignores `update`; the app updates as a whole.
 
+### 6.8 Remote viewing and control of a session
+
+Specs/010 and ADR 0019; packets in [architecture.md §5.3](architecture.md#53-phiên-terminal-và-điều-khiển-từ-xa-spec-010),
+user guide in [hive-cli.md](hive-cli.md). The threat model treats the hub as untrusted.
+
+```mermaid
+sequenceDiagram
+  participant P as Phone (web)
+  participant H as Hub
+  participant W as Worker
+  participant C as hive chat
+  C->>W: open session (local socket)
+  W->>H: term_opened, term_output (masked, seq)
+  H->>W: term_ack
+  P->>H: remote.ticket, then /ws/terminal
+  H->>P: hello, out (ring buffer or DB)
+  P->>H: control (passkey assertion or TOTP code)
+  H->>W: term_control
+  W->>H: term_granted (worker ECDH key, resumeToken)
+  P->>H: in (seq, HMAC)
+  H->>W: term_input (seq, HMAC)
+  W->>C: keys, after HMAC and seq check
+```
+
+1. Remote control is off by default. The owner turns it on at the machine (`hive remote on`, desktop app); no packet
+   from the hub can turn it on or add a device.
+2. Pairing: the machine shows a QR code holding a 128-bit secret in the URL fragment. The phone creates a passkey and
+   sends its public key with an HMAC tag made with the secret; the hub forwards it (`term_pair`) and the worker checks
+   the tag before storing the key in `remote.json`.
+3. Control: the worker verifies the WebAuthn assertion (origin and rpId from the registered hub URL, UP and UV, `ts`
+   within 120 s, one-time nonce, `connId` in the challenge) or a TOTP code, then grants control and returns its ephemeral
+   ECDH key. Each input packet carries a strictly increasing `seq` and a 16-byte HMAC; three bad packets revoke the grant,
+   15 idle minutes end it.
+4. New sessions from the phone (`term_start`) are signed the same way, limited to roots the owner allowed, and may wait
+   for confirmation at the machine.
+5. Emergency off at the machine (app, tray, `hive remote off`) or through the hub (`term_disable`) revokes grants and
+   ends remotely started sessions; `hive chat` sessions keep running.
+6. Recorded output is retained with run logs: `hive.purge_terminal_chunks()` runs in the `runs-log-retention` job.
+
 ## 7. Deployment view
 
 ```mermaid
@@ -398,6 +443,12 @@ flowchart TB
 | Machine token | Worker, runner host | Until revoked | `hwm_…`, stored as SHA-256, revoked by deleting it |
 | Run token | Agent CLI inside one run | Run timeout | HS256 JWT with `aud=<hub>/mcp`, `run_id`, `task_id`, `org_id`, `attempt`; key derived from `HIVE_AUTH_SECRET` with HKDF |
 | MCP OAuth token | MCP clients outside runs | OAuth | Better Auth MCP plugin with client ID metadata documents; no dynamic client registration |
+| `hive` personal token | `hive` CLI | Until revoked | Issued by `hive login` (loopback PKCE, `purpose: cli`) or read from stdin; kept in the OS keychain (`dev.xdev.hive`), else a 0600 file |
+| `/ws/terminal` ticket | One browser or `hive attach` connection | Single use, 60 seconds | `terminal.ticket` (Leader) or `remote.ticket` (personal machine, prefix `r.`); the two are not interchangeable; burned on first use |
+| Pairing secret | One device pairing | Single use, 10 minutes | Generated by the machine, only in the QR fragment; never sent to the hub |
+| Device passkey | Paired phone | Until removed | WebAuthn with user verification; the public key lives in the machine's `remote.json` |
+| Input key | One control grant | Until revoked; `resumeToken` keeps it 2 minutes across a reconnect | ECDH P-256 and HKDF-SHA256; non-extractable in the browser |
+| TOTP key | Machine owner's authenticator app | Until disabled at the machine | Generated by the worker, stored in `totp.json` 0600; accepted only on an `http://` hub (or when the owner allows it on HTTPS) and when the organization policy `totpFallback` allows it |
 
 Sign-in is invitation-only: e-mail and password requires an invitation, except addresses in `HIVE_ORG_CREATORS`
 before the first organization exists; GitHub and GitLab need a verified e-mail with a pending invitation or a creator
@@ -479,6 +530,8 @@ original notes:
 | An agent in a sandbox tries to reach an address outside the allowlist | The egress proxy refuses the connection; the container has no other network |
 | A release asset is replaced on the download server | The signature check of `checksums.txt` or the SHA-256 check fails; nothing is installed |
 | The hub cannot reach GitHub | Machines still work; the Machines page does not mark outdated versions |
+| The hub or a network attacker forges `term_start`, `term_control` or `term_input` | The worker rejects it: no valid passkey assertion or TOTP code, no input key for the HMAC (`attack_test.go`, `terminal-attack.db.test.ts`) |
+| A phone loses its network while holding control | Control is kept for 2 minutes; the phone resumes with `resumeToken` and replays missing output by `seq` |
 
 ## 11. Risks, technical debt and planned work
 
@@ -498,6 +551,7 @@ original notes:
 | Metrics and tracing | Not implemented |
 | Desktop auto-update | Plugin installed, but no public key or endpoint configured |
 | Hub image and desktop releases | Only the worker has a release pipeline |
+| Remote sessions (spec 010) | Out of scope since 2026-10-23: full PWA, Web Push, "agent needs you" signal, `team` viewing (T070–T072, T080–T081). SC-008 is not met: 50 sessions with 3 viewers each use 44–49% of one core on a development machine against a 15% target; the hub writes one transaction per chunk and one socket write per viewer frame. Passkey nonces live in memory only, so a replay after a worker restart is possible (security review A). A TOTP code is not bound to the input key (security review B, accepted for HTTP hubs) |
 | AI SDLC (spec 011) | Participant checkouts use the machine's own Git credentials, not a hub token (awaiting the project owner's confirmation). The metrics screen has no per-creator auto-approval rate, the item list is not filtered by date, and SC-007 (500 items) is not measured. Only the Spec Kit preset requires release notes and a retrospective |
 
 ## 12. Glossary
