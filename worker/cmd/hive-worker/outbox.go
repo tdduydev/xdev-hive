@@ -248,7 +248,11 @@ func flushMachineOutbox(ctx context.Context, cfg config.Config) (outbox.FlushRes
 	if err := migrateScorePending(store, id, reportDir); err != nil {
 		return outbox.FlushResult{}, err
 	}
-	res, err := store.Flush(ctx, id, outbox.HubSender(optimizeHubHTTP(), cfg.HubURL, cfg.MachineToken))
+	bearer, err := hubBearer(ctx, &cfg)
+	if err != nil {
+		return outbox.FlushResult{}, err
+	}
+	res, err := store.Flush(ctx, id, outbox.HubSender(optimizeHubHTTP(), cfg.HubURL, bearer))
 	sent := false
 	for _, o := range res.Items {
 		if o.Kind == outbox.KindTokenScore && (o.State == outbox.StateAccepted || o.State == outbox.StateDuplicate) {

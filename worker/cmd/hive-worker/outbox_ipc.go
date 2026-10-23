@@ -133,7 +133,7 @@ func (s *outboxService) loop(every time.Duration) {
 }
 
 func (s *outboxService) tick() {
-	if s.cfg.HubURL != "" && s.cfg.MachineToken != "" {
+	if s.cfg.Registered() {
 		res, err := s.flushMachine(s.ctx, s.cfg)
 		s.observe(s.cfg.HubURL, res)
 		if err != nil && s.ctx.Err() == nil {

@@ -50,7 +50,7 @@ func newWorkerStatus(cfg config.Config, owner, dataDir string) *workerStatus {
 	return &workerStatus{
 		owner:      owner,
 		machineID:  cfg.MachineID,
-		registered: cfg.MachineID != "" && cfg.MachineToken != "",
+		registered: cfg.Registered(),
 		activeDir:  filepath.Join(dataDir, "xdev-hive", "worker", "active"),
 		state:      "starting",
 	}

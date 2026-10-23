@@ -15,6 +15,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 )
@@ -274,6 +275,138 @@ func TestRevokedCloseStops(t *testing.T) {
 		}
 	case <-time.After(waitFor):
 		t.Fatal("worker không dừng khi máy bị thu hồi")
+	}
+}
+
+// fakeTokens giả hubclient.TokenSource: fresh đổi sang token kế tiếp, fail là hub từ chối khoá máy.
+type fakeTokens struct {
+	mu   sync.Mutex
+	n    int
+	fail error
+	exp  time.Duration
+}
+
+func (f *fakeTokens) token(_ context.Context, fresh bool) (string, time.Time, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.n == 0 || fresh {
+		if f.fail != nil && f.n > 0 {
+			return "", time.Time{}, f.fail
+		}
+		f.n++
+	}
+	return "tok-" + string(rune('0'+f.n)), time.Now().Add(f.exp), nil
+}
+
+// Access token sắp hết hạn: worker xin token mới và gửi reauth trên kết nối đang mở, không nối lại.
+func TestReauthBeforeExpiry(t *testing.T) {
+	got := make(chan Reauth, 1)
+	var conns atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conns.Add(1)
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		receiveHello(t, conn)
+		exp := time.Now().Add(150 * time.Millisecond).UTC().Format(time.RFC3339Nano)
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30,"accessTokenExp":"`+exp+`"}`))
+		for {
+			_, data, err := conn.Read(r.Context())
+			if err != nil {
+				return
+			}
+			var m Reauth
+			if json.Unmarshal(data, &m) == nil && m.Type == "reauth" {
+				got <- m
+				<-r.Context().Done()
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	tokens := &fakeTokens{exp: time.Hour}
+	cfg := testConfig(t, srv.URL)
+	cfg.AccessToken, cfg.RefreshBefore = tokens.token, 100*time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = cfg.Run(ctx) }()
+	select {
+	case m := <-got:
+		if m.AccessToken != "tok-2" || m.V != 1 || m.ID == "" {
+			t.Fatalf("reauth = %+v", m)
+		}
+	case <-time.After(waitFor):
+		t.Fatal("không nhận reauth")
+	}
+	if n := conns.Load(); n != 1 {
+		t.Fatalf("worker nối %d lần, cần giữ kết nối", n)
+	}
+}
+
+// Hub đóng 4401 vì token hết hạn: còn đổi được token thì worker nối lại bằng token mới chứ không dừng.
+func TestExpiredTokenReconnects(t *testing.T) {
+	auths := make(chan string, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case auths <- r.Header.Get("Authorization"):
+		default:
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		// Không dùng receiveHello: worker còn nối lại sau khi test xong, t.Fatal lúc đó làm test hỏng.
+		if _, _, err := conn.Read(r.Context()); err != nil {
+			return
+		}
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))
+		_ = conn.Close(4401, "Access token hết hạn")
+	}))
+	defer srv.Close()
+	tokens := &fakeTokens{exp: time.Hour}
+	cfg := testConfig(t, srv.URL)
+	cfg.AccessToken = tokens.token
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = cfg.Run(ctx) }()
+	for _, want := range []string{"Bearer tok-1", "Bearer tok-2"} {
+		select {
+		case got := <-auths:
+			if got != want {
+				t.Fatalf("Authorization = %q, cần %q", got, want)
+			}
+		case <-time.After(waitFor):
+			t.Fatalf("không thấy kết nối với %s", want)
+		}
+	}
+}
+
+// Hub đóng 4401 và không đổi được token vì máy bị thu hồi: worker dừng như máy dùng machine token.
+func TestRevokedKeyStops(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		receiveHello(t, conn)
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))
+		_ = conn.Close(4401, "Máy đã bị thu hồi")
+	}))
+	defer srv.Close()
+	tokens := &fakeTokens{exp: time.Hour, fail: &hubclient.StatusError{Status: http.StatusUnauthorized, Message: "Máy đã bị thu hồi"}}
+	cfg := testConfig(t, srv.URL)
+	cfg.AccessToken = tokens.token
+	done := make(chan error, 1)
+	go func() { done <- cfg.Run(context.Background()) }()
+	select {
+	case err := <-done:
+		var rejected *RejectedError
+		if !errors.As(err, &rejected) || rejected.Code != 4401 {
+			t.Fatalf("error = %v, cần RejectedError 4401", err)
+		}
+	case <-time.After(waitFor):
+		t.Fatal("worker không dừng khi khoá máy bị từ chối")
 	}
 }
 
