@@ -192,7 +192,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test: SC-008 (10 bí mật ≤500 ms với backend giả có trễ); dự án không gán thì không ghi nhật ký.
 
   Sau T004, T006.
-- [ ] T013 [US2] A·nặng — Nối `Grant` vào runner.
+- [x] T013 [US2] A·nặng — Nối `Grant` vào runner.
   - `worker/internal/channel/channel.go`: `localProject` gắn `LocalID` vào job (trường mới `runner.Job.LocalID`); job
     sandbox hay runner-host để rỗng (FR-018).
   - `worker/internal/runner/hooks.go`: `JobPolicy.SecretInjection string json:"secretInjection,omitempty"`.
@@ -222,7 +222,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1–3.
 
-- [ ] T014 [US5] A·nặng — Bọc Sink và che mọi Event.
+- [x] T014 [US5] A·nặng — Bọc Sink và che mọi Event.
   - `worker/internal/runner/secrets.go`: `secretSink` bọc `Sink`, che `Data` log (dùng `secretmask.Writer` theo
     `Stream`), `Result.Error`, đuôi `Commands`, `Artifacts`, `Subagent.Description`, `Steer`, báo cáo agent.
   - Khi có che: `MarkLeaked` một lần mỗi tên, và log tại máy `secret masked: NAME`.
@@ -239,7 +239,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   của terminal phải xanh, thêm test base64 và JSON.
 
   Sau T005.
-- [ ] T016 [US5] A·vừa — FR-038, chặn commit và push có giá trị.
+- [x] T016 [US5] A·vừa — FR-038, chặn commit và push có giá trị.
   - File `worker/internal/runner/secrets.go` có hàm `scanDiffForSecrets(work, base, masker)`. Hàm quét
     `git diff --cached -z` và `git log -p <base>..HEAD`.
   - `runner.go` gọi hàm trước bước commit của worker và trước `gitRetryLocked(…"push"…)`.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
 )
 
 // CheckCommand là một lệnh kiểm của quy tắc `command` (spec 009, FR-017): hub gửi trong spec.checks.commands, worker
@@ -111,6 +112,7 @@ const redacted = "[đã che]"
 // redactSecrets che chuỗi giống bí mật và giá trị chính xác của env nhạy cảm của run (token chạy run không mang
 // dạng đặc trưng nào để regex bắt).
 func redactSecrets(s string, exact []string) string {
+	s, _ = secretmask.New(exact).String(s)
 	for _, v := range exact {
 		if len(v) >= 6 {
 			s = strings.ReplaceAll(s, v, redacted)
@@ -203,8 +205,8 @@ func (r Runner) runChecks(ctx context.Context, job Job, work string, log io.Writ
 	if len(checks) > maxChecks {
 		checks = checks[:maxChecks]
 	}
-	env := checkEnv(os.Environ(), job.Env)
-	exact := secretValues(job.Env)
+	env := mergeSecretEnv(checkEnv(os.Environ(), job.Env), job.grantedEnv)
+	exact := append(secretValues(job.Env), job.grantedValues...)
 	results := make([]CommandResult, 0, len(checks))
 	for i, c := range checks {
 		if strings.TrimSpace(c.Run) == "" {

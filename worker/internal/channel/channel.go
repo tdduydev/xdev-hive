@@ -214,6 +214,7 @@ func localProject(job runner.Job, s jobSpec, list []projects.Project) runner.Job
 	p := projects.Find(list, job.ProjectID)
 	if p != nil {
 		job.LocalRepo = p.Folder
+		job.LocalID = p.LocalID
 	}
 	job.RunPermissions = projects.Effective(p, job.RunPermissions, s.fullAllowed())
 	return job
