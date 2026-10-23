@@ -23,6 +23,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/pty"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
 
 // Mặc định của phiên tại máy.
@@ -51,6 +52,7 @@ var LocalCLIs = []string{"claude", "codex", "gemini"}
 //
 // Phiên được ghi lên hub qua Recorder (nil là không ghi, như runner host); Recorder tự thôi ghi trên máy dùng chung (D13).
 type Local struct {
+	WorkerConfig string
 	// Accounts chọn gói cho phiên; nil là đăng nhập mặc định của CLI.
 	Accounts *accounts.Pool
 	// Commands ghi đè lệnh của CLI (HIVE_WORKER_CLI_OVERRIDES, test); đối số của client nối sau Args.
@@ -392,6 +394,10 @@ func (l *Local) command(cli string, args []string) (*exec.Cmd, error) {
 }
 
 func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*localSession, error) {
+	granted, err := l.localSecrets(context.Background(), id, p)
+	if err != nil {
+		return nil, err
+	}
 	lease, err := l.Accounts.AcquireInteractiveForce(p.CLI, p.Account, p.Force)
 	if err != nil {
 		return nil, fmt.Errorf("Không dùng được gói %s cho phiên này: %w", p.CLI, err)
@@ -402,7 +408,17 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 		return nil, err
 	}
 	env, secrets := runner.LocalEnv(p.CLI, lease, map[string]string{"TERM": term})
-	cmd.Env = env
+	cmd.Env = secretstore.MergeEnv(env, granted.Env)
+	secrets = append(secrets, granted.Values...)
+	if p.CLI == "claude" {
+		policy := secretstore.PolicyAllow
+		if len(granted.Items) > 0 && granted.Outcome != secretstore.OutcomeGranted {
+			policy = secretstore.PolicyDeny
+		}
+		if block := secretstore.ContextBlock(policy, granted.Items); block != "" {
+			cmd.Args = append(cmd.Args, "--append-system-prompt", block)
+		}
+	}
 	cmd.Dir = p.Cwd
 	f, err := pty.Start(cmd, cols, rows)
 	if err != nil {

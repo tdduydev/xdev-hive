@@ -306,7 +306,7 @@ không chứa giá trị.
   - Test: script sinh ra không chứa giá trị; trích dẫn argv đúng trên sh và cmd.
 
   Viết theo contract, chạy song song với T019.
-- [ ] T021 [US3] A2·vừa — `worker/internal/terminal/local.go`: phiên `origin=local` (`hive chat`) có
+- [x] T021 [US3] A2·vừa — `worker/internal/terminal/local.go`: phiên `origin=local` (`hive chat`) có
   `CreateParams.ProjectID`, hoặc cwd khớp `FindFolder`, thì gọi `Grant` kind `terminal`.
   - Biến thêm vào `cmd.Env` sau `runner.LocalEnv`; giá trị thêm vào bộ che của `pump`.
   - Phiên `term_start` từ xa không nhận (research D6).

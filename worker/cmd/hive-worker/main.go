@@ -411,6 +411,7 @@ func run(args []string) int {
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
 	// newWorkerStatus còn nhận thư mục cache gốc, hai cấp trên DataDir.
 	status := newWorkerStatus(cfg, *owner, filepath.Dir(filepath.Dir(dataDir)))
+	terminal.SetLocalSecretsConfig(path)
 	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status)
 	defer stopLocal()
 	slots := *capacity
