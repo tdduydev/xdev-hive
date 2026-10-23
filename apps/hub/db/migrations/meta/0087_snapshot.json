@@ -1,5 +1,5 @@
 {
-  "id": "e9d56011-343f-43be-a7b7-f9b7aefd6a8f",
+  "id": "69ac96de-4127-4692-9769-cb6daeacb861",
   "prevId": "d6b28149-a16a-45a6-aa99-73f699197c24",
   "version": "7",
   "dialect": "postgresql",
@@ -12683,96 +12683,6 @@
       },
       "isRLSEnabled": true
     },
-    "hive.config_layer_entries": {
-      "name": "config_layer_entries",
-      "schema": "hive",
-      "columns": {
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "hive.ctx_org()"
-        },
-        "layer": {
-          "name": "layer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target_id": {
-          "name": "target_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "locked": {
-          "name": "locked",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "config_layer_entries_org_id_layer_target_id_key_pk": {
-          "name": "config_layer_entries_org_id_layer_target_id_key_pk",
-          "columns": ["org_id", "layer", "target_id", "key"]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {
-        "config_layer_entries_rw": {
-          "name": "config_layer_entries_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {
-        "config_layer_entries_layer": {
-          "name": "config_layer_entries_layer",
-          "value": "layer in ('org', 'project')"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "hive.approvals": {
       "name": "approvals",
       "schema": "hive",
@@ -17177,6 +17087,120 @@
         "sdlc_overrides_reason": {
           "name": "sdlc_overrides_reason",
           "value": "char_length(reason) >= 10"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.sdlc_qa_cases": {
+      "name": "sdlc_qa_cases",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "definition": {
+          "name": "definition",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "retired": {
+          "name": "retired",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "waived_by": {
+          "name": "waived_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "waiver_reason": {
+          "name": "waiver_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "waived_at": {
+          "name": "waived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sdlc_qa_cases_item_fk": {
+          "name": "sdlc_qa_cases_item_fk",
+          "tableFrom": "sdlc_qa_cases",
+          "tableTo": "sdlc_items",
+          "schemaTo": "hive",
+          "columnsFrom": ["item_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sdlc_qa_cases_item_code": {
+          "name": "sdlc_qa_cases_item_code",
+          "nullsNotDistinct": false,
+          "columns": ["item_id", "code"]
+        }
+      },
+      "policies": {
+        "sdlc_qa_cases_rw": {
+          "name": "sdlc_qa_cases_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "sdlc_qa_cases_waiver": {
+          "name": "sdlc_qa_cases_waiver",
+          "value": "(waived_by is null and waiver_reason is null and waived_at is null)\n    or (waived_by is not null and waiver_reason is not null and waived_at is not null)"
         }
       },
       "isRLSEnabled": true

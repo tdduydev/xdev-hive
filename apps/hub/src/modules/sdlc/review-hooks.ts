@@ -6,6 +6,7 @@ import { loadTask, type TaskRow } from "../tasks/index.ts";
 import { autoDecide } from "./autoapprove.ts";
 import { breakdownRuleInput } from "./breakdown.ts";
 import { onBaseline, type SdlcDeps, workflowFor } from "./phases.ts";
+import { qaState } from "./qa.ts";
 import { sdlcArtifacts, sdlcItems, sdlcItemTasks, sdlcQuestions } from "./schema.ts";
 import { queueAuthorFix } from "./steps.ts";
 
@@ -38,7 +39,14 @@ export async function ruleContext(tx: Tx, docKey: string): Promise<RuleContextEx
         eq(sdlcQuestions.status, "open"),
       ),
     );
-  return { openQuestions: open?.n ?? 0, breakdown: await breakdownRuleInput(tx, item, artifact) };
+  const qa = item.mode.phases
+    .find((p) => p.id === artifact.phaseId)
+    ?.gate.some((p) => p.gates.some((g) => g.rules?.includes("qa-tests")));
+  return {
+    openQuestions: open?.n ?? 0,
+    breakdown: await breakdownRuleInput(tx, item, artifact),
+    ...(qa ? { qaChecks: (await qaState(tx, item.id)).checks } : {}),
+  };
 }
 
 /**
