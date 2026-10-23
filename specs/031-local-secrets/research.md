@@ -50,7 +50,8 @@ kiểm trên máy thật; task T001 (Setup) kiểm các điểm này trước kh
 
 - **Quyết định**:
   - Mỗi bí mật lưu thành một hay nhiều mục trong dịch vụ `dev.xdev.hive.secrets`.
-  - Tên tài khoản của mục đầu là `<NAME>`. Giá trị là `v1:<n>:<base64 khối 0>`, trong đó `n` là số khối.
+  - Tên tài khoản của mục đầu là `<NAME>`. Giá trị là `v1:<n>:<gen>:<base64 khối 0>`, trong đó `n` là số khối và
+    `gen` là mã ngẫu nhiên của lần ghi (data-model §1).
   - Các khối sau là `<NAME>#1` … `<NAME>#n-1`. Mỗi khối chứa tối đa 1800 byte giá trị gốc trước base64.
   - Ghi theo thứ tự: khối cuối trước, khối đầu sau cùng. Vì vậy mục đầu chỉ trỏ tới khối đã ghi xong.
   - Xoá khối thừa khi giá trị ngắn đi.
@@ -303,9 +304,9 @@ Chương trình thử tạm ngoài repo, dịch vụ riêng `dev.xdev.hive.secre
 
 Kết luận cho D2:
 
-- Khối 1800 byte giá trị gốc → base64 2400 ký tự, cộng tiền tố `v1:5:` → mục đầu 2405 byte ≤ 2560. **Giữ thiết kế**:
-  khối 1800 byte, tối đa 5 khối cho 8 KiB.
-- Khối lớn nhất về lý thuyết là 1914 byte (2552 + 5 = 2557). 1800 chừa biên cho tiền tố.
+- Khối 1800 byte giá trị gốc → base64 2400 ký tự, cộng tiền tố `v1:5:<gen 8 hex>:` → mục đầu 2414 byte ≤ 2560. **Giữ
+  thiết kế**: khối 1800 byte, tối đa 5 khối cho 8 KiB.
+- Khối lớn nhất về lý thuyết là 1905 byte (2540 + 14 = 2554). 1800 chừa biên cho tiền tố.
 
 ### macOS — chưa kiểm
 
@@ -313,7 +314,7 @@ Người điều phối kiểm sau trên máy Mac. Đọc mã `go-keyring v0.2.8
 
 - `Set` mã hoá giá trị lần nữa bằng base64 (tiền tố `go-keyring-base64:`), rồi gửi một dòng
   `add-generic-password -U -s … -a … -w …` vào stdin của `security -i`. Dòng dài hơn 4096 byte → `ErrSetDataTooBig`.
-- Mục đầu 2405 byte → base64 3208 ký tự + 18 tiền tố + ~80 phần còn lại ≈ 3310 byte < 4096. **[Inference]** khối 1800
+- Mục đầu 2414 byte → base64 3220 ký tự + 18 tiền tố + ~80 phần còn lại ≈ 3310 byte < 4096. **[Inference]** khối 1800
   byte vừa trên macOS; còn chờ kiểm thật.
 - Các điểm khác của T001 (keychain khoá có bật hộp thoại không, clipboard, cờ của codex/gemini, Linux không có Secret
   Service) chưa kiểm.

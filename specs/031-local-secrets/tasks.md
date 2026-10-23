@@ -81,7 +81,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 ## Phase 2: Foundational (chặn mọi user story)
 
-- [ ] T003 A·nặng — Gói `worker/internal/secretstore`, phần tên và kho:
+- [x] T003 A·nặng — Gói `worker/internal/secretstore`, phần tên và kho:
   - `names.go`: `ValidName`, `Reserved`, `ValidValue`, theo FR-003 và FR-005 ("dài 8 ký tự đến 8 KiB, không chứa byte
     NUL, và có thể chứa xuống dòng"). Test đọc `packages/contracts/fixtures/local-secrets.json`.
   - `keyring.go`: interface `backend{Get,Set,Delete}` bọc `go-keyring`; dịch vụ `dev.xdev.hive.secrets`; chia khối
