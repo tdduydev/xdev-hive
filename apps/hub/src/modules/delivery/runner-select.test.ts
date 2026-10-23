@@ -7,7 +7,7 @@ const machine = (id: string, over: Partial<RunnerCandidate> = {}): RunnerCandida
   orgId: ORG,
   online: true,
   labels: [DEPLOY_RUNNER_LABEL],
-  methods: ["argocd", "kubectl"],
+  methods: ["argocd", "jenkins-job"],
   credentials: ["argo-prod"],
   ...over,
 });
@@ -32,7 +32,7 @@ describe("selectRunner", () => {
 
   it("skips machines without the method, the label or the credential", () => {
     const list = [
-      machine("m1", { methods: ["kubectl"] }),
+      machine("m1", { methods: ["jenkins-job"] }),
       machine("m2", { labels: [] }),
       machine("m3", { credentials: [] }),
       machine("m4"),
