@@ -192,6 +192,7 @@ const vi = {
       "release-notes": "Ghi chú phát hành",
       retro: "Rút kinh nghiệm",
       archive: "Lưu trữ",
+      "test-run": "Chạy bộ test tại máy",
     } satisfies Record<SdlcStepAction, string>,
     stepStatus: {
       queued: "Chờ máy",
@@ -701,6 +702,7 @@ const en: SdlcText = {
       "release-notes": "Release notes",
       retro: "Retrospective",
       archive: "Archive",
+      "test-run": "Run tests locally",
     },
     stepStatus: {
       queued: "Waiting for a machine",

@@ -7,6 +7,7 @@ import { bmadQuick } from "./bmad-quick.ts";
 import { bugfix } from "./bugfix.ts";
 import { kiroBugfix, kiroDesign, kiroRequirements } from "./kiro.ts";
 import { openspec } from "./openspec.ts";
+import { qaAutomation } from "./qa-automation.ts";
 import { small } from "./small.ts";
 import { speckit } from "./speckit.ts";
 
@@ -24,6 +25,7 @@ export const SDLC_PRESET_IDS = [
   "kiro-design",
   "kiro-bugfix",
   "openspec",
+  "qa-automation",
 ] as const;
 export type SdlcPresetId = (typeof SDLC_PRESET_IDS)[number];
 
@@ -41,6 +43,7 @@ export const SDLC_PRESETS: Readonly<Record<SdlcPresetId, SdlcMode>> = {
   "kiro-design": kiroDesign,
   "kiro-bugfix": kiroBugfix,
   openspec,
+  "qa-automation": qaAutomation,
 };
 
 export const isSdlcPresetId = (ref: string): ref is SdlcPresetId =>

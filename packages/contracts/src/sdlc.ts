@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
+import { machineLabel } from "./fleet.ts";
 import { DOC_MAX_CHARS, docKey } from "./knowledge.ts";
 import { projectKey, projectSdlcSettings, sdlcBlocking } from "./projects.ts";
+import { qaContract, qaTestReport } from "./qa.ts";
 import { runState } from "./runs.ts";
 import { taskChecklistItem, taskStatus } from "./tasks.ts";
 import { cli } from "./worker-protocol.ts";
@@ -37,7 +39,17 @@ export type SdlcSize = z.output<typeof sdlcSize>;
 /** Cỡ "nặng" (D26): giai đoạn yêu cầu của chế độ hoặc hạng mục cỡ này luôn cần người duyệt. */
 export const SDLC_HEAVY_SIZES: readonly SdlcSize[] = ["L", "XL"];
 
-export const sdlcStepAction = z.enum(["size", "draft", "analyze", "converge", "release-notes", "retro", "archive"]);
+/** `test-run` (specs/035): chạy bộ test trên máy có nhãn của bước, gửi `sdlc_report` loại `test-results`. */
+export const sdlcStepAction = z.enum([
+  "size",
+  "draft",
+  "analyze",
+  "converge",
+  "release-notes",
+  "retro",
+  "archive",
+  "test-run",
+]);
 export type SdlcStepAction = z.output<typeof sdlcStepAction>;
 
 export const breakdownParser = z.enum([
@@ -236,6 +248,11 @@ export const sdlcStep = z.object({
   prompt: z.string().min(1).max(20_000),
   maxQuestions: z.number().int().min(0).max(5).default(5),
   autoSubmit: z.boolean().default(false),
+  /**
+   * Nhãn máy thêm vào nhãn của dự án khi chọn máy cho bước (specs/035): bước `test-run` cần máy có trình duyệt và vào
+   * được môi trường test, còn bước viết tài liệu thì máy nào cũng được.
+   */
+  labels: z.array(machineLabel).max(10).default([]),
 });
 export type SdlcStep = z.output<typeof sdlcStep>;
 
@@ -1028,6 +1045,7 @@ const itemPage = z.object({ items: z.array(sdlcItemSummary), nextCursor: z.strin
 const okOutput = z.object({ ok: z.literal(true) });
 
 export const sdlcContract = {
+  qa: qaContract,
   modes: {
     list: orgRoute("GET", "/v1/sdlc/modes", "Preset và chế độ AI SDLC tự tạo trong phạm vi", "sdlc")
       .input(z.object({ teamId: id.optional() }))
@@ -1267,5 +1285,7 @@ export const sdlcReportInput = z.discriminatedUnion("kind", [
         .max(20),
     }),
   }),
+  /** Kết quả bộ test của bước `test-run` (specs/035), đã tóm tắt ở máy bằng `hive test-summary`. */
+  z.object({ kind: z.literal("test-results"), data: qaTestReport }),
 ]);
 export type SdlcReportInput = z.output<typeof sdlcReportInput>;

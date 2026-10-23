@@ -3,6 +3,7 @@ import {
   type ChecklistItem,
   coverage,
   parseBreakdown,
+  parseTestCaseTable,
   type ReviewGate,
   type ReviewPhase,
   reviewGate,
@@ -79,6 +80,7 @@ export interface GateContext {
   /** Số câu hỏi mở của hạng mục (bảng của `sdlc`); không có khi tài liệu không thuộc hạng mục. */
   openQuestions?: number | undefined;
   breakdown?: BreakdownRuleInput | undefined;
+  qaChecks?: { code: string; passed: boolean; note: string }[] | undefined;
 }
 
 /** Gate có chạy với đề xuất này không, kèm lý do để hiện ở bản chạy thử và ở phiên duyệt. */
@@ -292,6 +294,18 @@ export function ruleChecklist(gate: ReviewGate, ctx: GateContext): ChecklistItem
         out.push({ label: `Có mục “${s}”`, passed: ok, note: ok ? null : "Thiếu mục này." });
       }
       if (!gate.sections?.length) out.push({ label: "Có mục bắt buộc", passed: true, note: "Chưa khai mục nào." });
+    } else if (rule === "qa-cases") {
+      const parsed = parseTestCaseTable(ctx.content);
+      out.push({
+        label: "TC có cấu trúc và liên kết FR/AC",
+        passed: parsed.ok,
+        note: parsed.ok ? null : parsed.errors.map((e) => `Dòng ${e.line}: ${e.message}`).join(" "),
+      });
+    } else if (rule === "qa-tests") {
+      const checks = ctx.qaChecks?.length
+        ? ctx.qaChecks
+        : [{ code: "QA", passed: false, note: "Thiếu dữ liệu cổng QA." }];
+      out.push(...checks.map((c) => ({ label: `${c.code} đạt hoặc được miễn`, passed: c.passed, note: c.note })));
     } else if (rule === "requirements") {
       const reqs = requirementsOf(ctx.content);
       if (!reqs.length) out.push({ label: "Có yêu cầu đánh mã R-n", passed: false, note: "Không thấy R-1, R-2…" });

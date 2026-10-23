@@ -1,6 +1,6 @@
 # 0027. Extension VS Code
 
-- Status: Accepted
+- Status: Withdrawn (2026-10-23: chủ dự án bỏ extension VS Code; `apps/vscode` và spec 017 đã xoá, còn trong lịch sử Git)
 - Date: 2026-10-15
 - Deciders: product owner (tdduydev), maintainers
 

@@ -312,7 +312,7 @@ fn notify(app: &AppHandle, body: &str) {
 
 /// Tham số chạy worker làm sidecar. `--stdin-control` cũng tắt tự cập nhật của worker: app cập nhật cả gói (kèm
 /// sidecar) qua updater, worker không được tự thay binary nằm trong gói đã ký.
-/// `--owner desktop` để extension VS Code đọc `worker.status` biết worker này của app, không tự chạy worker thứ hai.
+/// `--owner desktop` để client khác đọc `worker.status` biết worker này của app, không tự chạy worker thứ hai.
 const SIDECAR_RUN_ARGS: [&str; 5] = [
     "run",
     "--status-json",
