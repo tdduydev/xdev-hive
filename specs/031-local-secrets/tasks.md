@@ -378,7 +378,7 @@ không chứa giá trị.
     - `policy_snapshot` có trường.
 
   Sau T026.
-- [ ] T028 [US7] A·nặng — Chính sách và duyệt ở worker.
+- [x] T028 [US7] A·nặng — Chính sách và duyệt ở worker.
   - File mới `worker/internal/secretstore/policy.go` (`secrets-policy.json` theo hub) và `approvals.go`
     (`secret-approvals/<id>.json`, hạn 120 giây, dọn file quá hạn).
   - `grant.go`:

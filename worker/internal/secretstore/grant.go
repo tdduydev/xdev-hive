@@ -46,19 +46,23 @@ type GrantRequest struct {
 	SessionID    string
 	// LocalID rỗng (job sandbox, runner-host, thư mục không thuộc dự án nào) thì không cấp gì (FR-018).
 	LocalID string
-	// Policy rỗng là allow. approve và deny thêm ở T028.
-	Policy string
+	// Run dùng snapshot; terminal đọc chính sách tổ chức đã nhớ khi Policy rỗng.
+	Policy  string
+	HubURL  string
+	Approve func(context.Context, ApprovalRequest) (bool, error)
 	// Store nil là kho của hệ điều hành.
 	Store *Store
 }
 
 // Granted là kết quả cấp. Values cùng thứ tự với Names, để đưa vào secretmask.New và đổi chỉ số bị che thành tên.
 type Granted struct {
-	Items  []Secret
-	ID     string
-	Env    map[string]string
-	Names  []string
-	Values []string
+	Policy  string
+	Outcome string
+	Items   []Secret
+	ID      string
+	Env     map[string]string
+	Names   []string
+	Values  []string
 }
 
 // Grant đọc mọi bí mật gán cho dự án trong một lần và ghi một dòng nhật ký. Dự án không có gán thì trả rỗng, không ghi
@@ -84,9 +88,12 @@ func Grant(ctx context.Context, req GrantRequest) (Granted, error) {
 	policy := req.Policy
 	if policy == "" {
 		policy = PolicyAllow
+		if req.Kind == KindTerminal {
+			policy = TerminalPolicy(req.WorkerConfig, req.LocalID, req.HubURL)
+		}
 	}
-	if policy != PolicyAllow {
-		return Granted{}, fmt.Errorf("chưa hỗ trợ chính sách bí mật %q", policy)
+	if !validPolicy(policy) {
+		policy = PolicyDeny
 	}
 	store := req.Store
 	if store == nil {
@@ -100,7 +107,37 @@ func Grant(ctx context.Context, req GrantRequest) (Granted, error) {
 		Names:       names,
 		Policy:      policy,
 	}
-	values, err := readAll(ctx, store, names)
+	var items []Secret
+	for _, name := range names {
+		if item := cat.Find(name); item != nil {
+			items = append(items, *item)
+		}
+	}
+	withheld := func(outcome string) (Granted, error) {
+		record.Outcome = outcome
+		id, _ := Append(GrantsPath(req.WorkerConfig), record)
+		return Granted{ID: id, Items: items, Policy: policy, Outcome: outcome}, nil
+	}
+	if policy == PolicyDeny {
+		return withheld(OutcomeDenied)
+	}
+	if policy == PolicyApprove {
+		if req.Approve == nil {
+			return withheld(OutcomeDeclined)
+		}
+		approvalCtx, cancel := context.WithTimeout(ctx, ApprovalTTL)
+		defer cancel()
+		allow, err := req.Approve(approvalCtx, ApprovalRequest{RunID: strings.SplitN(req.SessionID, "#", 2)[0], Project: req.LocalID, ProjectName: record.ProjectName, Names: slices.Clone(names), ExpiresAt: time.Now().Add(ApprovalTTL)})
+		if err != nil || approvalCtx.Err() != nil {
+			return withheld(OutcomeTimeout)
+		}
+		if !allow {
+			return withheld(OutcomeDeclined)
+		}
+	}
+	readCtx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+	values, err := readAll(readCtx, store, names)
 	if err == nil {
 		err = checkEnvSize(names, values)
 	}
@@ -119,13 +156,7 @@ func Grant(ctx context.Context, req GrantRequest) (Granted, error) {
 	for i, n := range names {
 		env[n] = values[i]
 	}
-	var items []Secret
-	for _, name := range names {
-		if item := cat.Find(name); item != nil {
-			items = append(items, *item)
-		}
-	}
-	return Granted{ID: id, Env: env, Names: names, Values: values, Items: items}, nil
+	return Granted{ID: id, Env: env, Names: names, Values: values, Items: items, Policy: policy, Outcome: OutcomeGranted}, nil
 }
 
 func projectName(workerConfig, localID string) string {
@@ -160,6 +191,9 @@ func readAll(ctx context.Context, store *Store, names []string) ([]string, error
 
 // readOne bỏ lại goroutine đọc khi hết giờ: go-keyring không nhận context. Giá trị nó đọc được sau đó bị bỏ.
 func readOne(ctx context.Context, store *Store, name string) (string, error) {
+	if ctx.Err() != nil {
+		return "", locked(name)
+	}
 	type result struct {
 		v   string
 		err error
