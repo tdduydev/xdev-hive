@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -109,6 +110,10 @@ func TestGitEnvDropsSecretsAndScopesAskpass(t *testing.T) {
 	}
 	if got := (Git{Token: "glpat-z"}).redact("fatal: https://oauth2:glpat-z@h/x"); strings.Contains(got, "glpat-z") {
 		t.Errorf("redact = %q", got)
+	}
+	// Token git theo run: hub đã nói tên đăng nhập, không đoán theo Kind.
+	if env := (Git{Askpass: "/x", Kind: KindGitLab, Token: "ghs-z", User: "x-access-token"}).env("github.com"); !slices.Contains(env, askpassUserEnv+"=x-access-token") {
+		t.Errorf("env không dùng User: %v", env)
 	}
 }
 

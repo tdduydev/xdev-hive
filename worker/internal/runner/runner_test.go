@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/gitexec"
 )
 
 func TestRunnerPublishesAndNoChanges(t *testing.T) {
@@ -253,6 +255,10 @@ func TestReapOrphans(t *testing.T) {
 
 // TestMain cho phép chính binary test đóng vai CLI claude giả (copy thành claude/claude.exe vào PATH): Windows không chạy được shell script.
 func TestMain(m *testing.M) {
+	// Chính binary test làm GIT_ASKPASS cho token git theo run, như hive-worker trong main.go.
+	if os.Getenv(gitexec.AskpassEnv) == "1" {
+		os.Exit(gitexec.Askpass(os.Args[1:], os.Stdout))
+	}
 	if capture := os.Getenv("HIVE_FAKE_AGY"); capture != "" {
 		fakeAgy(capture)
 	}
@@ -352,6 +358,10 @@ func TestFakeCLIHelper(t *testing.T) {
 			_, _ = os.Stderr.Write(chunk)
 		}
 		os.Exit(0)
+	}
+	// Ghi môi trường CLI nhận được, để test kiểm token git theo run không lọt sang agent.
+	if p := os.Getenv("HIVE_FAKE_ENV_DUMP"); p != "" {
+		_ = os.WriteFile(p, []byte(strings.Join(os.Environ(), "\n")), 0600)
 	}
 	if os.Getenv("HIVE_FAKE_MODE") == "commit" {
 		_ = os.WriteFile("change.txt", []byte("change"), 0600)

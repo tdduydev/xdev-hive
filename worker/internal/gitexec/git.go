@@ -25,9 +25,11 @@ const (
 // Git chạy git của máy cho một kết nối. Token chỉ đi qua askpass, không nằm trong URL, tham số hay cấu hình repo.
 type Git struct {
 	// Askpass là đường dẫn chính hive-worker; rỗng thì git không hỏi được mật khẩu (repo công khai, SSH).
-	Askpass           string
-	Kind              string
-	Token             string
+	Askpass string
+	Kind    string
+	Token   string
+	// User là tên đăng nhập đi với Token khi bên cấp token đã nói rõ (token git theo run của hub); rỗng thì theo Kind.
+	User              string
 	UseGitCredentials bool
 	// MachineCredentials: git dùng credential helper, khoá SSH của máy như người dùng tự gõ (quản lý nhánh, spec 026).
 	// Khác UseGitCredentials ở chỗ lệnh tại máy vẫn trả dòng lỗi của git, vì chỉ lệnh mạng mới gọi tới helper.
@@ -67,10 +69,14 @@ func (g Git) env(host string) []string {
 	// GIT_OPTIONAL_LOCKS=0: đọc trạng thái không giữ khoá index, khỏi tranh với IDE đang mở repo.
 	out = append(out, "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "LC_ALL=C", "GIT_OPTIONAL_LOCKS=0")
 	if !g.machine() && g.Askpass != "" && g.Token != "" && host != "" {
+		user := g.User
+		if user == "" {
+			user = tokenUser(g.Kind)
+		}
 		out = append(out,
 			"GIT_ASKPASS="+g.Askpass,
 			AskpassEnv+"=1",
-			askpassUserEnv+"="+tokenUser(g.Kind),
+			askpassUserEnv+"="+user,
 			askpassTokenEnv+"="+g.Token,
 			askpassHostEnv+"="+host,
 		)
@@ -109,14 +115,21 @@ func authFailed(stderr string) bool {
 
 func (e *GitError) Error() string { return e.Msg }
 
-// Run chạy git trong dir (rỗng là thư mục hiện tại), trả stdout. Huỷ ctx thì git nhận Interrupt để tự dọn (clone dở
-// tự xoá thư mục), quá 10 giây mới bị giết. Hết Timeout cũng dừng git theo cách đó.
-func (g Git) Run(ctx context.Context, dir, host string, args ...string) (string, error) {
+// Prepare trả tham số và môi trường của một lệnh git như Run dựng, cho bên tự chạy tiến trình git (runner cần khoá repo
+// cache và thử lại khi gặp file .lock).
+func (g Git) Prepare(host string, args ...string) ([]string, []string) {
 	// credential.helper rỗng: không đọc credential đã lưu của người dùng và không ghi token của app vào đó.
 	full := append([]string{"-c", "credential.helper=", "-c", "core.askPass="}, args...)
 	if g.machine() {
 		full = append([]string{"-c", "core.askPass="}, args...)
 	}
+	return full, g.env(host)
+}
+
+// Run chạy git trong dir (rỗng là thư mục hiện tại), trả stdout. Huỷ ctx thì git nhận Interrupt để tự dọn (clone dở
+// tự xoá thư mục), quá 10 giây mới bị giết. Hết Timeout cũng dừng git theo cách đó.
+func (g Git) Run(ctx context.Context, dir, host string, args ...string) (string, error) {
+	full, env := g.Prepare(host, args...)
 	runCtx := ctx
 	if g.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -125,7 +138,7 @@ func (g Git) Run(ctx context.Context, dir, host string, args ...string) (string,
 	}
 	cmd := procattr.CommandContext(runCtx, "git", full...)
 	cmd.Dir = dir
-	cmd.Env = g.env(host)
+	cmd.Env = env
 	interruptGroup(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	var stdout, stderr bytes.Buffer
