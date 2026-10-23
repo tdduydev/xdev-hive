@@ -30,7 +30,7 @@ beforeAll(async () => {
   await admin.query(
     `insert into auth."user" (id, name, email) select id, id, id || '@seed.test' from unnest($1::text[]) as id
      on conflict (id) do nothing`,
-    [[user("admin"), user("member")]],
+    [[user("admin"), user("member"), user("member2")]],
   );
   await admin.query("insert into hive.orgs (id, slug, name, created_by) values ($1, $2, 'A', $3)", [
     orgA,
@@ -38,8 +38,8 @@ beforeAll(async () => {
     user("admin"),
   ]);
   await admin.query(
-    "insert into hive.org_members (org_id, user_id, role) values ($1, $2, 'member'), ($1, $3, 'member')",
-    [orgA, user("admin"), user("member")],
+    "insert into hive.org_members (org_id, user_id, role) values ($1, $2, 'member'), ($1, $3, 'member'), ($1, $4, 'member')",
+    [orgA, user("admin"), user("member"), user("member2")],
   );
   const team = async (slug: string) =>
     (await admin.query("insert into hive.teams (org_id, slug, name) values ($1, $2, $2) returning id", [orgA, slug]))
@@ -48,8 +48,8 @@ beforeAll(async () => {
   teamA2 = await team("ta2");
   await admin.query(
     `insert into hive.team_members (team_id, org_id, user_id, role) values
-       ($1, $3, $4, 'admin'), ($2, $3, $4, 'admin'), ($1, $3, $5, 'member')`,
-    [teamA, teamA2, orgA, user("admin"), user("member")],
+       ($1, $3, $4, 'admin'), ($2, $3, $4, 'admin'), ($1, $3, $5, 'member'), ($1, $3, $6, 'member')`,
+    [teamA, teamA2, orgA, user("admin"), user("member"), user("member2")],
   );
 });
 
@@ -176,6 +176,46 @@ describe("đăng ký máy", () => {
     expect(b.id).toBe(a.id);
     expect(await authenticateMachine(app, a.machineToken)).toBeNull();
     expect(await authenticateMachine(app, b.machineToken)).not.toBeNull();
+  });
+
+  it("cài lại máy cá nhân: chỉ chủ máy hoặc admin đội, chủ máy giữ nguyên, audit ghi chủ cũ", async () => {
+    // Vai trò tuỳ chỉnh `machines.register` cho thành viên thường tạo được mã; seed thẳng để không phải dựng vai trò.
+    const codeBy = async (userId: string) => {
+      const token = `hwr_${randomUUID()}${randomUUID()}`;
+      await admin.query(
+        `insert into hive.registration_tokens (org_id, team_id, token_hash, expires_at, created_by)
+         values ($1, $2, $3, now() + interval '1 hour', $4)`,
+        [orgA, teamA, hashToken(token), userId],
+      );
+      return token;
+    };
+    const name = `ca-nhan-${tag}`;
+    const owned = await register(await codeBy(user("member")), name);
+    const owner = async () =>
+      (await admin.query("select registered_by from hive.machines where id = $1", [owned.id])).rows[0].registered_by;
+    expect(await owner()).toBe(user("member"));
+
+    const stranger = await codeBy(user("member2"));
+    expect(await fleetCode(() => register(stranger, name))).toBe("MACHINE_NAME_TAKEN");
+    expect(await authenticateMachine(app, owned.machineToken)).not.toBeNull();
+    // Mã chưa bị tiêu: dùng được cho tên khác.
+    await expect(register(stranger, `ca-nhan-khac-${tag}`)).resolves.toMatchObject({ teamId: teamA });
+
+    const byAdmin = await register(await codeBy(user("admin")), name);
+    expect(byAdmin.id).toBe(owned.id);
+    expect(await owner()).toBe(user("member"));
+    const { rows } = await admin.query(
+      `select data from hive.audit_log where action = 'machine.register' and target_id = $1
+       order by created_at desc limit 1`,
+      [owned.id],
+    );
+    expect(rows[0]?.data).toMatchObject({
+      reinstalled: true,
+      previousOwner: user("member"),
+      reinstalledBy: user("admin"),
+    });
+
+    await expect(register(await codeBy(user("member")), name)).resolves.toMatchObject({ id: owned.id });
   });
 });
 
