@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -16,6 +15,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
@@ -238,7 +238,7 @@ func scanDiffForSecrets(ctx context.Context, work, base string, masker *secretma
 	var hits []int
 	scan := func(args ...string) error {
 		w := masker.Writer(io.Discard)
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := procattr.CommandContext(ctx, "git", args...)
 		cmd.Dir = work
 		cmd.Stdout = w
 		cmd.Stderr = io.Discard
@@ -259,7 +259,7 @@ func scanDiffForSecrets(ctx context.Context, work, base string, masker *secretma
 	}
 	ids := map[string]bool{}
 	output := func(args ...string) (string, error) {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := procattr.CommandContext(ctx, "git", args...)
 		cmd.Dir = work
 		b, err := cmd.Output()
 		if err != nil {

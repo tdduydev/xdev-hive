@@ -13,6 +13,8 @@ import (
 	"sync"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 type darwinKeyring struct {
@@ -40,7 +42,7 @@ func (k *darwinKeyring) checkSession() error {
 		ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 		defer cancel()
 		// launchctl chỉ kiểm namespace GUI, không gọi API keychain khi worker không có phiên người dùng.
-		if exec.CommandContext(ctx, "/bin/launchctl", "print", "gui/"+strconv.Itoa(os.Getuid())).Run() != nil {
+		if procattr.CommandContext(ctx, "/bin/launchctl", "print", "gui/"+strconv.Itoa(os.Getuid())).Run() != nil {
 			k.ready = locked()
 		}
 	})
@@ -56,7 +58,7 @@ func (k *darwinKeyring) command(input string, args ...string) (string, error) {
 	if ctx.Err() != nil {
 		return "", locked()
 	}
-	cmd := exec.CommandContext(ctx, "/usr/bin/security", args...)
+	cmd := procattr.CommandContext(ctx, "/usr/bin/security", args...)
 	cmd.Stderr = io.Discard
 	if input != "" {
 		cmd.Stdin = strings.NewReader(input)

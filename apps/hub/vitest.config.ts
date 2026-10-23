@@ -8,6 +8,8 @@ const isolatedDbTests = [
   "src/modules/audit/retention.db.test.ts",
   "src/modules/knowledge/vector.db.test.ts",
   "src/modules/codereview/queries.db.test.ts",
+  // Đo CPU của luồng hub (SC-008 specs/010): file khác chạy song song làm số đo sai.
+  "src/terminal-perf.db.test.ts",
 ];
 
 export default defineConfig({

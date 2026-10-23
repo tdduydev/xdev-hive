@@ -110,6 +110,12 @@ Every table in schema `hive` carries `org_id`, has row-level security enabled an
 | sdlc | `sdlc_overrides`, `sdlc_auto_approvals` | Gate overrides with a reason; AI auto-approvals with score and revoke deadline |
 | audit | `audit_log` | `actor_user_id`, `action`, `target_type`, `target_id`, `data`; append-only for `hive_app`; expired rows removed only by `hive.purge_expired_audit_log()` |
 | audit | `audit_settings` | One per organization: `retention_days` (90–3650, default 365 when absent); no DELETE for `hive_app` |
+| terminal | `terminal_sessions` | `origin` (`hub` Terminal Leader, `local` from `hive chat`, `remote` started from the phone), `visibility` (`private`, `team`), machine, owner, CLI, account and folder labels only (no absolute paths), `remote`, `next_seq`, `exit_code`, `end_reason`, `ended_at` |
+| terminal | `terminal_chunks` | Unique `(session_id, seq)`; masked output as `bytea`; removed by `hive.purge_terminal_chunks()` in the `runs-log-retention` job |
+| terminal | `terminal_events` | Session events: `kind` (`controller`, `resize`, `gap`, `input_rejected`, …), `seq`, actor user and device |
+| terminal | `remote_devices` | Paired devices as reported by the machine (`term_state`): `user_id`, `label`, `synced`, `revoked_at`; the passkey public key stays on the machine |
+| terminal | `machine_remote_state` | Last `term_state` of each machine: `enabled`, root labels, CLIs, accounts, `totp_enabled`, `totp_locked_until`, `confirm_on_machine` |
+| terminal | `push_subscriptions` | Reserved for Web Push; unused (out of scope since 2026-10-23) |
 
 Identity tables live in schema `auth` and are owned by Better Auth (`user`, `session`, `account`, `verification`,
 `ssoProvider`, `jwks`, `oauth*`).
@@ -142,6 +148,8 @@ The permission noted in each operation's summary is enforced in the hub module.
 | Reviews | `GET/POST /review-workflows`, `POST /review-workflows/remove`, `POST /review-workflows/dry-run`, `GET /reviews`, `GET /reviews/item`, `POST /reviews/decide` |
 | Code reviews | `codeReviews.list/count/get/files/decide/override/enqueue/recheck/dryRun/workflowFromProject`; registered in the application router |
 | Policies | `GET/POST /policies`, `POST /policies/templates/preview`, `POST /policies/templates/sync` |
+| Terminal Leader | `GET /terminal/options`, `POST/GET /terminal/sessions`, `GET /terminal/sessions/{id}`, `POST /terminal/sessions/{id}/close`, `POST /terminal/sessions/{id}/visibility`, `POST /terminal/sessions/{id}/ticket`, `GET /terminal/sessions/{id}/chunks`, `GET /terminal/sessions/{id}/activity` |
+| Remote sessions | `GET /remote/machines`, `POST/GET /remote/sessions`, `GET /remote/sessions/{id}`, `GET /remote/sessions/{id}/chunks`, `POST /remote/sessions/{id}/ticket`, `POST /remote/sessions/{id}/close`, `POST /remote/sessions/{id}/visibility`, `POST /remote/machines/{machineId}/disable`, `POST /remote/machines/{machineId}/pair/options`, `POST /remote/machines/{machineId}/pair`, `GET /remote/machines/{machineId}/devices`, `POST /remote/machines/{machineId}/devices/{deviceId}/revoke`. There is no route to turn remote control on or add a device without the machine. `remote.pushKey`, `pushSubscribe` and `pushUnsubscribe` are in the contract but not served by the hub |
 
 Errors carry an oRPC code (`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `BAD_REQUEST`) and a stable
 `data.code` such as `TEAM_ROLE_REQUIRED` or `MACHINE_OFFLINE`; messages are Vietnamese.
@@ -167,6 +175,15 @@ WebSocket `/ws/worker`, authenticated with `Authorization: Bearer <machine token
 | W → H | `run_result` | Exit code, head SHA, report |
 | H → W | `update` | Finish current runs, then self-update (optional `version`) |
 | H → W | `upgrade_required`, `drain`, `approval_result` | Defined but not sent by the hub |
+| H → W | `term_open`, `term_close` | Open a Terminal Leader session on a shared machine; end any session |
+| W → H | `term_opened`, `term_output`, `term_exit`, `term_event` | Session started (`origin`, labels, `record`, `remote`); masked output by `seq`; end; events |
+| H → W | `term_ack` | Output stored up to `upto`; the worker drops its disk buffer |
+| W → H | `term_state` | Remote state of the machine: enabled, TOTP, root labels, CLIs, accounts, devices, sessions, `confirmOnMachine` |
+| H → W | `term_input`, `term_resize` | Keys and size; remote control adds `connId`, `seq` and a 16-byte HMAC |
+| H → W | `term_pair` · W → H `term_pair_result` | Device pairing with a tag made with the QR secret |
+| H → W | `term_control`, `term_detach` · W → H `term_granted`, `term_revoked` | Control request with a passkey assertion or TOTP code, or resume with `resumeToken`; grant with the worker's ECDH key |
+| H → W | `term_start` · W → H `term_denied` | New session from the phone, signed; refused with a code |
+| H → W | `term_disable`, `term_device_revoke` | Emergency off; remove a device |
 
 `job_offer.spec.sdlc` exists only for runs of kind `sdlc`: `step`, `seed` (at most 100 files written into the temporary
 worktree before the CLI starts), `collect` (files read back after the CLI exits and returned in `report.artifacts` with
@@ -175,6 +192,11 @@ runs only to workers that declare the `sdlc` capability, and `repos` only to wor
 up to 7 entries `{projectKey, cloneUrl, branch, dir}` with `dir = .hive/repos/<projectKey>`. The worker clones them
 shallow with its own Git credentials, removes `.git`, makes them read-only and writes `.hive/repos/STATUS.md`
 (200 MB per repository, 500 MB in total, 5 minutes per clone; a repository it cannot fetch is skipped, not fatal).
+
+`term_*` messages are exchanged only when `hello.capabilities` contains `terminal` and `welcome.features` contains
+`terminal`. `welcome` also carries `owner` (the user who registered the machine) and `policy.totpFallback`. Details of
+each field, the browser frames on `/ws/terminal` (close codes 4401, 4403, 4404, 4429) and the checks on the machine are
+in [architecture.md §5.4](architecture.md#54-phiên-terminal-và-điều-khiển-từ-xa-spec-010).
 
 Close codes: 4400 bad message, 4401 revoked, 4403 machine mismatch, 4408 hello timeout, 4426 protocol unsupported.
 Workers stop instead of reconnecting on 4401, 4403 and 4426. Compatibility rule: new fields are optional and new
@@ -210,6 +232,18 @@ in the Claude Code `--mcp-config` file (run with `--strict-mcp-config`) or the C
 | `hive-worker update [--check] [--version X.Y.Z] [--json]` | Install a verified release |
 | `hive-worker config`, `check`, `version` | Inspect configuration and connectivity |
 | `hive-worker egress-proxy`, `sandbox-init` | Egress proxy and the container entry point used by sandboxed runs |
+
+The `hive` binary (specs/010) talks to the running worker over the local socket and to the hub with a personal token.
+User guide: [hive-cli.md](hive-cli.md).
+
+| Command | Purpose |
+|---|---|
+| `hive login [--hub URL] [--with-token] [--no-browser]`, `logout`, `whoami` | Personal token through loopback PKCE or stdin, kept in the keychain |
+| `hive chat` / `hive run [--task KEY] [--project KEY] [--no-record] [--escape KEY]` | Interactive CLI session through the worker, recorded on the hub unless `--no-record` |
+| `hive ls [--json] [--all]`, `hive attach ID [--view]`, `hive kill ID` | List, join and end sessions; `--all` and run attach use the hub |
+| `hive remote status / on [--yes] / off / roots [add / rm] / devices [rm] / pair / set / watch` | Remote control settings at the machine |
+| `hive remote totp status / enroll / confirm / disable / unlock` | TOTP fallback for an `http://` hub |
+| `hive version` | Version |
 
 ## 5. State dynamics viewpoint
 
@@ -357,6 +391,11 @@ move the running binary to `.old` first); re-execute with the same arguments.
 | AI SDLC participant checkouts | 7 repositories per run; 200 MB each, 500 MB in total, 5 minutes per clone | `SDLC_MAX_REPOS` in contracts, `worker/internal/runner/sdlc_repos.go` |
 | AI SDLC questions | At most 5 per `sdlc_ask` round (the step may set fewer) | `sdlc/questions.ts` |
 | Machine labels | 10 per machine, 32 characters; 5 required labels per project | contracts |
+| Remote sessions on the hub | 8 recorded sessions per machine; 16 viewers per session, 4 for `team` viewers; replay buffer 512 KiB; 512 KiB/s per viewer, 2 MiB/s per machine, 1 MiB backlog, then `sync` with a 128 KiB tail | `REMOTE_LIMITS` in contracts, `terminal/live.ts` |
+| Remote timers | Resume 120 s; control idle 900 s; confirmation at the machine 60 s; heartbeat 20 s; WS ticket 60 s | `REMOTE_LIMITS`, `TERMINAL_TICKET_TTL_SEC` |
+| Worker recording | Flush every 8 ms or 32 KiB; 32 MB of unacknowledged output per session on disk, then `gap` | `worker/internal/terminal/record.go` |
+| Remote control on the machine | Assertion `ts` ±120 s; 3 bad input packets revoke control; remote sessions end after 2 detached hours or 12 hours in total (SIGHUP, kill after 10 s); TOTP locks after 5 wrong codes for 5 minutes, doubling up to 1 hour; pairing secret 10 minutes | `worker/internal/terminal`, `worker/internal/remoteauth` |
+| Remote audit log | `remote-audit.log` 0600, rotated at 10 MB, 5 files | `worker/internal/terminal` |
 
 ## 8. Design rationale and traceability
 
@@ -377,3 +416,4 @@ Decisions are recorded in [docs/adr](adr/README.md). Requirement areas map to mo
 | LEAD | `leader` | |
 | MCP | `mcp` and the modules that register tools, `runs` (external servers in the job) | worker `runner` (MCP configuration) |
 | OPS | `notify`, `cost`, `audit` | `deploy/` |
+| RMT | `terminal` | `hive` CLI, worker `terminal`, `remoteauth`, `localipc`; web `/remote`; desktop remote screen and tray |

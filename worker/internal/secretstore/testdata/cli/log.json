@@ -1,1 +1,15 @@
-{"entries":[{"id":"g_01JB0000000000000000000000","at":"2026-10-23T08:01:02Z","kind":"run","sessionId":"run_abc#1","project":"3f9a1c0e7b2d4a55","projectName":"shop-api","names":[{"name":"STRIPE_TEST_KEY","deleted":false,"leaked":true}],"policy":"allow","outcome":"granted"}]}
+{
+  "entries": [
+    {
+      "id": "g_01JB0000000000000000000000",
+      "at": "2026-10-23T08:01:02Z",
+      "kind": "run",
+      "sessionId": "run_abc#1",
+      "project": "3f9a1c0e7b2d4a55",
+      "projectName": "shop-api",
+      "names": [{ "name": "STRIPE_TEST_KEY", "deleted": false, "leaked": true }],
+      "policy": "allow",
+      "outcome": "granted"
+    }
+  ]
+}

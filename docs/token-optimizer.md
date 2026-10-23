@@ -99,8 +99,9 @@ Trên Windows, RTK chưa hỗ trợ nên A6 là "không áp dụng" và không t
 ## Ngữ cảnh dùng chung và nút "Tối ưu"
 
 Phần này theo [spec 029](../specs/029-shared-context-sync/spec.md) và [ADR 0037](adr/0037-shared-context-local-files.md).
-Gói `ctxsync` của `hive-worker` đã có code; mục "Ngữ cảnh dùng chung" trên màn Memory, nút "Tối ưu" và lệnh
-`optimize all` là **theo kế hoạch spec 029**, chưa có trong app.
+Mục "Ngữ cảnh dùng chung" trên màn Memory, nút "Tối ưu" ở màn Token, lệnh `hive-worker optimize all` và hàng đợi gửi
+lên hub đã có trong app. Chưa ai chạy quickstart của spec 029 trên máy thật và đo mức giảm token (SC-008); đó là việc
+của chủ dự án, nên số liệu đích trong spec chưa được kiểm.
 
 ### Ngữ cảnh dùng chung
 
@@ -125,8 +126,11 @@ Mỗi dự án có **một nguồn ngữ cảnh** (quy ước, lệnh test, tóm
   vào thùng rác.
 - Nếu dự án đang dùng **Dùng chung memory** ở mục Memory, app đề nghị chuyển sang nguồn mới, có xem trước. App không
   tự chuyển.
-- Khi đã đăng nhập hub, app có thể kéo memory đã duyệt vào phần "Từ hub" của khối, trong ngân sách token (mặc định
-  2.000). Phần này thuộc đợt sau của spec 029.
+- Khi đã đăng nhập hub, app kéo memory **đã duyệt** của dự án vào phần "Từ hub" của khối. Bấm **Đồng bộ** để kéo ngay;
+  công tắc tự đồng bộ kéo định kỳ (mặc định 60 phút). Phần này nằm trong ngân sách token của khối (mặc định 2.000, chính
+  sách dự án đổi được): memory được ghim lấy trước, rồi memory mới hơn; số mục bị bỏ được ghi lại. Nội dung trông như
+  bí mật không được ghi vào khối và app báo bạn. Mất mạng thì khối giữ bản lần trước và màn hiện thời điểm đồng bộ gần
+  nhất.
 
 ### Nút "Tối ưu"
 
@@ -144,7 +148,35 @@ CodeGraph) được giữ lại.
 
 Giới hạn: nút chỉ ghi CLAUDE.md, AGENTS.md, GEMINI.md, rules và memory **trong khối đánh dấu của xDev Hive**. Nút không
 tắt MCP, không xoá skill, không chạy nén bằng AI (nén vẫn duyệt từng file ở màn Memory). Mức **Mạnh** và việc đổi model
-luôn tắt sẵn, cần chọn tay.
+luôn tắt sẵn, cần chọn tay. Hai lần "Tối ưu" không chạy cùng lúc trên một máy.
+
+### Chính sách tối ưu của dự án
+
+Người quản trị dự án hoặc đội đặt chính sách trên web, ở mục **Tối ưu máy dev** trong cài đặt dự án: mức tối ưu, RTK,
+CodeGraph, trần nén ngữ cảnh, ngân sách token của khối, tự đồng bộ memory và khoảng cách. Mọi thay đổi được ghi kiểm
+toán. Người có quyền duyệt memory cũng ghim được memory ở danh sách memory; memory ghim lên đầu phần "Từ hub".
+
+Máy kéo chính sách của các dự án đã gắn. Thẻ **Điểm tối ưu token** liệt kê mục nào máy còn lệch chính sách, và nút
+"Tối ưu" lấy chính sách làm đích, ghi nguồn của từng dòng ("theo chính sách dự án" hay mặc định). Chính sách không tự áp
+dụng: chỉ khi bạn bấm nút. Khi nhiều dự án đòi mức khác nhau cho cùng một gói CLI, app lấy mức cao nhất, trừ bước cần
+xác nhận riêng (Mạnh, đổi model).
+
+### Gửi lên hub và hàng đợi
+
+Nút **Gửi lên hub** ở mục memory đi qua hàng đợi của `hive-worker` (`outbox`, spec 027), không gọi hub trực tiếp. Mất mạng
+thì việc được xếp hàng và màn báo "Đã xếp hàng, sẽ gửi khi có mạng"; worker gửi lại, kể cả sau khi tắt và mở app. Hub luôn
+đặt đề xuất ở trạng thái chờ duyệt. Màn Memory có thẻ **Đang chờ gửi** (số việc) và thẻ **Hub không nhận** (lý do hub
+nêu, nút **Bỏ** để đóng). App thử gửi phần còn đọng khi mở và sau mỗi lần gửi.
+
+### Số liệu token của dự án
+
+Worker gom token theo dự án (gán phiên vào dự án theo thư mục làm việc) và, khi bạn bật cho từng dự án, gửi **chỉ số**: token
+quy đổi theo khoảng ngày, điểm, điểm từng tiêu chí, mục lệch chính sách. Không gửi nội dung phiên, lời nhắc, tên file hay
+đường dẫn. Mặc định tắt. Trang dự án trên web hiện bảng theo người và theo máy cho thành viên dự án.
+
+Còn thiếu: công tắc bật gửi và nút **Xoá số liệu đã gửi** trên app desktop chưa có, vì lệnh worker đặt cờ theo dự án chưa
+được nối vào CLI (xem [plan.md mục 5](../specs/029-shared-context-sync/plan.md)). Hub đã có thủ tục xoá số liệu của máy
+mình.
 
 ## Memory
 
