@@ -6,7 +6,6 @@ import {
   DEFAULT_ORG_SDLC_POLICY,
   type JobPolicy,
   type OrgSdlcPolicy,
-  type ProjectBudget,
   type TemplateSyncResult,
 } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
@@ -18,6 +17,7 @@ import { agentPolicies } from "./schema.ts";
 import { DEFAULT_TEMPLATES } from "./templates.ts";
 
 export type Policy = z.output<typeof agentPolicyInput>;
+export type PolicyGuard = (tx: Tx, userId: string, before: Policy, next: Policy) => Promise<void>;
 type Cli = keyof Policy["allowedModels"];
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -61,8 +61,11 @@ export async function saveAgentPolicy(
   tx: Tx,
   userId: string,
   input: AgentPolicyInput,
+  guard?: PolicyGuard,
 ): Promise<{ policy: AgentPolicy; templatesChanged: boolean; remoteChanged: boolean }> {
   await allowWith(tx, userId, "policies.write", () => requireOrgRole(tx, userId, "admin"));
+  // Cùng khoá với layers, lấy trước khi đọc để kiểm quyền và tăng phiên bản trên chính sách mới nhất.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(hive.ctx_org()::text, 33))`);
   const before = await loadPolicy(tx);
   // Client chưa biết mục `remote` hay `git` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt, hay
   // bỏ yêu cầu token git theo run.
@@ -71,7 +74,10 @@ export async function saveAgentPolicy(
     remote: input.remote ?? before.remote,
     git: input.git ?? before.git,
   });
-  if (allowsFull(next) && !allowsFull(before)) {
+  if (
+    (allowsFull(next) && !allowsFull(before)) ||
+    (next.defaultPermissionMode === "full" && before.defaultPermissionMode !== "full")
+  ) {
     const granted = await effectivePermissions(tx, userId);
     if (!granted.has("policies.fullaccess")) {
       throw new ForbiddenError(
@@ -80,6 +86,7 @@ export async function saveAgentPolicy(
       );
     }
   }
+  await guard?.(tx, userId, before, next);
   const [row] = await tx
     .insert(agentPolicies)
     .values({ orgId: sql`hive.ctx_org()`, policy: next, updatedBy: userId, updatedAt: sql`now()` })
@@ -157,14 +164,6 @@ export function resolvePermission(
     return { mode: "workspace", notice: "Chính sách tổ chức không cho toàn quyền CLI; run chạy trong worktree." };
   }
   return { mode, notice: null };
-}
-
-/** Trần mỗi run của dự án, hạ về trần của tổ chức nếu cao hơn hoặc bỏ trống. */
-export function clampBudget(policy: Policy, budget: ProjectBudget | undefined): ProjectBudget | undefined {
-  const cap = policy.limits.perRunUsd;
-  if (cap === null) return budget;
-  const perRunUsd = budget?.perRunUsd === undefined ? cap : Math.min(budget.perRunUsd, cap);
-  return { ...budget, perRunUsd };
 }
 
 /** Số run cùng lúc của máy theo chính sách. */

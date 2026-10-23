@@ -6,6 +6,7 @@ import type { McpPrincipal, McpToolRegistry } from "../mcp/index.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { projectItemsWhere } from "./access.ts";
 import { contractsFromRunReport } from "./contracts.ts";
+import { recordQaReport } from "./qa.ts";
 import { askQuestions } from "./questions.ts";
 import { proposeLessons } from "./release.ts";
 import {
@@ -69,7 +70,9 @@ async function itemOfRun(tx: Tx, run: ReturnType<typeof requireRun>, itemId: str
 }
 
 const reportShape = z.object({
-  kind: z.enum(["size", "findings", "analysis", "summary", "contracts", "lessons"]).describe("Loại kết quả của bước."),
+  kind: z
+    .enum(["size", "findings", "analysis", "summary", "contracts", "lessons", "test-results"])
+    .describe("Loại kết quả của bước."),
   data: z.record(z.string(), z.unknown()).describe("Dữ liệu theo loại; xem mô tả tool."),
 });
 
@@ -191,7 +194,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       "`contracts`: {contracts: [{name, format, provider, consumers[], content}]} với provider/consumers là key dự án " +
       "tham gia; mỗi contract thành bản nháp chờ duyệt. `lessons` (bước retro): {content, reason, key?} là toàn bộ nội " +
       "dung mới của constitution/steering, hub tạo đề xuất chờ duyệt (bỏ key là project/<dự án chính>/constitution). " +
-      "Gọi lại cùng loại thì lần sau ghi đè.",
+      "`test-results`: JSON metadata từ hive test-summary, chỉ bước test-run; không gửi log hay code. Gọi lại cùng loại thì lần sau ghi đè.",
     input: reportShape,
     runKinds: ["sdlc"],
     readOnly: true,
@@ -205,6 +208,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
         );
       const report = parsed.data;
       const step = await runningStep(tx, run.runId);
+      if (report.kind === "test-results") await recordQaReport(tx, step, report.data);
       let extra: Record<string, unknown> = {};
       if (report.kind === "contracts") {
         const out = await contractsFromRunReport(tx, step.itemId, report, {

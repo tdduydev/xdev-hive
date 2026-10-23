@@ -80,7 +80,8 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
   remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
                           (hive remote help để xem đủ)
   outbox [--json]         hộp thư đi: các lần ghi chưa tới hub; drop, retry, export (hive outbox help để xem đủ)
-  version                phiên bản hive và hive-worker
+  version                 phiên bản hive và hive-worker
+  test-summary <file>     tóm tắt Playwright JSON/JUnit XML thành metadata QA (log và code ở lại máy)
 
 Trong phiên: Ctrl-] d để tách (phiên chạy tiếp), Ctrl-] t để giành quyền điều khiển, Ctrl-] Ctrl-] gửi Ctrl-].
 Đổi phím tiền tố bằng --escape ctrl-<phím> (vd. ctrl-a); --escape none gửi mọi phím cho agent.
@@ -97,6 +98,8 @@ func (a *app) run(args []string) int {
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "test-summary":
+		return a.testSummary(rest)
 	case "chat":
 		return a.chat(rest, false)
 	case "run":

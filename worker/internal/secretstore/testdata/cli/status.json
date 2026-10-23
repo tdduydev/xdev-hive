@@ -1,0 +1,6 @@
+{
+  "available": false,
+  "locked": null,
+  "backend": "secret-service",
+  "reason": "Máy không có kho bí mật (Secret Service). Cài gnome-keyring hoặc KWallet rồi thử lại."
+}

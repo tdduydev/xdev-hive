@@ -18,6 +18,7 @@ describe("menu theo hồ sơ", () => {
       "setup",
       "ssh",
       "docs",
+      "word-import",
       "settings",
     ]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
@@ -32,7 +33,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(14);
+    expect(items).toHaveLength(15);
     expect(items.some((i) => i.readOnly)).toBe(false);
   });
 
@@ -42,17 +43,17 @@ describe("menu theo hồ sơ", () => {
       ["Máy này", true, ["Máy này"]],
       ["Chạy", false, ["Agent trên máy", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"]],
       ["Agent", false, ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"]],
-      ["Dự án", false, ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code"]],
+      ["Dự án", false, ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code", "Nhập Word"]],
     ]);
     expect(groups.map((g) => g.label.en)).toEqual(["This machine", "Runs", "Agents", "Projects"]);
   });
 
-  it("chỉ Cây giao việc và Lượt chạy cần hub; mọi mục khác dùng được khi chưa đăng nhập", () => {
+  it("chỉ Cây giao việc, Lượt chạy và Nhập Word cần hub; mọi mục khác dùng được khi chưa đăng nhập", () => {
     expect(
       navItems("lead")
         .filter((i) => i.hub)
         .map((i) => i.id),
-    ).toEqual(["tree", "runs"]);
+    ).toEqual(["tree", "runs", "word-import"]);
   });
 
   it("nhóm không còn mục nào theo hồ sơ thì bỏ cả nhóm", () => {

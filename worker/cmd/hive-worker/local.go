@@ -22,17 +22,16 @@ import (
 // localStopWait là thời gian chờ các phiên `hive chat` dừng hẳn khi worker tắt.
 const localStopWait = 10 * time.Second
 
-// Người đang giữ worker, để cửa sổ VS Code biết worker ở máy là của app desktop, của cửa sổ khác hay chạy tay
-// (specs/017 mục 7). Giá trị lạ bị từ chối ngay ở cờ --owner thay vì lọt ra client.
+// Người đang giữ worker, để client trên máy biết worker là của app desktop hay chạy tay. Giá trị lạ bị từ chối ngay ở
+// cờ --owner thay vì lọt ra client.
 const (
 	ownerDesktop = "desktop"
-	ownerVSCode  = "vscode"
 	ownerCLI     = "cli"
 )
 
-func validOwner(s string) bool { return s == ownerDesktop || s == ownerVSCode || s == ownerCLI }
+func validOwner(s string) bool { return s == ownerDesktop || s == ownerCLI }
 
-// workerStatus là nguồn của op `worker.status` (specs/017 T006): trạng thái kênh tới hub do channel báo qua OnStatus,
+// workerStatus là nguồn của op `worker.status`: trạng thái kênh tới hub do channel báo qua OnStatus,
 // còn lại là thông tin cố định lúc worker khởi động.
 type workerStatus struct {
 	owner      string

@@ -414,13 +414,22 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/web/e2e/docsync-review.spec.ts` (mới), `apps/web/e2e/docsync-review-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task.
 
-- [ ] **T024 [P] [—] [vừa] · 1,5 ngày — Desktop "Soạn tài liệu": nhãn, tìm kiếm, xung đột, ảnh**
+- [x] **T024 [P] [—] [vừa] · 1,5 ngày — Desktop "Soạn tài liệu": nhãn, tìm kiếm, xung đột, ảnh**
   - **Phụ thuộc**: T018, T019.
   - **Goal**: FR-040…FR-043 trên desktop. Nhãn đồng bộ trong danh sách và editor; ô tìm theo nghĩa; mở xung đột bằng
     `ConflictView`; `resolveLink`/`uploadAsset` gọi hub. Từ điển vi/en.
   - **PHẠM VI**:
     - `apps/desktop/src/screens/write-screen.tsx`, `apps/desktop/src/lib/i18n.ts` (chỉ khoá mới) + test
   - **Kiểm**: desktop typecheck, test. Chờ các nhánh desktop đang mở merge nếu đụng `write-screen.tsx`.
+  - **Ghi chú khi làm (2026-10-23)**:
+    - File thật của màn là `apps/desktop/src/screens/docs-screen.tsx` (không có `write-screen.tsx`); chữ mới nằm trong
+      từ điển của `components/doc-sync.tsx` và `docs-screen.tsx` (từ điển theo từng màn), không đụng `lib/i18n.ts`.
+    - Đã làm: nhãn đồng bộ (danh sách và đầu trang soạn), ô tìm theo từ/nghĩa, hộp thoại xung đột bằng `ConflictView`
+      (kể cả xác nhận dấu hiệu bí mật khi sửa tay), `resolveLink` phân giải ảnh/link tương đối qua `docAssets.resolve` và
+      `hub_fetch_bytes` (ảnh vào `data:` vì CSP của Tauri chỉ cho `data:`, nên `doc-editor` thêm `isInlineImageUrl`).
+    - **Chưa làm: `uploadAsset`** (nút chèn ảnh, đính kèm, dán, kéo thả vẫn tắt trên desktop). Route tải lên là multipart
+      của Hono, `hub_rpc` chỉ chuyển thân chữ; cần một lệnh Rust mới trong `src-tauri` (việc riêng, cần cargo).
+    - Chế độ "Xem" dùng `Markdown` chung của `packages/ui`, chỉ vẽ ảnh `http(s)`: ảnh tương đối hiện ở chế độ "Sửa".
 
 ## Đợt 5: kiểm tổng, tài liệu
 

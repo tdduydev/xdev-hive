@@ -68,15 +68,7 @@ import {
   type RunMessage,
   sendToMachine,
 } from "../fleet/index.ts";
-import {
-  clampBudget,
-  jobPolicyOf,
-  loadPolicy,
-  machineSlots,
-  type Policy,
-  resolveModel,
-  resolvePermission,
-} from "../governance/index.ts";
+import { jobPolicyOf, loadPolicy, machineSlots, type Policy, resolveModel } from "../governance/index.ts";
 import { authUser } from "../identity/index.ts";
 import {
   aiGateContext,
@@ -89,6 +81,7 @@ import {
   recordBriefDrift,
   submitBrief,
 } from "../knowledge/index.ts";
+import { resolveProjectSettings, runSettingsOf } from "../layers/index.ts";
 import { mcpServersForProject } from "../mcp/index.ts";
 import { notify } from "../notify/index.ts";
 import {
@@ -850,7 +843,8 @@ export function createRunsEngine(deps: RunsDeps) {
         return null;
       }
       const sandboxed = sandboxedRun(project, policy, run.kind);
-      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
+      const runSettings = await runSettingsOf(tx, project);
+      const permission = runSettings.permission;
       const permissionOn = (m: MachineProjects) =>
         machinePermission(m, project.id, permission.mode, policy.allowFullPermission);
       const { machine, contended } = await pickMachine(tx, run, sandboxed, policy, permissionOn);
@@ -876,7 +870,7 @@ export function createRunsEngine(deps: RunsDeps) {
         ...(await instructionsOf(tx, run.id)),
       ];
       const sandbox = sandboxed ? await loadSandboxJobConfig(tx, project.id) : undefined;
-      const baseBudget = clampBudget(policy, project.settings.budget);
+      const baseBudget = runSettings.resolveBudget(project.settings.budget);
       const taskSpent = task ? await taskSpentUsd(tx, task.id) : 0;
       // Run review, plan, leader là run chỉ đọc: server ngoài (vd. GitHub) có tool ghi mà chế độ chỉ đọc của CLI không
       // chặn hết, nên chỉ run code nhận.
@@ -1951,7 +1945,8 @@ export function createRunsEngine(deps: RunsDeps) {
         !workflow &&
         outcome === "succeeded" &&
         prNumber !== null &&
-        project?.settings.merge.mode === "auto" &&
+        project &&
+        (await resolveProjectSettings(tx, project)).merge.mode === "auto" &&
         project.settings.features.mergeQueue
       ) {
         await enqueueMerge(
@@ -2709,7 +2704,7 @@ export function createRunsEngine(deps: RunsDeps) {
     const cli = input.cli ?? task.preferredCli ?? null;
     if (cli && FULL_ONLY_CLIS.includes(cli) && project) {
       const policy = await loadPolicy(tx);
-      const mode = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace").mode;
+      const mode = (await runSettingsOf(tx, project)).permission.mode;
       // Dự án không cho toàn quyền vẫn chạy được trên máy người dùng được dùng đã bật toàn quyền cho dự án (ADR 0020).
       const machineFull =
         policy.allowFullPermission &&

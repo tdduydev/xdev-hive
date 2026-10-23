@@ -34,6 +34,7 @@ import { attachWorkerGateway, pauseMachine, registerRunHandlers, setMachineShare
 import { createAuth } from "./modules/identity/index.ts";
 import { saveDoc } from "./modules/knowledge/docs.ts";
 import { proposeWithReview } from "./modules/knowledge/reviews.ts";
+import { setOrgEntry } from "./modules/layers/index.ts";
 import { createChannel } from "./modules/notify/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "./modules/platform/index.ts";
 import {
@@ -1654,12 +1655,13 @@ describe("chính sách agent của tổ chức", () => {
 
   afterEach(async () => {
     await admin.query("delete from hive.agent_policies where org_id = $1", [org.orgId]);
+    await admin.query("delete from hive.config_layer_entries where org_id = $1", [org.orgId]);
   });
 
-  it("model ngoài danh sách về model đầu, toàn quyền về worktree, trần mỗi run, hook vào spec, ghi bản chụp", async () => {
+  it.each([false, true])("model và hook theo chính sách; quyền, ngân sách hai lớp với khoá %s", async (locked) => {
     await setPolicy({
       allowedModels: { claude: ["claude-sonnet-5-5", "claude-haiku-5-5"], codex: [], gemini: [] },
-      allowFullPermission: false,
+      allowFullPermission: true,
       hooks: [{ event: "Stop", name: "Test nhanh", command: "pnpm test" }],
       managedHooksOnly: true,
       limits: limits({ perRunUsd: 2 }),
@@ -1669,28 +1671,31 @@ describe("chính sách agent của tổ chức", () => {
        where id = $1`,
       [projectId],
     );
-    const m = await seedMachine(`policy-${tag}`);
+    if (locked) {
+      await withTenant(pool, { userId: org.user("owner"), orgId: org.orgId }, async (tx) => {
+        await setOrgEntry(tx, org.user("owner"), { key: "agent.permissionMode", locked: true });
+        await setOrgEntry(tx, org.user("owner"), { key: "limits.perRunUsd", locked: true });
+      });
+    }
+    const m = await seedMachine(`policy-${locked}-${tag}`);
     const w = await FakeWorker.connect(m);
     try {
       const run = await startRun((await newTask("Theo chính sách")).id);
       const offer = await w.next("job_offer", (o) => o.runId === run.id);
       expect(offer.spec).toMatchObject({
         model: "claude-sonnet-5-5",
-        runPermissions: "workspace",
-        budget: { maxCostUsd: 2 },
+        runPermissions: locked ? "workspace" : "full",
+        budget: { maxCostUsd: locked ? 2 : 10 },
         policy: { hooks: [{ event: "Stop", name: "Test nhanh", command: "pnpm test" }], managedHooksOnly: true },
       });
       const messages = (await policyEvents(run.id)).map((e) => e.data.message);
-      expect(messages).toEqual([
-        expect.stringContaining("không cho dùng claude-project-model"),
-        expect.stringContaining("không cho toàn quyền CLI"),
-      ]);
+      expect(messages).toEqual([expect.stringContaining("không cho dùng claude-project-model")]);
       expect((await runRow(run.id)).agent_policy_snapshot).toMatchObject({
         model: "claude-sonnet-5-5",
         requestedModel: "claude-project-model",
-        runPermissions: "workspace",
+        runPermissions: locked ? "workspace" : "full",
         sandbox: false,
-        budget: { maxCostUsd: 2 },
+        budget: { maxCostUsd: locked ? 2 : 10 },
         managedHooksOnly: true,
       });
     } finally {
@@ -1698,6 +1703,24 @@ describe("chính sách agent của tổ chức", () => {
       await admin.query("update hive.projects set settings = settings - 'runPermissions' - 'budget' where id = $1", [
         projectId,
       ]);
+    }
+  });
+
+  it("tổ chức cấm toàn quyền thì dự án ghi đè full vẫn chạy trong worktree", async () => {
+    await setPolicy({ allowFullPermission: false });
+    await admin.query(
+      `update hive.projects set settings = settings || '{"runPermissions":{"mode":"full"}}'::jsonb where id = $1`,
+      [projectId],
+    );
+    const w = await FakeWorker.connect(await seedMachine(`policy-nofull-${tag}`));
+    try {
+      const run = await startRun((await newTask("Dự án full khi tổ chức cấm")).id);
+      expect((await w.next("job_offer", (o) => o.runId === run.id)).spec).toMatchObject({
+        runPermissions: "workspace",
+      });
+    } finally {
+      await w.close();
+      await admin.query("update hive.projects set settings = settings - 'runPermissions' where id = $1", [projectId]);
     }
   });
 

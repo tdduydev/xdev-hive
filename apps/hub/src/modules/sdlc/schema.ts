@@ -1,4 +1,4 @@
-import type { ProjectSdlcSettings, SdlcMode, SdlcSize, SdlcSuggestion } from "@xdev-hive/contracts";
+import type { ProjectSdlcSettings, QaCaseDefinition, SdlcMode, SdlcSize, SdlcSuggestion } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -122,6 +122,35 @@ const itemFk = (name: string, t: { itemId: AnyPgColumn; orgId: AnyPgColumn }) =>
   foreignKey({ name, columns: [t.itemId, t.orgId], foreignColumns: [sdlcItems.id, sdlcItems.orgId] }).onDelete(
     "cascade",
   );
+
+export const sdlcQaCases = hive
+  .table(
+    "sdlc_qa_cases",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      itemId: uuid("item_id").notNull(),
+      code: text("code").notNull(),
+      definition: jsonb("definition").$type<QaCaseDefinition>().notNull(),
+      revision: integer("revision").notNull().default(1),
+      retired: boolean("retired").notNull().default(false),
+      waivedBy: text("waived_by"),
+      waiverReason: text("waiver_reason"),
+      waivedAt: timestamp("waived_at", { withTimezone: true }),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      itemFk("sdlc_qa_cases_item_fk", t),
+      unique("sdlc_qa_cases_item_code").on(t.itemId, t.code),
+      check(
+        "sdlc_qa_cases_waiver",
+        sql`(waived_by is null and waiver_reason is null and waived_at is null)
+    or (waived_by is not null and waiver_reason is not null and waived_at is not null)`,
+      ),
+      orgScoped("sdlc_qa_cases"),
+    ],
+  )
+  .enableRLS();
 
 /** Mọi dự án của hạng mục, kể cả dự án chính (D19). Bộ lọc quyền (D22) join bảng này theo `team_id`. */
 export const sdlcItemProjects = hive

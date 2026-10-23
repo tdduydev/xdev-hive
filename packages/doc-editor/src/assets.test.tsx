@@ -201,6 +201,16 @@ describe("ảnh và link tương đối", () => {
     expect(q(IMG)).toBeNull();
   });
 
+  it("resolveLink trả data: (desktop, CSP không cho blob:) thì ảnh hiện, còn data: ghi thẳng trong Markdown thì không", async () => {
+    const data = "data:image/png;base64,iVBORw0KGgo=";
+    const resolveLink = async (): Promise<DocLinkTarget> => ({ kind: "asset", url: data });
+    await mount("![Sơ đồ](assets/so-do.png)\n", env({ resolveLink }));
+    expect(q(IMG)?.getAttribute("src")).toBe(data);
+    expect(markdown).toBe("![Sơ đồ](assets/so-do.png)\n");
+    await mount(`![x](${data})\n`, env({ resolveLink: vi.fn() }));
+    expect(q(IMG)).toBeNull();
+  });
+
   it("ảnh http(s) hiện thẳng, không hỏi app chủ", async () => {
     const resolveLink = vi.fn();
     await mount("![Logo](https://acme.vn/logo.png)\n", env({ resolveLink }));

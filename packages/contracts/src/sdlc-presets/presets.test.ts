@@ -28,7 +28,7 @@ const headings = (md: string) =>
 const VARS = { number: 12, slug: sdlcSlug("Hoàn tiền một phần"), date: "2026-10-14" };
 
 describe("preset", () => {
-  it("có đủ mười hai preset, id khớp khoá và nằm trong danh sách preset", () => {
+  it("có đủ mười ba preset, id khớp khoá và nằm trong danh sách preset", () => {
     expect(Object.keys(SDLC_PRESETS).sort()).toEqual([...SDLC_PRESET_IDS].sort());
     for (const id of SDLC_PRESET_IDS) {
       expect(preset(id).id).toBe(id);

@@ -36240,6 +36240,18 @@
                       "settings": {
                         "type": "object",
                         "properties": {
+                          "inheritedConfigKeys": {
+                            "type": "array",
+                            "items": {
+                              "enum": [
+                                "agent.permissionMode",
+                                "limits.perRunUsd",
+                                "merge.mode",
+                                "merge.requireCi"
+                              ],
+                              "type": "string"
+                            }
+                          },
                           "runPermissions": {
                             "type": "object",
                             "properties": {
@@ -37872,6 +37884,18 @@
                     "settings": {
                       "type": "object",
                       "properties": {
+                        "inheritedConfigKeys": {
+                          "type": "array",
+                          "items": {
+                            "enum": [
+                              "agent.permissionMode",
+                              "limits.perRunUsd",
+                              "merge.mode",
+                              "merge.requireCi"
+                            ],
+                            "type": "string"
+                          }
+                        },
                         "runPermissions": {
                           "type": "object",
                           "properties": {
@@ -39506,6 +39530,18 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "inheritedConfigKeys": {
+                              "type": "array",
+                              "items": {
+                                "enum": [
+                                  "agent.permissionMode",
+                                  "limits.perRunUsd",
+                                  "merge.mode",
+                                  "merge.requireCi"
+                                ],
+                                "type": "string"
+                              }
+                            },
                             "runPermissions": {
                               "type": "object",
                               "properties": {
@@ -41293,6 +41329,18 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "inheritedConfigKeys": {
+                              "type": "array",
+                              "items": {
+                                "enum": [
+                                  "agent.permissionMode",
+                                  "limits.perRunUsd",
+                                  "merge.mode",
+                                  "merge.requireCi"
+                                ],
+                                "type": "string"
+                              }
+                            },
                             "runPermissions": {
                               "type": "object",
                               "properties": {
@@ -44576,6 +44624,18 @@
                   "settings": {
                     "type": "object",
                     "properties": {
+                      "inheritedConfigKeys": {
+                        "type": "array",
+                        "items": {
+                          "enum": [
+                            "agent.permissionMode",
+                            "limits.perRunUsd",
+                            "merge.mode",
+                            "merge.requireCi"
+                          ],
+                          "type": "string"
+                        }
+                      },
                       "merge": {
                         "type": "object",
                         "properties": {
@@ -45673,6 +45733,18 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "inheritedConfigKeys": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "agent.permissionMode",
+                          "limits.perRunUsd",
+                          "merge.mode",
+                          "merge.requireCi"
+                        ],
+                        "type": "string"
+                      }
+                    },
                     "runPermissions": {
                       "type": "object",
                       "properties": {
@@ -115857,6 +115929,18 @@
                               "patch": {
                                 "type": "object",
                                 "properties": {
+                                  "inheritedConfigKeys": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "agent.permissionMode",
+                                        "limits.perRunUsd",
+                                        "merge.mode",
+                                        "merge.requireCi"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
                                   "merge": {
                                     "type": "object",
                                     "properties": {
@@ -117608,6 +117692,18 @@
                                 "patch": {
                                   "type": "object",
                                   "properties": {
+                                    "inheritedConfigKeys": {
+                                      "type": "array",
+                                      "items": {
+                                        "enum": [
+                                          "agent.permissionMode",
+                                          "limits.perRunUsd",
+                                          "merge.mode",
+                                          "merge.requireCi"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
                                     "merge": {
                                       "type": "object",
                                       "properties": {
@@ -119375,6 +119471,18 @@
                             "patch": {
                               "type": "object",
                               "properties": {
+                                "inheritedConfigKeys": {
+                                  "type": "array",
+                                  "items": {
+                                    "enum": [
+                                      "agent.permissionMode",
+                                      "limits.perRunUsd",
+                                      "merge.mode",
+                                      "merge.requireCi"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
                                 "merge": {
                                   "type": "object",
                                   "properties": {
@@ -137998,6 +138106,2232 @@
         }
       }
     },
+    "/v1/config/registry": {
+      "get": {
+        "operationId": "layeredConfig.registry",
+        "summary": "Danh sách cài đặt theo tầng",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "config"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "settings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "group": {
+                            "enum": [
+                              "agent",
+                              "limits",
+                              "project"
+                            ],
+                            "type": "string"
+                          },
+                          "layers": {
+                            "type": "array",
+                            "items": {
+                              "enum": [
+                                "org",
+                                "project"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "default": {}
+                        },
+                        "required": [
+                          "key",
+                          "group",
+                          "layers"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "settings"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/config/effective": {
+      "get": {
+        "operationId": "layeredConfig.effective",
+        "summary": "Cấu hình hiệu lực của dự án",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "config"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orgId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "configVersion": {
+                      "type": "string"
+                    },
+                    "settings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "value": {},
+                          "source": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "layer": {
+                                    "enum": [
+                                      "org",
+                                      "project"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "targetId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "layer",
+                                  "targetId"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "locked": {
+                            "type": "boolean"
+                          },
+                          "chain": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "layer": {
+                                  "enum": [
+                                    "org",
+                                    "project"
+                                  ],
+                                  "type": "string"
+                                },
+                                "targetId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "value": {},
+                                "locked": {
+                                  "type": "boolean"
+                                },
+                                "applied": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "layer",
+                                "targetId",
+                                "locked",
+                                "applied"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "source",
+                          "locked",
+                          "chain"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "orgId",
+                    "projectId",
+                    "schemaVersion",
+                    "generatedAt",
+                    "configVersion",
+                    "settings"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/config/org": {
+      "get": {
+        "operationId": "layeredConfig.orgGet",
+        "summary": "Cấu hình của công ty",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "config"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "value": {
+                            "anyOf": [
+                              {},
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "locked": {
+                            "type": "boolean"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "locked",
+                          "version",
+                          "updatedBy",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "entries"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "layeredConfig.orgSet",
+        "summary": "Đặt, khoá hoặc gỡ cấu hình của công ty",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "config"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "value": {},
+                  "locked": {
+                    "type": "boolean"
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "key"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "value": {
+                          "anyOf": [
+                            {},
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "locked": {
+                          "type": "boolean"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "updatedBy": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "locked",
+                        "version",
+                        "updatedBy",
+                        "updatedAt"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/config/project": {
+      "post": {
+        "operationId": "layeredConfig.projectSet",
+        "summary": "Ghi đè hoặc kế thừa cấu hình dự án",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "config"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "projectId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "value": {}
+                },
+                "required": [
+                  "projectId",
+                  "key"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orgId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "configVersion": {
+                      "type": "string"
+                    },
+                    "settings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "value": {},
+                          "source": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "layer": {
+                                    "enum": [
+                                      "org",
+                                      "project"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "targetId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "layer",
+                                  "targetId"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "locked": {
+                            "type": "boolean"
+                          },
+                          "chain": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "layer": {
+                                  "enum": [
+                                    "org",
+                                    "project"
+                                  ],
+                                  "type": "string"
+                                },
+                                "targetId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "value": {},
+                                "locked": {
+                                  "type": "boolean"
+                                },
+                                "applied": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "layer",
+                                "targetId",
+                                "locked",
+                                "applied"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "source",
+                          "locked",
+                          "chain"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "orgId",
+                    "projectId",
+                    "schemaVersion",
+                    "generatedAt",
+                    "configVersion",
+                    "settings"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/review-workflows": {
       "get": {
         "operationId": "reviewWorkflows.list",
@@ -138265,7 +140599,9 @@
                                         "no-open-questions",
                                         "breakdown",
                                         "coverage",
-                                        "ears"
+                                        "ears",
+                                        "qa-cases",
+                                        "qa-tests"
                                       ],
                                       "type": "string"
                                     }
@@ -139170,7 +141506,9 @@
                                     "no-open-questions",
                                     "breakdown",
                                     "coverage",
-                                    "ears"
+                                    "ears",
+                                    "qa-cases",
+                                    "qa-tests"
                                   ],
                                   "type": "string"
                                 }
@@ -139705,7 +142043,9 @@
                                       "no-open-questions",
                                       "breakdown",
                                       "coverage",
-                                      "ears"
+                                      "ears",
+                                      "qa-cases",
+                                      "qa-tests"
                                     ],
                                     "type": "string"
                                   }
@@ -140993,7 +143333,9 @@
                                         "no-open-questions",
                                         "breakdown",
                                         "coverage",
-                                        "ears"
+                                        "ears",
+                                        "qa-cases",
+                                        "qa-tests"
                                       ],
                                       "type": "string"
                                     }
@@ -142893,7 +145235,9 @@
                                   "no-open-questions",
                                   "breakdown",
                                   "coverage",
-                                  "ears"
+                                  "ears",
+                                  "qa-cases",
+                                  "qa-tests"
                                 ],
                                 "type": "string"
                               }
@@ -144112,7 +146456,9 @@
                                   "no-open-questions",
                                   "breakdown",
                                   "coverage",
-                                  "ears"
+                                  "ears",
+                                  "qa-cases",
+                                  "qa-tests"
                                 ],
                                 "type": "string"
                               }
@@ -150919,7 +153265,9 @@
                                   "no-open-questions",
                                   "breakdown",
                                   "coverage",
-                                  "ears"
+                                  "ears",
+                                  "qa-cases",
+                                  "qa-tests"
                                 ],
                                 "type": "string"
                               }
@@ -152951,7 +155299,9 @@
                                   "no-open-questions",
                                   "breakdown",
                                   "coverage",
-                                  "ears"
+                                  "ears",
+                                  "qa-cases",
+                                  "qa-tests"
                                 ],
                                 "type": "string"
                               }
@@ -154529,7 +156879,9 @@
                                   "no-open-questions",
                                   "breakdown",
                                   "coverage",
-                                  "ears"
+                                  "ears",
+                                  "qa-cases",
+                                  "qa-tests"
                                 ],
                                 "type": "string"
                               }
@@ -156092,7 +158444,9 @@
                                   "no-open-questions",
                                   "breakdown",
                                   "coverage",
-                                  "ears"
+                                  "ears",
+                                  "qa-cases",
+                                  "qa-tests"
                                 ],
                                 "type": "string"
                               }
@@ -157655,7 +160009,9 @@
                                   "no-open-questions",
                                   "breakdown",
                                   "coverage",
-                                  "ears"
+                                  "ears",
+                                  "qa-cases",
+                                  "qa-tests"
                                 ],
                                 "type": "string"
                               }
@@ -158582,7 +160938,9 @@
                                         "no-open-questions",
                                         "breakdown",
                                         "coverage",
-                                        "ears"
+                                        "ears",
+                                        "qa-cases",
+                                        "qa-tests"
                                       ],
                                       "type": "string"
                                     }
@@ -159670,7 +162028,9 @@
                                       "no-open-questions",
                                       "breakdown",
                                       "coverage",
-                                      "ears"
+                                      "ears",
+                                      "qa-cases",
+                                      "qa-tests"
                                     ],
                                     "type": "string"
                                   }
@@ -170386,6 +172746,1051 @@
         }
       }
     },
+    "/v1/sdlc/qa": {
+      "get": {
+        "operationId": "sdlc.qa.view",
+        "summary": "Metadata kiểm thử và cổng QA của hạng mục",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "sdlc"
+        ],
+        "parameters": [
+          {
+            "name": "itemId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cases": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "pattern": "^TC-\\d{3,5}$"
+                          },
+                          "title": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 300
+                          },
+                          "priority": {
+                            "enum": [
+                              "P1",
+                              "P2",
+                              "P3"
+                            ],
+                            "type": "string"
+                          },
+                          "automation": {
+                            "enum": [
+                              "manual",
+                              "automated"
+                            ],
+                            "type": "string"
+                          },
+                          "requirementIds": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 50,
+                            "items": {
+                              "type": "string",
+                              "pattern": "^(FR|AC)-[\\w.]+$"
+                            }
+                          },
+                          "scriptPath": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 500
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "testKey": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 500
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "required": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "retired": {
+                            "type": "boolean"
+                          },
+                          "lastStatus": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "passed",
+                                  "failed",
+                                  "skipped",
+                                  "flaky"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "waivedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "waiverReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "title",
+                          "priority",
+                          "automation",
+                          "requirementIds",
+                          "scriptPath",
+                          "testKey",
+                          "id",
+                          "retired",
+                          "lastStatus",
+                          "waivedBy",
+                          "waiverReason"
+                        ]
+                      }
+                    },
+                    "report": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "runId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "data": {
+                              "type": "object",
+                              "properties": {
+                                "runner": {
+                                  "enum": [
+                                    "playwright",
+                                    "junit"
+                                  ],
+                                  "type": "string"
+                                },
+                                "commit": {
+                                  "type": "string",
+                                  "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+                                },
+                                "totals": {
+                                  "type": "object",
+                                  "properties": {
+                                    "total": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 1000000
+                                    },
+                                    "passed": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 1000000
+                                    },
+                                    "failed": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 1000000
+                                    },
+                                    "skipped": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 1000000
+                                    },
+                                    "flaky": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 1000000
+                                    }
+                                  },
+                                  "required": [
+                                    "total",
+                                    "passed",
+                                    "failed",
+                                    "skipped",
+                                    "flaky"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "durationMs": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 604800000
+                                },
+                                "cases": {
+                                  "type": "array",
+                                  "maxItems": 5000,
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "code": {
+                                        "type": "string",
+                                        "pattern": "^TC-\\d{3,5}$"
+                                      },
+                                      "status": {
+                                        "enum": [
+                                          "passed",
+                                          "failed",
+                                          "skipped",
+                                          "flaky"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "retries": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 100
+                                      },
+                                      "durationMs": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 604800000
+                                      }
+                                    },
+                                    "required": [
+                                      "code",
+                                      "status",
+                                      "retries",
+                                      "durationMs"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "truncated": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "runner",
+                                "totals",
+                                "durationMs",
+                                "cases",
+                                "truncated"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "runId",
+                            "createdAt",
+                            "data"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "passed": {
+                            "type": "boolean"
+                          },
+                          "note": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "passed",
+                          "note"
+                        ]
+                      }
+                    },
+                    "canWaive": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "cases",
+                    "report",
+                    "checks",
+                    "canWaive"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sdlc/qa/waive": {
+      "post": {
+        "operationId": "sdlc.qa.waive",
+        "summary": "Miễn hoặc thu hồi miễn TC bắt buộc",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "sdlc"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "caseId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "waived": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "caseId",
+                  "waived",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sdlc/modes": {
       "get": {
         "operationId": "sdlc.modes.list",
@@ -170630,7 +174035,8 @@
                                           "converge",
                                           "release-notes",
                                           "retro",
-                                          "archive"
+                                          "archive",
+                                          "test-run"
                                         ],
                                         "type": "string"
                                       },
@@ -170680,6 +174086,15 @@
                                       "autoSubmit": {
                                         "type": "boolean",
                                         "default": false
+                                      },
+                                      "labels": {
+                                        "type": "array",
+                                        "maxItems": 10,
+                                        "items": {
+                                          "type": "string",
+                                          "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                        },
+                                        "default": []
                                       }
                                     },
                                     "required": [
@@ -170813,7 +174228,9 @@
                                                   "no-open-questions",
                                                   "breakdown",
                                                   "coverage",
-                                                  "ears"
+                                                  "ears",
+                                                  "qa-cases",
+                                                  "qa-tests"
                                                 ],
                                                 "type": "string"
                                               }
@@ -171839,7 +175256,8 @@
                                       "converge",
                                       "release-notes",
                                       "retro",
-                                      "archive"
+                                      "archive",
+                                      "test-run"
                                     ],
                                     "type": "string"
                                   },
@@ -171889,6 +175307,15 @@
                                   "autoSubmit": {
                                     "type": "boolean",
                                     "default": false
+                                  },
+                                  "labels": {
+                                    "type": "array",
+                                    "maxItems": 10,
+                                    "items": {
+                                      "type": "string",
+                                      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                    },
+                                    "default": []
                                   }
                                 },
                                 "required": [
@@ -172016,7 +175443,9 @@
                                               "no-open-questions",
                                               "breakdown",
                                               "coverage",
-                                              "ears"
+                                              "ears",
+                                              "qa-cases",
+                                              "qa-tests"
                                             ],
                                             "type": "string"
                                           }
@@ -172685,7 +176114,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -172735,6 +176165,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -172862,7 +176301,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -174231,7 +177672,8 @@
                                       "converge",
                                       "release-notes",
                                       "retro",
-                                      "archive"
+                                      "archive",
+                                      "test-run"
                                     ],
                                     "type": "string"
                                   },
@@ -174281,6 +177723,15 @@
                                   "autoSubmit": {
                                     "type": "boolean",
                                     "default": false
+                                  },
+                                  "labels": {
+                                    "type": "array",
+                                    "maxItems": 10,
+                                    "items": {
+                                      "type": "string",
+                                      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                    },
+                                    "default": []
                                   }
                                 },
                                 "required": [
@@ -174408,7 +177859,9 @@
                                               "no-open-questions",
                                               "breakdown",
                                               "coverage",
-                                              "ears"
+                                              "ears",
+                                              "qa-cases",
+                                              "qa-tests"
                                             ],
                                             "type": "string"
                                           }
@@ -176364,7 +179817,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -176414,6 +179868,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -176541,7 +180004,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -177884,7 +181349,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -179502,7 +182968,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -179552,6 +183019,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -179679,7 +183155,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -181022,7 +184500,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -183369,7 +186848,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -183419,6 +186899,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -183546,7 +187035,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -184889,7 +188380,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -186498,7 +189990,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -186548,6 +190041,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -186675,7 +190177,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -188018,7 +191522,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -189624,7 +193129,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -189674,6 +193180,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -189801,7 +193316,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -191144,7 +194661,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -192739,7 +196257,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -192789,6 +196308,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -192916,7 +196444,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -194259,7 +197789,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -195854,7 +199385,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -195904,6 +199436,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -196031,7 +199572,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -197374,7 +200917,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -198974,7 +202518,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -199024,6 +202569,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -199151,7 +202705,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -200494,7 +204050,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -202095,7 +205652,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -202145,6 +205703,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -202272,7 +205839,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -203615,7 +207184,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -205215,7 +208785,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -205265,6 +208836,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -205392,7 +208972,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -206735,7 +210317,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -208335,7 +211918,8 @@
                                         "converge",
                                         "release-notes",
                                         "retro",
-                                        "archive"
+                                        "archive",
+                                        "test-run"
                                       ],
                                       "type": "string"
                                     },
@@ -208385,6 +211969,15 @@
                                     "autoSubmit": {
                                       "type": "boolean",
                                       "default": false
+                                    },
+                                    "labels": {
+                                      "type": "array",
+                                      "maxItems": 10,
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                                      },
+                                      "default": []
                                     }
                                   },
                                   "required": [
@@ -208512,7 +212105,9 @@
                                                 "no-open-questions",
                                                 "breakdown",
                                                 "coverage",
-                                                "ears"
+                                                "ears",
+                                                "qa-cases",
+                                                "qa-tests"
                                               ],
                                               "type": "string"
                                             }
@@ -209855,7 +213450,8 @@
                               "converge",
                               "release-notes",
                               "retro",
-                              "archive"
+                              "archive",
+                              "test-run"
                             ],
                             "type": "string"
                           },
@@ -224438,6 +228034,18 @@
                                   "patch": {
                                     "type": "object",
                                     "properties": {
+                                      "inheritedConfigKeys": {
+                                        "type": "array",
+                                        "items": {
+                                          "enum": [
+                                            "agent.permissionMode",
+                                            "limits.perRunUsd",
+                                            "merge.mode",
+                                            "merge.requireCi"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
                                       "merge": {
                                         "type": "object",
                                         "properties": {

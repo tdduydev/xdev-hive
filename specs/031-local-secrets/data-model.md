@@ -11,10 +11,10 @@ ghi nguyên tử (file tạm + rename). Không file nào chứa giá trị, băm
 |---|---|
 | Dịch vụ | `dev.xdev.hive.secrets` (A9). Không trùng `dev.xdev.hive` (token Hive) và `dev.xdev.hive.git` |
 | Tài khoản mục đầu | `<NAME>` (tên biến) |
-| Nội dung mục đầu | `v1:<n>:<base64 std của khối 0>`, `n` = số khối (1–5) |
+| Nội dung mục đầu | `v1:<n>:<gen>:<base64 std của khối 0>`, `n` = số khối (1–5), `gen` = 8 hex ngẫu nhiên, đổi mỗi lần ghi |
 | Tài khoản khối sau | `<NAME>#1` … `<NAME>#<n-1>` |
-| Nội dung khối sau | base64 std của khối |
-| Cỡ khối | ≤1800 byte giá trị gốc **[Unverified]** (research D2, T001 kiểm) |
+| Nội dung khối sau | `<gen>:<base64 std của khối>` |
+| Cỡ khối | ≤1800 byte giá trị gốc. Windows đã kiểm (giới hạn 2560 byte mỗi mục); macOS **[Unverified]** (research "Kết quả kiểm") |
 
 Quy tắc:
 
@@ -25,7 +25,11 @@ Quy tắc:
   1. Đọc khối 0 và tách `n`.
   2. Đọc đủ `n-1` khối còn lại.
   3. Ghép rồi giải base64.
-  4. Thiếu khối hay sai tiền tố `v1:` thì trả `ErrCorrupt` (báo "Bí mật X bị hỏng trong kho, hãy đặt lại giá trị").
+  4. Thiếu khối, sai tiền tố `v1:` hay `gen` của khối khác mục đầu thì trả `ErrCorrupt` (báo "Bí mật X bị hỏng trong
+     kho, hãy đặt lại giá trị").
+- **Vì sao có `gen`**: ghi đè giá trị cũ mà dừng sau khi ghi khối mới, trước khi ghi mục đầu, thì mục đầu cũ trỏ tới
+  khối mới. Không có `gen`, đọc ra giá trị ghép từ hai lần ghi mà không báo lỗi. Thêm 9 byte, mục đầu 2414 byte, vẫn
+  dưới 2560.
 - **Xoá**: xoá mọi khối, rồi mới gỡ khỏi danh mục.
 
 ## 2. `secrets.json` — danh mục (LocalSecret + SecretAssignment)

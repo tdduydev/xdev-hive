@@ -610,6 +610,20 @@
       "when": 1792684552684,
       "tag": "0086_project_token_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792745576616,
+      "tag": "0087_qa_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1792747918707,
+      "tag": "0088_layered_config",
+      "breakpoints": true
     }
   ]
 }
