@@ -180,8 +180,8 @@ export const HUB_DATA_INVENTORY: readonly HubDataCategory[] = [
   category(
     "delivery",
     "CI và deploy",
-    "ci_jenkins_connections ci_jenkins_user_tokens deploy_connections ci_project_jobs ci_runs_seen deploy_servers deploy_environments deploy_targets deploys deploy_log_chunks deploy_approvals",
-    "API CI/CD, quản trị và kết quả deploy; có credential kết nối và log deploy đã che secret (khác log run).",
+    "ci_jenkins_connections ci_jenkins_user_tokens deploy_connections ci_project_jobs ci_runs_seen deploy_servers deploy_environments deploy_targets deploys deploy_log_chunks deploy_approvals delivery_jobs delivery_runners",
+    "API CI/CD, quản trị và kết quả deploy; có credential kết nối, log deploy đã che secret (khác log run), việc giao cho worker và tên credential máy báo (không có giá trị).",
     "Log deploy theo chính sách giữ log; cấu hình và lịch sử tới khi xoá hoặc thu hồi.",
   ),
   category(
