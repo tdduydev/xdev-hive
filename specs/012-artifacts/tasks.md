@@ -358,11 +358,17 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - ngoài phạm vi (quyết định 2026-10-23: prompt run liệt kê artifact liên kết ở `runs/engine.ts` thuộc thực thi, nằm ở
     desktop/worker; liên kết chỉ là siêu dữ liệu và hiển thị)
 
-- [ ] T066 [US11] Chuyển thành tài liệu, Lưu vào repo
+- [x] T066 [US11] Chuyển thành tài liệu, Lưu vào repo
   - Route `toDoc` (hook `createProposal` từ `knowledge`), `toRepo` (`GitProvider.commitFiles` + `openPR`, nhánh
     `hive/artifact/<id>-v<n>`, kiểm đường dẫn như spec 011 FR-003); nút trong panel/chi tiết.
   - **Scope**: `apps/hub/src/modules/artifacts/convert.ts` + test, `packages/artifacts-ui/src/convert-dialog.tsx`
   - **Phụ thuộc**: MVP · **Mức**: vừa
+  - **Đã làm** (`toDoc`): hook `DocProposer` ở `artifacts/hooks.ts`, `knowledge/artifact-link.ts` cài bằng
+    `createDocProposer` (tránh vòng `artifacts` → `knowledge`); `convert.ts` chỉ nhận Markdown còn nội dung, base lấy
+    trong cùng transaction, ghi audit `artifact.to_doc`; hộp `ConvertDialog` và nút trong `ArtifactPanel`. Test:
+    `apps/hub/src/artifact-to-doc.db.test.ts`, `convert-dialog.test.tsx`.
+  - ngoài phạm vi (quyết định 2026-10-23: "Lưu vào repo" (`toRepo`) mở PR vào repo, là thao tác thực thi/giao hàng,
+    không nằm trong bốn nhóm Kho, Cấu hình, Duyệt, Quản trị của web; route `toRepo` giữ trong hợp đồng, chưa có handler)
 
 - [x] T067 [US12] Chính sách và dung lượng trên web
   - Mục Artifacts trong trang Chính sách agent (loại, phạm vi, giới hạn; bật/tắt link công khai đã có ở T031 — trang chính

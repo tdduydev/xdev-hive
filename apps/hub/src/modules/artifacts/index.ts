@@ -16,7 +16,9 @@ export { isBlobType } from "./blob-types.ts";
 export { APP_LIB_BASE, type FrameRoutesDeps, frameRoutes } from "./frame-routes.ts";
 export {
   allLinkTargets,
+  type DocProposer,
   type LinkTarget,
+  provideDocProposer,
   provideLinkTarget,
   provideTerminalHost,
   provideThreadHost,

@@ -16,6 +16,7 @@ import {
   frameRoutes,
   frameTicketKey,
   handleArtifactUpload,
+  provideDocProposer,
   provideLinkTarget,
   provideThreadHost,
 } from "./modules/artifacts/index.ts";
@@ -55,6 +56,7 @@ import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
   createDocLinkTarget,
+  createDocProposer,
   type Embedder,
   handleRunSkills,
   handleSkillWebhook,
@@ -177,6 +179,7 @@ export function createApp({
   provideLinkTarget("run", createRunLinkTarget());
   provideLinkTarget("sdlc_item", createSdlcItemLinkTarget());
   provideLinkTarget("doc", createDocLinkTarget());
+  provideDocProposer(createDocProposer());
   artifactsMcpTools(registry, { pool, jobs, publicUrl });
   sdlcMcpTools(registry);
   docsyncMcpTools(registry);

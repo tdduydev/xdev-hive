@@ -1,7 +1,9 @@
 import { eq, inArray } from "drizzle-orm";
-import { artifactError, type LinkTarget, readerUserId } from "../artifacts/index.ts";
+import { artifactError, type DocProposer, type LinkTarget, readerUserId } from "../artifacts/index.ts";
 import { ForbiddenError, NotFoundError } from "../platform/index.ts";
 import { authorize, canRead, readerFor } from "./access.ts";
+import { currentDocVersion } from "./docs.ts";
+import { createProposal } from "./proposals.ts";
 import { docs } from "./schema.ts";
 
 /**
@@ -38,6 +40,23 @@ export function createDocLinkTarget(): LinkTarget {
     existing: async (tx, docIds) => {
       const rows = await tx.select({ id: docs.id }).from(docs).where(inArray(docs.id, docIds));
       return new Set(rows.map((r) => r.id));
+    },
+  };
+}
+
+/**
+ * "Chuyển thành tài liệu" (specs/012 FR-110): luôn đi qua đề xuất, không ghi thẳng tài liệu, nên quyền chỉ cần
+ * `propose` và người duyệt vẫn là người quyết. `baseVersion` lấy ngay trong transaction này nên không lệch.
+ */
+export function createDocProposer(): DocProposer {
+  return {
+    propose: async (tx, { userId, key, title, content, reason }) => {
+      const proposal = await createProposal(
+        tx,
+        { kind: "user", userId },
+        { kind: "doc", key, title, content, baseVersion: await currentDocVersion(tx, key), reason },
+      );
+      return { proposalId: proposal.id };
     },
   };
 }

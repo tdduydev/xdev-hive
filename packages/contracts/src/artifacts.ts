@@ -133,6 +133,10 @@ export const ARTIFACT_ERRORS = {
     message: "Link công khai đang tắt trong chính sách của tổ chức.",
   },
   ARTIFACT_LINK_EXPIRY_INVALID: { status: "BAD_REQUEST", message: "Hạn link vượt mức tối đa của tổ chức." },
+  ARTIFACT_NOT_MARKDOWN: {
+    status: "BAD_REQUEST",
+    message: "Chỉ artifact Markdown mới chuyển được thành tài liệu.",
+  },
 } as const satisfies Record<string, { status: ArtifactErrorStatus; message: string }>;
 export type ArtifactErrorCode = keyof typeof ARTIFACT_ERRORS;
 
@@ -500,6 +504,8 @@ export type ArtifactToolResult = z.output<typeof artifactToolResult>;
 // ---- Route ---------------------------------------------------------------------------------------------------------
 
 const versionRef = z.object({ id, version: versionNumber });
+export const artifactToDoc = versionRef.extend({ key: docKey, title: artifactTitle.optional() });
+export type ArtifactToDoc = z.output<typeof artifactToDoc>;
 
 export const artifactsContract = {
   settings: artifactRoute("GET", "/v1/artifact-settings", "Chính sách artifact đang áp của tổ chức").output(
@@ -601,9 +607,9 @@ export const artifactsContract = {
   askLeaderFix: artifactRoute("POST", "/v1/artifacts/{id}/ask-leader-fix", "Gửi lỗi của trang cho Leader sửa")
     .input(artifactAskLeaderFix)
     .output(z.object({ threadId: id, messageId: id, runId: id.nullable() })),
-  /** Sau MVP (US11): tạo đề xuất tài liệu `knowledge`, chỉ loại `markdown`. */
+  /** US11: tạo đề xuất tài liệu `knowledge`, chỉ loại `markdown`. */
   toDoc: artifactRoute("POST", "/v1/artifacts/{id}/to-doc", "Chuyển phiên bản thành đề xuất tài liệu")
-    .input(versionRef.extend({ key: docKey, title: artifactTitle.optional() }))
+    .input(artifactToDoc)
     .output(z.object({ proposalId: id })),
   /** Sau MVP (US11): một PR một artifact một phiên bản, đi chính sách kết quả của dự án. */
   toRepo: artifactRoute("POST", "/v1/artifacts/{id}/to-repo", "Mở PR lưu phiên bản vào repo của dự án")

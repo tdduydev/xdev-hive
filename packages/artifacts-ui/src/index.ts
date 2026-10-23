@@ -1,6 +1,7 @@
 // Màn artifact dùng chung cho web và app desktop (spec 012 D15). App chủ chỉ dựng route, menu và `ArtifactsEnv`.
 export { ARTIFACT_TYPE_ICON, ArtifactCard, type ArtifactCardProps } from "./card.tsx";
 export { VersionCompare, type VersionCompareProps } from "./compare.tsx";
+export { ConvertDialog, type ConvertDialogProps } from "./convert-dialog.tsx";
 export { ArtifactDetail, type ArtifactDetailProps } from "./detail.tsx";
 export { ArtifactEditor, type ArtifactEditorProps } from "./editor.tsx";
 export {

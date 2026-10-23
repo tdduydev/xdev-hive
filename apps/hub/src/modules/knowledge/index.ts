@@ -13,7 +13,7 @@ export {
   readerFor,
   type Scope,
 } from "./access.ts";
-export { createDocLinkTarget } from "./artifact-link.ts";
+export { createDocLinkTarget, createDocProposer } from "./artifact-link.ts";
 export {
   type BriefStaleness,
   briefStaleness,
