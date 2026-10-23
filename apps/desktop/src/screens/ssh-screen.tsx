@@ -10,7 +10,7 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
-import { CopyIcon, KeyRoundIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { CopyIcon, KeyRoundIcon, PlusIcon, RefreshCwIcon, SquareTerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { SshAddDialog } from "@/components/ssh-add-dialog.tsx";
 import { SshPasswordOffDialog } from "@/components/ssh-password-off-dialog.tsx";
@@ -23,6 +23,7 @@ import {
   type SshTarget,
   sshCheck,
   sshList,
+  sshOpenTerminal,
   sshRemove,
   sshTone,
 } from "@/lib/ssh.ts";
@@ -61,6 +62,10 @@ const text: Dict<{
   cancel: string;
   removedTitle: (alias: string) => string;
   removed: (comment: string, target: string) => string;
+  retry: string;
+  openRemote: string;
+  openRemoteHint: (alias: string) => string;
+  openFailedTitle: (alias: string) => string;
 }> = {
   vi: {
     lead: "Chuyển đăng nhập SSH từ mật khẩu sang khoá. App chép khoá công khai lên máy chủ bằng mật khẩu bạn gõ một lần, rồi chỉ dùng khoá.",
@@ -98,6 +103,10 @@ const text: Dict<{
     removedTitle: (alias) => `Đã xoá ${alias} khỏi ~/.ssh/config`,
     removed: (comment, target) =>
       `Để thu hồi hẳn quyền vào máy chủ, xoá dòng có comment "${comment}" trong ~/.ssh/authorized_keys của ${target}.`,
+    retry: "Thử lại",
+    openRemote: "Mở remote",
+    openRemoteHint: (alias) => `Mở cửa sổ terminal của máy và chạy ssh ${alias}`,
+    openFailedTitle: (alias) => `Không mở được terminal tới ${alias}`,
   },
   en: {
     lead: "Move SSH sign-in from passwords to keys. The app copies the public key to the server with a password you type once, then uses only the key.",
@@ -136,6 +145,10 @@ const text: Dict<{
     removedTitle: (alias) => `Removed ${alias} from ~/.ssh/config`,
     removed: (comment, target) =>
       `To fully revoke access, delete the line with comment "${comment}" from ~/.ssh/authorized_keys of ${target}.`,
+    retry: "Try again",
+    openRemote: "Open remote",
+    openRemoteHint: (alias) => `Open a terminal window on this machine and run ssh ${alias}`,
+    openFailedTitle: (alias) => `Could not open a terminal to ${alias}`,
   },
 };
 
@@ -155,6 +168,8 @@ export function SshScreen() {
   const [passwordOff, setPasswordOff] = useState<SshHost | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
+  const [openFailed, setOpenFailed] = useState<{ alias: string; detail: string } | null>(null);
 
   const check = useCallback(async (alias: string) => {
     setChecks((c) => ({ ...c, [alias]: "checking" }));
@@ -205,6 +220,18 @@ export function SshScreen() {
     }
   }
 
+  async function openRemote(alias: string) {
+    setOpening(alias);
+    setOpenFailed(null);
+    try {
+      await sshOpenTerminal(alias);
+    } catch (e) {
+      setOpenFailed({ alias, detail: errorText(e) });
+    } finally {
+      setOpening(null);
+    }
+  }
+
   async function copyKey(publicKey: string) {
     try {
       await navigator.clipboard.writeText(publicKey);
@@ -234,9 +261,22 @@ export function SshScreen() {
       </header>
 
       {error && (
-        <p role="alert" className="rounded-lg bg-destructive-soft px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 rounded-lg bg-destructive-soft px-3 py-2 text-sm text-destructive"
+        >
+          <p className="min-w-0 flex-1 break-words">{error}</p>
+          <Button variant="outline" size="sm" onClick={() => void load()}>
+            <RefreshCwIcon aria-hidden="true" />
+            {t.retry}
+          </Button>
+        </div>
+      )}
+      {openFailed && (
+        <Alert variant="destructive">
+          <AlertTitle>{t.openFailedTitle(openFailed.alias)}</AlertTitle>
+          <AlertDescription className="break-words">{openFailed.detail}</AlertDescription>
+        </Alert>
       )}
       {!list && !error && <p className="text-sm text-muted-foreground">{t.loading}</p>}
 
@@ -305,6 +345,8 @@ export function SshScreen() {
                 const done = state && state !== "checking" ? state : null;
                 const canSetup = done?.status === "auth" || done?.status === "hostkey_unknown";
                 const reason = h.managed ? null : h.proxy ? t.proxyReason : h.keyUsable ? null : t.keyReason;
+                // Worker mới hơn app có thể trả trạng thái app chưa biết: hiện như lỗi thay vì đọc undefined.
+                const status = done ? (statusText[done.status] ?? statusText.error) : null;
                 return (
                   <TableRow key={h.alias}>
                     <Td className="font-mono">{h.alias}</Td>
@@ -318,11 +360,11 @@ export function SshScreen() {
                         {state === "checking" && <span className="text-sm text-muted-foreground">{t.checking}</span>}
                         {done && (
                           <Pill dot tone={sshTone(done.status)}>
-                            {statusText[done.status].label}
+                            {status?.label}
                           </Pill>
                         )}
                         {done && done.status !== "ok" && (
-                          <span className="text-xs text-muted-foreground">{statusText[done.status].hint}</span>
+                          <span className="text-xs text-muted-foreground">{status?.hint}</span>
                         )}
                         {done?.status === "error" && done.detail && (
                           <span className="font-mono text-xs break-all text-muted-foreground">{done.detail}</span>
@@ -336,6 +378,17 @@ export function SshScreen() {
                             onClick={() => void check(h.alias)}
                           >
                             {t.check}
+                          </Button>
+                          {/* Mở bằng alias để ssh tự áp khối trong ~/.ssh/config (khoá, cổng, ProxyJump). */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            title={t.openRemoteHint(h.alias)}
+                            disabled={list.ssh === "" || opening !== null}
+                            onClick={() => void openRemote(h.alias)}
+                          >
+                            <SquareTerminalIcon aria-hidden="true" />
+                            {t.openRemote}
                           </Button>
                           {canSetup && (
                             <Button

@@ -42,6 +42,8 @@ function fakeApp(opts: {
   checks?: Record<string, SshCheck>;
   scan?: SshScan;
   setup?: () => SshSetup;
+  /** Ghi đè lệnh Tauri để giả dữ liệu lạ hay lỗi của máy. */
+  override?: Record<string, (args?: Record<string, unknown>) => unknown>;
 }) {
   const calls: Call[] = [];
   let list: SshList = { ssh: "/usr/bin/ssh", configPath: "/home/ha/.ssh/config", key: KEY, hosts: [], ...opts.list };
@@ -63,6 +65,8 @@ function fakeApp(opts: {
       list = { ...list, hosts: list.hosts.filter((h) => h.alias !== a?.alias) };
       return list;
     },
+    ssh_open_terminal: () => undefined,
+    ...opts.override,
   };
   window.__TAURI__ = {
     core: {
@@ -287,11 +291,97 @@ describe("màn Máy chủ SSH", () => {
     expect(within(dialog).getByText(/PasswordAuthentication no/)).toBeTruthy();
   });
 
+  it("Ubuntu chưa có ~/.ssh/config: worker trả hosts null mà màn vẫn hiện, không trắng", async () => {
+    fakeApp({
+      override: {
+        ssh_list: () => ({ ssh: "/usr/bin/ssh", configPath: "/home/ha/.ssh/config", key: KEY, hosts: null }),
+      },
+    });
+    render(<SshScreen />);
+    expect(await screen.findByText(/Chưa có máy chủ nào/)).toBeTruthy();
+    expect(screen.getByText(KEY.path)).toBeTruthy();
+  });
+
+  it("xoá khối cuối cùng: worker trả hosts null, màn về trạng thái rỗng", async () => {
+    const user = userEvent.setup();
+    fakeApp({
+      list: { hosts: [HIVE] },
+      override: {
+        ssh_remove: () => ({ ssh: "/usr/bin/ssh", configPath: "/home/ha/.ssh/config", key: KEY, hosts: null }),
+      },
+    });
+    render(<SshScreen />);
+    await user.click(await within(await waitFor(() => row("hive-prod"))).findByRole("button", { name: "Xoá" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Xoá" }));
+    expect(await screen.findByText(/Chưa có máy chủ nào/)).toBeTruthy();
+  });
+
+  it("đọc ~/.ssh lỗi: báo lỗi và Thử lại đọc lại được", async () => {
+    const user = userEvent.setup();
+    let fail = true;
+    const { calls } = fakeApp({
+      list: { hosts: [MACMINI] },
+      override: {
+        ssh_list: () => {
+          if (fail) throw "không đọc được /home/ha/.ssh/config: permission denied";
+          return { ssh: "/usr/bin/ssh", configPath: "/home/ha/.ssh/config", key: KEY, hosts: [MACMINI] };
+        },
+      },
+    });
+    render(<SshScreen />);
+    expect(await screen.findByText(/permission denied/)).toBeTruthy();
+    fail = false;
+    await user.click(screen.getByRole("button", { name: "Thử lại" }));
+    await waitFor(() => expect(row("macmini")).toBeTruthy());
+    expect(screen.queryByText(/permission denied/)).toBeNull();
+    expect(calls.filter((c) => c.command === "ssh_list")).toHaveLength(2);
+  });
+
+  it("worker trả trạng thái app chưa biết: hiện như Lỗi, không trắng màn", async () => {
+    fakeApp({
+      list: { hosts: [MACMINI] },
+      checks: { macmini: { status: "moi_them" as never, detail: "chi tiết lạ" } },
+    });
+    render(<SshScreen />);
+    await waitFor(() => expect(within(row("macmini")).getByText("Lỗi")).toBeTruthy());
+  });
+
+  it("Mở remote: chạy ssh tới đúng alias trong terminal của máy; lỗi thì báo, không trắng màn", async () => {
+    const user = userEvent.setup();
+    let fail = false;
+    const { calls } = fakeApp({
+      list: { hosts: [MACMINI, HIVE] },
+      override: {
+        ssh_open_terminal: () => {
+          if (fail) throw "Không tìm thấy ứng dụng terminal (x-terminal-emulator, gnome-terminal, konsole).";
+        },
+      },
+    });
+    render(<SshScreen />);
+    const open = await waitFor(() => within(row("macmini")).getByRole("button", { name: "Mở remote" }));
+    await user.click(open);
+    await waitFor(() =>
+      expect(calls.filter((c) => c.command === "ssh_open_terminal").map((c) => c.args)).toEqual([{ alias: "macmini" }]),
+    );
+    fail = true;
+    await user.click(within(row("hive-prod")).getByRole("button", { name: "Mở remote" }));
+    expect(await screen.findByText("Không mở được terminal tới hive-prod")).toBeTruthy();
+    expect(screen.getByText(/x-terminal-emulator/)).toBeTruthy();
+  });
+
+  it("Mở remote bị khoá khi máy chưa có OpenSSH client", async () => {
+    fakeApp({ list: { ssh: "", hosts: [MACMINI] } });
+    render(<SshScreen />);
+    const open = await waitFor(() => within(row("macmini")).getByRole("button", { name: "Mở remote" }));
+    expect((open as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("chữ tiếng Anh khi chọn EN", async () => {
     setLang("en");
     fakeApp({ list: { hosts: [HIVE] }, checks: { "hive-prod": { status: "ok" } } });
     render(<SshScreen />);
     expect(await screen.findByRole("button", { name: "Add server" })).toBeTruthy();
     await waitFor(() => expect(within(row("hive-prod")).getByText("Key works")).toBeTruthy());
+    expect(within(row("hive-prod")).getByRole("button", { name: "Open remote" })).toBeTruthy();
   });
 });

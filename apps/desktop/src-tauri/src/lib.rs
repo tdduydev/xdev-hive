@@ -1234,6 +1234,7 @@ pub fn run() {
             ssh_keys::ssh_scan,
             ssh_keys::ssh_setup,
             ssh_keys::ssh_remove,
+            ssh_keys::ssh_open_terminal,
             cli::folder_tree,
             cli::folder_docs,
             cli::propose_doc,

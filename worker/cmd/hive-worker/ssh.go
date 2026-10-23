@@ -178,6 +178,10 @@ func sshList(ctx context.Context, p sshPaths) (sshListView, error) {
 		return sshListView{}, err
 	}
 	view := sshListView{ConfigPath: p.config, Key: key, Hosts: sshkeys.ParseConfig(data)}
+	if view.Hosts == nil {
+		// Máy chưa có ~/.ssh/config (Linux mới cài hay gặp): slice nil thành `null` trong JSON và màn SSH của app trắng.
+		view.Hosts = []sshkeys.Host{}
+	}
 	view.SSH, _ = sshFindSSH()
 	for i := range view.Hosts {
 		h := &view.Hosts[i]
