@@ -67,8 +67,13 @@ export async function saveAgentPolicy(
   // Cùng khoá với layers, lấy trước khi đọc để kiểm quyền và tăng phiên bản trên chính sách mới nhất.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(hive.ctx_org()::text, 33))`);
   const before = await loadPolicy(tx);
-  // Client chưa biết mục `remote` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt.
-  const next = agentPolicyInput.parse(input.remote === undefined ? { ...input, remote: before.remote } : input);
+  // Client chưa biết mục `remote` hay `git` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt, hay
+  // bỏ yêu cầu token git theo run.
+  const next = agentPolicyInput.parse({
+    ...input,
+    remote: input.remote ?? before.remote,
+    git: input.git ?? before.git,
+  });
   if (
     (allowsFull(next) && !allowsFull(before)) ||
     (next.defaultPermissionMode === "full" && before.defaultPermissionMode !== "full")

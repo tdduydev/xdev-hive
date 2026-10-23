@@ -452,6 +452,23 @@ export interface GitProvider {
   pendingDeployments?(ref: RepoRef, pipelineId: string): Promise<PendingDeployment[]>;
   /** Duyệt hoặc từ chối. Environment không đang chờ thì lỗi invalid. */
   reviewDeployments?(ref: RepoRef, pipelineId: string, input: ReviewDeploymentsInput): Promise<void>;
+  // Token git theo run (specs/027 R9). Kết nối PAT và provider local không có hàm này: máy dùng thông tin git sẵn có.
+  /** Token chỉ ghi được vào repo `ref`. `label` đặt vào tên token GitLab để người quản trị nhận ra token của run nào. */
+  issueRunToken?(ref: RepoRef, label: string): Promise<RunGitTokenGrant>;
+  /** Thu hồi token có `externalId` (GitLab). Token không còn thì coi như đã thu hồi. */
+  revokeRunToken?(ref: RepoRef, externalId: string): Promise<void>;
+}
+
+/** Token git cấp cho một run. Hub chỉ đưa giá trị token vào gói lease, không lưu. */
+export interface RunGitTokenGrant {
+  /** Host của git qua HTTPS, ví dụ `github.com`. */
+  host: string;
+  /** Tên đi kèm token khi git hỏi: `x-access-token` với GitHub, `oauth2` với GitLab. */
+  username: string;
+  token: string;
+  expiresAt: Date;
+  /** Id token phía GitLab để thu hồi; null với GitHub vì token cài đặt tự hết hạn sau 1 giờ. */
+  externalId: string | null;
 }
 
 /** Cho phép test và proxy thay `fetch`, không phụ thuộc dispatcher toàn cục. */

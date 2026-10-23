@@ -946,3 +946,33 @@ describe("GitLab CI: pipeline và job", () => {
     expect(result.incomplete).toBe(false);
   });
 });
+
+describe("GitLab token theo run", () => {
+  it("tạo project access token ghi repo, hạn ngày mai", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/access_tokens`, method: "POST" })
+      .reply(201, http.json({ id: 99, token: "glpat-run", expires_at: "2026-10-24" }), JSON_HEADERS);
+    const grant = await gl.issueRunToken?.(ref, "hive-run-r1-1");
+    expect(grant).toEqual({
+      host: "gitlab.example",
+      username: "oauth2",
+      token: "glpat-run",
+      expiresAt: new Date("2026-10-24T00:00:00Z"),
+      externalId: "99",
+    });
+    expect(http.calls[0]?.body).toMatchObject({
+      name: "hive-run-r1-1",
+      scopes: ["write_repository"],
+      access_level: 30,
+    });
+  });
+
+  it("thu hồi; token đã mất (404) coi như xong", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/access_tokens/99`, method: "DELETE" }).reply(204, "");
+    pool.intercept({ path: `${P}/access_tokens/98`, method: "DELETE" }).reply(404, notFound, JSON_HEADERS);
+    await expect(gl.revokeRunToken?.(ref, "99")).resolves.toBeUndefined();
+    await expect(gl.revokeRunToken?.(ref, "98")).resolves.toBeUndefined();
+  });
+});

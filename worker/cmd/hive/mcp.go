@@ -23,9 +23,13 @@ const mcpMaxMessage = 8 << 20
 type mcpProxy struct {
 	client              *http.Client
 	hub, token, project string
-	out                 io.Writer
-	mu                  sync.Mutex
-	session, protocol   string
+	// outbox: tool ghi đi qua hộp thư của hive-worker. Worker gửi bằng lần đăng nhập đã lưu, nên chỉ bật khi phiên này dùng
+	// đúng token và hub đó; HIVE_TOKEN hay --hub khác thì gọi thẳng hub, kẻo ghi dưới tên người khác hay sang hub khác.
+	outbox            bool
+	out               io.Writer
+	mu                sync.Mutex
+	session, protocol string
+	socket            func() (string, error)
 }
 
 func (a *app) mcp(args []string) int {
@@ -44,7 +48,9 @@ func (a *app) mcp(args []string) int {
 	if err != nil {
 		return a.errorf(exitUsage, "Chưa có địa chỉ hub hợp lệ. Chạy hive login --hub URL.")
 	}
-	token, _, tokenErr := a.readToken(hub)
+	token, source, tokenErr := a.readToken(hub)
+	saved, _, _ := a.loadCLIConfig()
+	savedHub, _ := normalizeHub(saved.HubURL)
 	if *project == "" {
 		*project = a.mcpProject(hub)
 	}
@@ -53,7 +59,10 @@ func (a *app) mcp(args []string) int {
 	client.Timeout = 0
 	// Không chuyển PAT sang URL chuyển hướng, kể cả URL cùng tên miền.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	p := &mcpProxy{client: &client, hub: hub, token: token, project: *project, out: a.stdout}
+	p := &mcpProxy{
+		client: &client, hub: hub, token: token, project: *project, out: a.stdout, socket: a.socket,
+		outbox: source == "keychain" && savedHub == hub,
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var pending sync.WaitGroup
@@ -69,7 +78,9 @@ func (a *app) mcp(args []string) int {
 			ID      json.RawMessage `json:"id"`
 			Method  string          `json:"method"`
 			Params  struct {
-				ProtocolVersion string `json:"protocolVersion"`
+				ProtocolVersion string          `json:"protocolVersion"`
+				Name            string          `json:"name"`
+				Arguments       json.RawMessage `json:"arguments"`
 			} `json:"params"`
 		}
 		if !json.Valid(line) {
@@ -93,12 +104,26 @@ func (a *app) mcp(args []string) int {
 		}
 		data := bytes.Clone(line)
 		pending.Add(1)
+		toolCall := message.Method == "tools/call" && len(message.ID) != 0
+		if toolCall && p.outbox && queueable(message.Params.Name) {
+			go func() {
+				defer pending.Done()
+				p.viaOutbox(ctx, message.ID, message.Params.Name, message.Params.Arguments)
+			}()
+			continue
+		}
 		go func() {
 			defer pending.Done()
+			var down *errHubDown
 			if err := p.post(ctx, data); err != nil && ctx.Err() == nil && len(message.ID) != 0 {
-				if errors.Is(err, errUnauthorized) {
+				switch {
+				case errors.Is(err, errUnauthorized):
 					p.rpcError(message.ID, -32001, "Token hết hạn hoặc đã bị thu hồi. Chạy hive login.")
-				} else {
+				case errors.As(err, &down) && toolCall:
+					p.toolResult(message.ID, p.hubDownMessage(), true)
+				case errors.As(err, &down):
+					p.rpcError(message.ID, -32603, p.hubDownMessage())
+				default:
 					p.rpcError(message.ID, -32603, "Không chuyển tiếp được phản hồi MCP từ hub.")
 				}
 			}
@@ -166,7 +191,7 @@ func (p *mcpProxy) post(ctx context.Context, data []byte) error {
 	p.mu.Unlock()
 	res, err := p.client.Do(req)
 	if err != nil {
-		return err
+		return &errHubDown{err}
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusUnauthorized {

@@ -99,7 +99,10 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
       version: input.version,
       clis: input.clis,
       capacity: input.capacity,
+      // Cài lại máy mà không gửi khoá (worker cũ) thì bỏ khoá cũ: máy quay về machine token.
       publicKey: input.publicKey ?? null,
+      publicKeyAt: input.publicKey ? sql`now()` : null,
+      keyStorage: input.publicKey ? (input.keyStorage ?? "keychain") : null,
       registeredBy: claimed.createdBy,
     };
     // Mã thường (không nhãn, không dùng chung) không xoá nhãn và cờ quản trị đội đã đặt cho máy cài lại.
@@ -134,6 +137,8 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
       teamId: machine.teamId,
       machineId: machine.id,
       tokenHash: hashToken(machineToken),
+      // Máy có khoá chỉ mở kết nối bằng access token; vẫn trả machine token vì hợp đồng register buộc có trường này.
+      supersededAt: input.publicKey ? sql`now()` : null,
     });
     await tx.update(registrationTokens).set({ usedByMachine: machine.id }).where(eq(registrationTokens.id, found.id));
     await recordAudit(tx, {
@@ -141,7 +146,13 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
       actorUserId: null,
       targetType: "machine",
       targetId: machine.id,
-      data: { name: machine.name, teamId: machine.teamId, reinstalled: Boolean(existing), os: input.os },
+      data: {
+        name: machine.name,
+        teamId: machine.teamId,
+        reinstalled: Boolean(existing),
+        os: input.os,
+        keyStorage: info.keyStorage,
+      },
     });
     return { id: machine.id, orgId: found.orgId, teamId: machine.teamId, machineId: machine.name, machineToken };
   });

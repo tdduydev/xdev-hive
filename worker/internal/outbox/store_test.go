@@ -509,3 +509,127 @@ func itoa(n int) string {
 	b, _ := json.Marshal(n)
 	return string(b)
 }
+
+var userID = Identity{HubURL: "https://hub.example.test/", OrgID: "org-1", UserID: "u-1", Email: "a@example.test"}
+
+func TestUserIdentityKey(t *testing.T) {
+	k := userID.Key()
+	if len(k) != 16 || strings.Trim(k, "0123456789abcdef") != "" {
+		t.Fatalf("khoá người dùng phải là 16 hex: %q", k)
+	}
+	same := Identity{HubURL: "https://hub.example.test", UserID: "u-1"}
+	other := Identity{HubURL: "https://hub2.example.test", UserID: "u-1"}
+	if same.Key() != k || other.Key() == k || strings.Contains(k, "u-1") {
+		t.Errorf("khoá phải chỉ theo hub và người: %q %q %q", k, same.Key(), other.Key())
+	}
+}
+
+func TestSubmitUserTransports(t *testing.T) {
+	s, _ := newStore(t)
+	it, err := s.Submit(userID, Submission{
+		Transport: TransportMCP, Kind: "task_update", Target: &Target{Type: "task", ID: "t1"},
+		Payload: json.RawMessage(`{"taskId":"t1","note":"xong bước 1"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Stream != "task:t1" || it.Source != "mcp-local" || it.Group != GroupProgress || it.Transport != TransportMCP {
+		t.Errorf("mục: %+v", it)
+	}
+	if _, err := os.Stat(filepath.Join(s.Root, userID.Key(), it.Key+".json")); err != nil {
+		t.Errorf("mục phải nằm trong thư mục của người dùng: %v", err)
+	}
+	rpc, err := s.Submit(userID, Submission{Transport: TransportRPC, Kind: "memory.write", Payload: json.RawMessage(`{}`)})
+	if err != nil || rpc.Source != "hive-cli" || rpc.Stream != "memory.write" {
+		t.Errorf("mục rpc: %+v %v", rpc, err)
+	}
+
+	for _, c := range []struct {
+		id   Identity
+		sub  Submission
+		code string
+	}{
+		{userID, Submission{Transport: TransportMCP, Kind: "artifact_create", Payload: json.RawMessage(`{}`)}, "NOT_QUEUEABLE"},
+		{userID, Submission{Transport: TransportMCP, Kind: "task_get", Payload: json.RawMessage(`{}`)}, "UNKNOWN_KIND"},
+		{userID, Submission{Transport: TransportRPC, Kind: "task_update", Payload: json.RawMessage(`{}`)}, "UNKNOWN_KIND"},
+		{testID, Submission{Transport: TransportMCP, Kind: "task_update", Payload: json.RawMessage(`{}`)}, "NOT_SIGNED_IN"},
+	} {
+		var e *Error
+		if _, err := s.Submit(c.id, c.sub); !errors.As(err, &e) || e.Code != c.code {
+			t.Errorf("%s/%s: muốn %s, được %v", c.sub.Transport, c.sub.Kind, c.code, err)
+		}
+	}
+	if _, err := s.Submit(userID, Submission{Transport: TransportMCP, Kind: "task_update", Source: "ftp", Payload: json.RawMessage(`{}`)}); err == nil {
+		t.Error("nguồn lạ phải bị chặn")
+	}
+	if _, err := s.Submit(userID, Submission{Transport: TransportMCP, Kind: "task_update", Target: &Target{Type: "task"}, Payload: json.RawMessage(`{}`)}); err == nil {
+		t.Error("đích thiếu id phải bị chặn")
+	}
+}
+
+func TestHeldBlocksOnlyItsStream(t *testing.T) {
+	s, c := newStore(t)
+	hub := newFakeSender()
+	sub := func(stream string) Item {
+		c.add(time.Millisecond)
+		it, err := s.Submit(testID, Submission{Kind: KindProjectTokenUsage, Stream: stream, Payload: json.RawMessage(`{}`)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return it
+	}
+	a1, a2, b1 := sub("project:a"), sub("project:a"), sub("project:b")
+	if err := s.Hold(testID, a1.Key, HeldLoginRequired); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Flush(context.Background(), testID, hub.send)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Accepted != 1 || len(hub.events) != 1 || hub.events[0].Key != b1.Key {
+		t.Fatalf("chỉ stream b được gửi: %+v %+v", res, hub.events)
+	}
+	st, err := s.Stats(testID)
+	if err != nil || st.Held != 1 || st.Pending != 1 || st.Bytes <= 0 || st.LimitBytes != DefaultMaxTotalBytes {
+		t.Errorf("stats: %+v %v", st, err)
+	}
+	if items := list(t, s); items[0].HeldReason != HeldLoginRequired {
+		t.Errorf("lý do giữ: %+v", items[0])
+	}
+
+	if n, err := s.RetryHeld(testID, HeldLoginRequired); n != 1 || err != nil {
+		t.Fatalf("gửi lại mục bị giữ: %d %v", n, err)
+	}
+	if _, err := s.Flush(context.Background(), testID, hub.send); err != nil {
+		t.Fatal(err)
+	}
+	if len(hub.events) != 3 || hub.events[1].Key != a1.Key || hub.events[2].Key != a2.Key || len(list(t, s)) != 0 {
+		t.Errorf("stream a phải gửi đúng thứ tự sau khi đăng nhập lại: %+v", hub.events)
+	}
+}
+
+func TestRetryExpiredAndExport(t *testing.T) {
+	s, c := newStore(t)
+	hub := newFakeSender()
+	it := submit(t, s, KindTokenScore, `{"days":7}`)
+	c.add(15 * 24 * time.Hour)
+	if res, err := s.Flush(context.Background(), testID, hub.send); err != nil || res.Expired != 1 {
+		t.Fatalf("mục phải hết hạn: %+v %v", res, err)
+	}
+	got, err := s.Export(testID, []string{it.Key, "KHONGCOKHOA00000000"})
+	if err != nil || len(got) != 1 || got[0].State != StateExpired {
+		t.Fatalf("xuất: %+v %v", got, err)
+	}
+	if all, _ := s.Export(testID, nil); len(all) != 1 {
+		t.Errorf("xuất hết: %+v", all)
+	}
+	if n, err := s.Retry(testID, []string{it.Key}); n != 1 || err != nil {
+		t.Fatalf("gửi lại: %d %v", n, err)
+	}
+	if res, err := s.Flush(context.Background(), testID, hub.send); err != nil || res.Accepted != 1 {
+		t.Errorf("mục gửi lại phải được tính hạn từ lúc bấm: %+v %v", res, err)
+	}
+	if _, err := s.Retry(testID, []string{"../x"}); err == nil {
+		t.Error("khoá lạ phải bị chặn")
+	}
+}

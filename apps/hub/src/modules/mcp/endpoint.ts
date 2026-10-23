@@ -2,6 +2,7 @@ import { createMcpHandler, getOAuthProtectedResourceMetadataUrl } from "@modelco
 import { verifyJwsAccessToken } from "better-auth/oauth2";
 import type pg from "pg";
 import { type Auth, mcpResource } from "../identity/index.ts";
+import { type ClientRequest, readClientRequest } from "../platform/index.ts";
 import { verifyPersonalToken } from "./admin-service.ts";
 import { type McpPrincipal, noRunTokens, type RunTokenVerifier } from "./principal.ts";
 import type { McpToolRegistry } from "./registry.ts";
@@ -91,7 +92,7 @@ export function createMcpEndpoint(deps: McpEndpointDeps): (request: Request) => 
       const principal = authInfo?.extra?.principal as McpPrincipal | undefined;
       // Handler chỉ được gọi sau khi đã xác thực; thiếu principal là lỗi lập trình, không phải lỗi người dùng.
       if (!principal) throw new Error("Thiếu principal cho request MCP.");
-      return buildMcpServer(deps, principal);
+      return buildMcpServer(deps, principal, authInfo?.extra?.client as ClientRequest | undefined);
     },
     {
       // Vẫn phục vụ client đời 2025 (initialize) theo kiểu stateless: Claude Code, Codex chưa chắc đã lên 2026-07-28.
@@ -108,7 +109,8 @@ export function createMcpEndpoint(deps: McpEndpointDeps): (request: Request) => 
         scopes: principal.scopes,
         resource: new URL(resource),
         resourceMetadataUrl: metadataUrl,
-        extra: { principal },
+        // Header sự kiện client (specs/027): tool có ghi dùng khoá chống trùng, nguồn và máy client khai.
+        extra: { principal, client: readClientRequest(request.headers) },
       },
     });
 

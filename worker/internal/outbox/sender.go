@@ -23,24 +23,49 @@ func HubSender(hc *http.Client, baseURL, machineToken string) Sender {
 	}
 }
 
-// Outcome là kết quả của một mục trong lượt gửi.
-type Outcome struct {
-	Key    string `json:"key"`
-	Kind   string `json:"kind"`
-	State  State  `json:"state"`
-	Code   string `json:"code,omitempty"`
-	Reason string `json:"reason,omitempty"`
-	Error  string `json:"error,omitempty"`
+// Delivery là trả lời của hub cho một mục. Response là kết quả tool hay procedure, để client đang chờ nhận như gọi thẳng.
+type Delivery struct {
+	Result   hubclient.ClientEventResult
+	Response json.RawMessage
 }
 
-// FlushResult đếm theo kết quả: Retry là lần gửi hỏng sẽ thử lại, Waiting là mục chưa tới giờ thử lại.
+// Dispatcher gửi một mục bất kỳ kênh. Lỗi *HoldError giữ mục; *hubclient.StatusError là hub trả lời (thử lại hay từ
+// chối theo mã); lỗi khác coi như mất mạng.
+type Dispatcher func(ctx context.Context, it Item) (Delivery, error)
+
+// HoldError là lần gửi mà danh tính hiện tại chắc chắn không qua được (chưa đăng nhập, token của người khác): giữ mục
+// tới khi người dùng đăng nhập lại thay vì thử lại tới hết hạn.
+type HoldError struct {
+	Reason  string
+	Message string
+}
+
+func (e *HoldError) Error() string { return e.Message }
+
+// Outcome là kết quả của một mục trong lượt gửi.
+type Outcome struct {
+	Key        string          `json:"key"`
+	Kind       string          `json:"kind"`
+	State      State           `json:"state"`
+	Code       string          `json:"code,omitempty"`
+	Reason     string          `json:"reason,omitempty"`
+	HeldReason string          `json:"heldReason,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	ReceivedAt string          `json:"receivedAt,omitempty"`
+	Response   json.RawMessage `json:"response,omitempty"`
+}
+
+// FlushResult đếm theo kết quả: Retry là lần gửi hỏng sẽ thử lại, Waiting là mục chưa tới giờ thử lại hay bị chặn sau
+// mục đang giữ. Offline là lượt dừng vì không gọi được hub.
 type FlushResult struct {
 	Accepted  int       `json:"accepted"`
 	Duplicate int       `json:"duplicate"`
 	Rejected  int       `json:"rejected"`
 	Expired   int       `json:"expired"`
+	Held      int       `json:"held"`
 	Retry     int       `json:"retry"`
 	Waiting   int       `json:"waiting"`
+	Offline   bool      `json:"offline"`
 	Items     []Outcome `json:"items"`
 }
 
@@ -58,10 +83,18 @@ func (it Item) Event() hubclient.ClientEvent {
 	return hubclient.ClientEvent{Key: it.Key, Kind: it.Kind, CreatedAt: it.CreatedAt.UTC().Format(time.RFC3339), Payload: it.Body}
 }
 
-// Flush gửi các mục tới hạn của danh tính theo thứ tự trong từng stream. Mục `sending` còn lại là của tiến trình bị
+// Flush gửi sự kiện máy bằng send; xem FlushWith.
+func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult, error) {
+	return s.FlushWith(ctx, id, func(ctx context.Context, it Item) (Delivery, error) {
+		r, err := send(ctx, it.Event())
+		return Delivery{Result: r}, err
+	})
+}
+
+// FlushWith gửi các mục tới hạn của danh tính theo thứ tự trong từng stream. Mục `sending` còn lại là của tiến trình bị
 // giết giữa lúc gửi: gửi lại cùng khoá, hub đã nhận thì trả `duplicate`. Mất mạng thì dừng cả lượt, các mục còn lại chờ
 // lượt sau, khỏi chờ timeout từng mục.
-func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult, error) {
+func (s Store) FlushWith(ctx context.Context, id Identity, send Dispatcher) (FlushResult, error) {
 	res := FlushResult{Items: []Outcome{}}
 	unlock, err := s.lock(id)
 	if err != nil {
@@ -93,7 +126,7 @@ func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult
 			continue
 		}
 		now := s.now()
-		if now.Sub(it.CreatedAt) >= ExpireAfter {
+		if it.expired(now) {
 			it.State, it.NextAttemptAt = StateExpired, nil
 			if err := s.write(id, it); err != nil {
 				return res, err
@@ -103,6 +136,12 @@ func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult
 			continue
 		}
 		if blocked[it.Stream] {
+			continue
+		}
+		if it.State == StateHeld {
+			// Mục sau cùng stream có thể phụ thuộc mục bị giữ (cập nhật task sau khi gửi kế hoạch), nên chờ cùng.
+			blocked[it.Stream] = true
+			res.Waiting++
 			continue
 		}
 		if offline || (it.State == StatePending && it.NextAttemptAt != nil && now.Before(*it.NextAttemptAt)) {
@@ -117,14 +156,19 @@ func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult
 		if err := s.write(id, it); err != nil {
 			return res, err
 		}
-		r, sendErr := send(ctx, it.Event())
+		d, sendErr := send(ctx, it)
+		r := d.Result
 		now = s.now()
 		out := Outcome{Key: it.Key, Kind: it.Kind}
-		var statusErr *hubclient.StatusError
+		var (
+			statusErr *hubclient.StatusError
+			holdErr   *HoldError
+		)
 		switch {
 		case sendErr == nil && (r.Outcome == hubclient.OutcomeAccepted || r.Outcome == hubclient.OutcomeDuplicate):
 			it.State, it.LastError = State(r.Outcome), ""
-			it.Result = &Result{Outcome: r.Outcome, ReceivedAt: r.ReceivedAt}
+			it.Result = &Result{Outcome: r.Outcome, ReceivedAt: r.ReceivedAt, Response: d.Response}
+			out.Response, out.ReceivedAt = d.Response, r.ReceivedAt
 			if err := s.write(id, it); err != nil {
 				return res, err
 			}
@@ -138,9 +182,14 @@ func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult
 			}
 		case sendErr == nil && r.Outcome == hubclient.OutcomeRejected:
 			it.State, it.LastError = StateRejected, ""
-			it.Result = &Result{Outcome: r.Outcome, Code: r.Code, Reason: r.Reason, ReceivedAt: r.ReceivedAt}
-			out.Code, out.Reason = r.Code, r.Reason
+			it.Result = &Result{Outcome: r.Outcome, Code: r.Code, Reason: r.Reason, ReceivedAt: r.ReceivedAt, Response: d.Response}
+			out.Code, out.Reason, out.Response, out.ReceivedAt = r.Code, r.Reason, d.Response, r.ReceivedAt
 			res.Rejected++
+		case errors.As(sendErr, &holdErr):
+			it.State, it.HeldReason, it.LastError = StateHeld, holdErr.Reason, holdErr.Message
+			out.HeldReason, out.Error = holdErr.Reason, holdErr.Message
+			blocked[it.Stream] = true
+			res.Held++
 		case errors.As(sendErr, &statusErr) && permanent(statusErr.Status):
 			// Hub từ chối cả yêu cầu (sai schema, quá lớn): gửi lại cùng byte vẫn hỏng.
 			it.State, it.LastError = StateRejected, ""
@@ -158,7 +207,7 @@ func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult
 			blocked[it.Stream] = true
 			res.Retry++
 			if statusErr == nil {
-				offline = true
+				offline, res.Offline = true, true
 			}
 		}
 		if it.State != StateAccepted && it.State != StateDuplicate {
