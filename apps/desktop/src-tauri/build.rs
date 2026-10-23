@@ -91,6 +91,7 @@ fn main() {
         "optimize_all_undo",
         "optimize_all_last",
         "local_projects",
+        "read_run_log",
         "local_projects_import",
         "local_project_bind",
         "local_project_unbind",

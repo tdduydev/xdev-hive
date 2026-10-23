@@ -80,6 +80,7 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
   remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
                           (hive remote help để xem đủ)
   outbox [--json]         hộp thư đi: các lần ghi chưa tới hub; drop, retry, export (hive outbox help để xem đủ)
+  runs [--json]           log run trên máy; runs log <run> để đọc đầy đủ
   version                 phiên bản hive và hive-worker
   test-summary <file>     tóm tắt Playwright JSON/JUnit XML thành metadata QA (log và code ở lại máy)
 
@@ -129,6 +130,8 @@ func (a *app) run(args []string) int {
 		return a.remote(rest)
 	case "outbox":
 		return a.outbox(rest)
+	case "runs":
+		return a.runs(rest)
 	case "__hook":
 		// Cần hook của CLI (T072); chưa làm thì báo rõ thay vì im lặng.
 		return a.errorf(exitUsage, "Lệnh hive %s chưa hỗ trợ trong bản này.", cmd)

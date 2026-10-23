@@ -396,7 +396,7 @@ describe("run từ đầu tới PR", () => {
       runId: run.id,
       attempt: 1,
       event: "agent_report",
-      data: { summary: "Đã sửa" },
+      data: { summary: "Đã sửa", details: { token: `ghp_${"A".repeat(36)}` } },
     });
     await w.next("ack", (a) => a.uptoSeq === s3);
     const s4 = w.sendRun({
@@ -405,7 +405,7 @@ describe("run từ đầu tới PR", () => {
       attempt: 1,
       exit: 0,
       headSha: sha,
-      report: { commitCount: 1, changedFiles: ["src/hoa-don.ts"] },
+      report: { commitCount: 1, changedFiles: ["src/hoa-don.ts"], errorDetails: { token: `ghp_${"A".repeat(36)}` } },
     });
     await w.next("ack", (a) => a.uptoSeq === s4);
 
@@ -422,6 +422,11 @@ describe("run từ đầu tới PR", () => {
       s1,
     ]);
     expect(dup.rows[0].n).toBe(1);
+    const reports = await admin.query(
+      "select data from hive.run_events where run_id = $1 and type in ('agent_report', 'result')",
+      [run.id],
+    );
+    expect(JSON.stringify(reports.rows)).not.toContain(`ghp_${"A".repeat(36)}`);
 
     // SSE mở từ đầu nhận đủ chuyển trạng thái, sự kiện của worker và log, kết thúc bằng end.
     const events = await live;
@@ -454,6 +459,8 @@ describe("run từ đầu tới PR", () => {
     expect(evs.data.filter((e) => e.type === "phase")).toHaveLength(2);
     const lg = await api<Array<{ bytes: string }>>("GET", `/v1/runs/${run.id}/logs`);
     expect(lg.data).toHaveLength(1);
+    const storedLogs = await admin.query("select count(*)::int as n from hive.run_logs where run_id = $1", [run.id]);
+    expect(storedLogs.rows[0].n).toBe(0);
     await w.close();
   });
 });

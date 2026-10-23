@@ -26,6 +26,7 @@ mod optimizer;
 mod profiles;
 mod register;
 mod remote;
+mod run_logs;
 mod settings;
 mod setup_extra;
 mod skills;
@@ -1195,6 +1196,7 @@ pub fn run() {
             optimize_all::optimize_all_undo,
             optimize_all::optimize_all_last,
             local_projects::local_projects,
+            run_logs::read_run_log,
             local_projects::local_projects_import,
             local_projects::local_project_bind,
             local_projects::local_project_unbind,

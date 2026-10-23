@@ -343,7 +343,7 @@ func TestJobOfferToResult(t *testing.T) {
 	if m := c.nextType(t, "job_accept"); m.RunID != "run-1" || m.Attempt != 1 {
 		t.Fatalf("job_accept = %+v", m)
 	}
-	c.lease(t, "run-1", "tok-1")
+	c.lease(t, "run-1", "token-run-1")
 	msgs := c.untilResult(t, "run-1")
 
 	var phases []string
@@ -373,8 +373,12 @@ func TestJobOfferToResult(t *testing.T) {
 	if res.DiffStats == nil || res.DiffStats.AddedLines != 1 || res.DiffStats.DeletedLines != 0 || !slices.Equal(res.DiffStats.ChangedFiles, []string{"change.txt"}) {
 		t.Fatalf("diffStats = %#v", res.DiffStats)
 	}
-	if !strings.Contains(logs.String(), "token=tok-1 mcp=tok-1 project=web") {
-		t.Fatalf("CLI không nhận biến môi trường của run; log = %q", logs.String())
+	if strings.Contains(logs.String(), "token-run-1") || !strings.Contains(logs.String(), "project=web") {
+		t.Fatalf("log gửi hub chưa che token hoặc mất nội dung thường: %q", logs.String())
+	}
+	local, err := os.ReadFile(filepath.Join(cfg.DataDir, "runlogs", "run-1-1.log"))
+	if err != nil || !strings.Contains(string(local), "token=token-run-1 mcp=token-run-1 project=web") {
+		t.Fatalf("log đầy đủ tại máy = %q, %v", local, err)
 	}
 	out, err := exec.Command("git", "--git-dir", remote, "rev-parse", "refs/heads/ai/T-1").Output()
 	if err != nil || strings.TrimSpace(string(out)) != *res.HeadSHA {

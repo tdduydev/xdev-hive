@@ -388,6 +388,14 @@ export const NAV_GROUPS: NavGroup[] = [
         adminOnly: true,
         permission: "audit.read",
       },
+      {
+        id: "hub-data",
+        label: { vi: "Dữ liệu hub giữ", en: "Hub data inventory" },
+        icon: DatabaseIcon,
+        to: route("/admin/hub-data"),
+        match: "/admin/hub-data",
+        adminOnly: true,
+      },
     ],
   },
 ];

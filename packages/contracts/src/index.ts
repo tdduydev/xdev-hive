@@ -209,4 +209,5 @@ export type Contract = typeof contract;
 
 export * from "./chat.ts";
 export * from "./fleet.ts";
+export * from "./hub-data.ts";
 export * from "./leader.ts";
