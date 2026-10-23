@@ -181,7 +181,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1 và 4.
 
-- [ ] T012 [US2] A·nặng — File mới `worker/internal/secretstore/grant.go`, hàm `Grant(ctx, GrantRequest)`. Bản này chỉ
+- [x] T012 [US2] A·nặng — File mới `worker/internal/secretstore/grant.go`, hàm `Grant(ctx, GrantRequest)`. Bản này chỉ
   có nhánh `allow`; `approve` và `deny` thêm ở T028.
   - Đọc danh mục theo `localId`, đọc mọi giá trị trong một lần (tối đa 4 song song, 5 giây mỗi mục).
   - Lọc tên dành riêng; kiểm ≤24 KiB trên Windows (`ErrEnvTooLarge`).

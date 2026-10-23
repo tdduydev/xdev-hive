@@ -59,11 +59,11 @@ func missing(names ...string) *Error {
 	}
 }
 
-func corrupt(name string) *Error {
+func corrupt(names ...string) *Error {
 	return &Error{
 		Code:    CodeStoreCorrupt,
-		Message: fmt.Sprintf("Bí mật %s bị hỏng trong kho, hãy đặt lại giá trị.", name),
-		Names:   []string{name},
+		Message: fmt.Sprintf("Bí mật %s bị hỏng trong kho, hãy đặt lại giá trị.", strings.Join(names, ", ")),
+		Names:   names,
 	}
 }
 
