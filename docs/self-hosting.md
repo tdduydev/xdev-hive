@@ -380,14 +380,12 @@ building; the checksum is still verified. Alternatively set `HIVE_PANDOC_PATH` t
 usable pandoc (missing, or older than 3.12) turns Word import off: `/api/v1/health` shows `wordImport: false` and the web
 app hides the button.
 
-`.doc` (old binary format) needs LibreOffice Writer. **Planned, not built yet:** until it ships the hub rejects `.doc`
-files and reports `wordImportDoc: false`; `HIVE_SOFFICE_PATH` and `HIVE_DOC_WORD_DOC_TIMEOUT_MS` are read but unused.
+The hub does not accept `.doc` (old binary format) and does not need LibreOffice: it rejects those files and reports
+`wordImportDoc: false`. Save them as `.docx` first.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `HIVE_PANDOC_PATH` | `pandoc` | Path of the pandoc binary |
-| `HIVE_SOFFICE_PATH` | `soffice` | LibreOffice for `.doc` (planned) |
-| `HIVE_DOC_WORD_DOC_TIMEOUT_MS` | `120000` | Longest LibreOffice run per `.doc` file (planned) |
 | `HIVE_DOC_WORD_MAX_BYTES` | `52428800` (50 MiB) | Largest Word file; must not exceed the batch limit |
 | `HIVE_DOC_WORD_BATCH_FILES` | `100` | Files per import |
 | `HIVE_DOC_WORD_BATCH_BYTES` | `524288000` (500 MiB) | Bytes per import |

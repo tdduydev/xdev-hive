@@ -160,8 +160,8 @@ pandoc (`--sandbox`, 120 giây, heap 512 MB, bộ lọc `filter.lua`) ngoài tra
 rồi ghi Markdown xem trước vào bản ghi file của lượt nhập. Người `manage` bấm tạo thì tài liệu, phiên bản nguồn `word`
 và lô đẩy repo cùng nằm trong một transaction; người chỉ có `propose` thì Markdown và ảnh được giữ tạm cho tới khi duyệt
 (job `docsync-word-staging`). "Cập nhật từ Word" hợp ba bên từ Markdown của lần nhập trước. `/api/v1/health` báo
-`wordImport` và `wordImportDoc`; thiếu pandoc thì tắt cả tính năng. **[Chưa làm]** `.doc` qua LibreOffice
-(`word/soffice.ts` mới là bản giữ chỗ). Desktop dùng lệnh Rust `pick_word_files`, `hub_upload_word`, `hub_fetch_bytes`;
+`wordImport` và `wordImportDoc`; thiếu pandoc thì tắt cả tính năng. Hub không nhận `.doc` (ngoài phạm vi,
+ADR 0029). Desktop dùng lệnh Rust `pick_word_files`, `hub_upload_word`, `hub_fetch_bytes`;
 màn hình nằm ở nhánh `ai/WORD019G`, chưa gộp.
 
 BlobStore chung ở `platform/blob-store.ts` cung cấp `put/get/stat` dạng stream; PostgreSQL lưu metadata trong
