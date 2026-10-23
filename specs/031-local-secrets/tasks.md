@@ -129,7 +129,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 2.
 
-- [ ] T007 [US1] A·vừa — Lệnh sidecar quản lý trong file mới `worker/cmd/hive-worker/secrets.go`, gồm `status`, `list`,
+- [x] T007 [US1] A·vừa — Lệnh sidecar quản lý trong file mới `worker/cmd/hive-worker/secrets.go`, gồm `status`, `list`,
   `set`, `rename`, `describe`, `assign`, `unassign`, `delete`, theo [contracts/sidecar-cli.md](contracts/sidecar-cli.md).
   - Giá trị đọc từ stdin `{"value"}` (FR-009).
   - Mã lỗi theo bảng của contract.

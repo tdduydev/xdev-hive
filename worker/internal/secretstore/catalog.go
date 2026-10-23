@@ -119,7 +119,8 @@ func (c *Catalog) Find(name string) *Secret {
 	return nil
 }
 
-func (c *Catalog) get(name string) (*Secret, error) {
+// Get như Find nhưng trả lỗi not_found kèm tên khi không có.
+func (c *Catalog) Get(name string) (*Secret, error) {
 	if s := c.Find(name); s != nil {
 		return s, nil
 	}
@@ -145,7 +146,7 @@ func (c *Catalog) Add(name, description string, now time.Time) (*Secret, error) 
 
 // ValueChanged ghi thời điểm đặt giá trị mới; desktop dùng để nhắc thay khoá cũ.
 func (c *Catalog) ValueChanged(name string, now time.Time) (*Secret, error) {
-	s, err := c.get(name)
+	s, err := c.Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +158,7 @@ func (c *Catalog) Rename(from, to string) (*Secret, error) {
 	if err := ValidName(to); err != nil {
 		return nil, err
 	}
-	s, err := c.get(from)
+	s, err := c.Get(from)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +174,7 @@ func (c *Catalog) Rename(from, to string) (*Secret, error) {
 }
 
 func (c *Catalog) Describe(name, description string) (*Secret, error) {
-	s, err := c.get(name)
+	s, err := c.Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +187,7 @@ func (c *Catalog) Describe(name, description string) (*Secret, error) {
 
 // Assign gán bí mật cho dự án. Gán lại là không làm gì, để desktop bấm hai lần không báo lỗi.
 func (c *Catalog) Assign(name, localID string) (*Secret, error) {
-	s, err := c.get(name)
+	s, err := c.Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +202,7 @@ func (c *Catalog) Assign(name, localID string) (*Secret, error) {
 }
 
 func (c *Catalog) Unassign(name, localID string) (*Secret, error) {
-	s, err := c.get(name)
+	s, err := c.Get(name)
 	if err != nil {
 		return nil, err
 	}
