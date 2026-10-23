@@ -330,7 +330,7 @@ không chứa giá trị.
   `lib.rs`.
 
   Sau T008.
-- [ ] T024 [P] [US6] C·vừa — Tab Nhật ký trong `apps/desktop/src/screens/secrets-screen.tsx`:
+- [x] T024 [P] [US6] C·vừa — Tab Nhật ký trong `apps/desktop/src/screens/secrets-screen.tsx`:
   - lọc theo bí mật và dự án;
   - nhãn "đã xoá" (FR-044) và "giá trị xuất hiện trong output" (FR-037);
   - nút xoá toàn bộ, có xác nhận.

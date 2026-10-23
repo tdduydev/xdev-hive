@@ -15,6 +15,7 @@ import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/t
 import { ListIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { SecretFormDialog } from "@/components/secret-form-dialog.tsx";
+import { SecretsLog } from "@/components/secrets-log.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { type LocalProject, localProjects } from "@/lib/local-projects.ts";
 import {
@@ -28,9 +29,13 @@ import {
   secretsList,
 } from "@/lib/secrets.ts";
 import { errorText } from "@/lib/tauri.ts";
+import { cn } from "@/lib/utils.ts";
 
 const text: Dict<{
   lead: string;
+  tabs: string;
+  tabList: string;
+  tabLog: string;
   add: string;
   reserved: string;
   refresh: string;
@@ -65,6 +70,9 @@ const text: Dict<{
   close: string;
 }> = {
   vi: {
+    tabs: "Mục của màn Bí mật",
+    tabList: "Danh sách",
+    tabLog: "Nhật ký",
     lead: "Bí mật của máy này (khoá API, chuỗi kết nối…). Giá trị nằm trong kho của hệ điều hành, không lên hub; agent nhận qua biến môi trường của dự án được gán.",
     add: "Thêm bí mật",
     reserved: "Tên dành riêng",
@@ -101,6 +109,9 @@ const text: Dict<{
     close: "Đóng",
   },
   en: {
+    tabs: "Secrets sections",
+    tabList: "List",
+    tabLog: "Log",
     lead: "Secrets of this machine (API keys, connection strings…). Values live in the OS store, never on the hub; agents get them as environment variables of the assigned projects.",
     add: "Add secret",
     reserved: "Reserved names",
@@ -164,6 +175,8 @@ export function SecretsScreen() {
   const [form, setForm] = useState<{ secret: SecretItem | null } | null>(null);
   const [deleting, setDeleting] = useState<SecretItem | null>(null);
   const [showReserved, setShowReserved] = useState(false);
+  const [tab, setTab] = useState<"list" | "log">("list");
+  const tabsId = useId();
 
   const load = useCallback(async () => {
     setError(null);
@@ -202,117 +215,173 @@ export function SecretsScreen() {
         </Button>
       </header>
 
-      {error && (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center gap-2 rounded-lg bg-destructive-soft px-3 py-2 text-sm text-destructive"
-        >
-          <p className="min-w-0 flex-1 break-words">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => void load()}>
-            <RefreshCwIcon aria-hidden="true" />
-            {t.retry}
-          </Button>
-        </div>
-      )}
-      {!data && !error && <p className="text-sm text-muted-foreground">{t.loading}</p>}
-
-      {data && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Label htmlFor={filterId} className="text-sm text-muted-foreground">
-            {t.filter}
-          </Label>
-          <NativeSelect
-            id={filterId}
-            className="max-w-full min-w-48"
-            value={filter}
-            onChange={(e) => {
-              location.hash = secretsHash(e.target.value);
+      <div role="tablist" aria-label={t.tabs} className="inline-flex w-fit rounded-lg bg-muted p-0.5">
+        {(
+          [
+            ["list", t.tabList],
+            ["log", t.tabLog],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            id={`${tabsId}-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            aria-controls={`${tabsId}-panel`}
+            tabIndex={tab === id ? 0 : -1}
+            onClick={() => setTab(id)}
+            onKeyDown={(e) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              setTab(id === "list" ? "log" : "list");
+              document.getElementById(`${tabsId}-${id === "list" ? "log" : "list"}`)?.focus();
             }}
+            className={cn(
+              "h-7 cursor-pointer rounded-md px-3 text-sm",
+              tab === id
+                ? "bg-card font-semibold text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
-            <NativeSelectOption value="">{t.allProjects}</NativeSelectOption>
-            {selectable.map(([id, name]) => (
-              <NativeSelectOption key={id} value={id}>
-                {name}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <Button variant="ghost" size="sm" onClick={() => void load()}>
-            <RefreshCwIcon aria-hidden="true" />
-            {t.refresh}
-          </Button>
-        </div>
-      )}
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {data && rows.length === 0 && (
-        <p className="text-sm text-muted-foreground">{filter ? t.emptyFiltered : t.empty}</p>
-      )}
-      {data && rows.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <Th>{t.colName}</Th>
-                <Th>{t.colProjects}</Th>
-                <Th>{t.colChanged}</Th>
-                <Th>
-                  <span className="sr-only">{t.colActions}</span>
-                </Th>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((s) => (
-                <TableRow key={s.name}>
-                  <Td className="min-w-40">
-                    <div className="font-mono text-sm font-medium break-all">{s.name}</div>
-                    {s.description && <div className="text-xs break-words text-muted-foreground">{s.description}</div>}
-                  </Td>
-                  <Td className="min-w-36">
-                    <div className="flex flex-wrap gap-1">
-                      {s.projects.length === 0 && <span className="text-xs text-muted-foreground">{t.noProjects}</span>}
-                      {s.projects.slice(0, 2).map((p) => (
-                        <Pill key={p.localId} small>
-                          {p.name}
-                        </Pill>
-                      ))}
-                      {s.projects.length > 2 && (
-                        <Pill small title={s.projects.map((p) => p.name).join(", ")}>
-                          {t.moreProjects(s.projects.length - 2)}
-                        </Pill>
-                      )}
-                    </div>
-                  </Td>
-                  <Td className="text-xs whitespace-nowrap text-muted-foreground">
-                    {formatWhen(s.valueChangedAt, lang)}
-                  </Td>
-                  <Td>
-                    <div className="flex flex-wrap justify-end gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-label={t.edit(s.name)}
-                        onClick={() => setForm({ secret: s })}
-                      >
-                        <PencilIcon aria-hidden="true" />
-                        {t.editLabel}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive"
-                        aria-label={t.remove(s.name)}
-                        onClick={() => setDeleting(s)}
-                      >
-                        <Trash2Icon aria-hidden="true" />
-                        {t.removeLabel}
-                      </Button>
-                    </div>
-                  </Td>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <div
+        role="tabpanel"
+        id={`${tabsId}-panel`}
+        aria-labelledby={`${tabsId}-${tab}`}
+        className="flex flex-col gap-3.5"
+      >
+        {tab === "log" && (
+          <SecretsLog
+            secretNames={(data?.secrets ?? []).map((s) => s.name)}
+            projects={[...filterable]}
+            initialProject={filter}
+          />
+        )}
+        {tab === "list" && (
+          <>
+            {error && (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-2 rounded-lg bg-destructive-soft px-3 py-2 text-sm text-destructive"
+              >
+                <p className="min-w-0 flex-1 break-words">{error}</p>
+                <Button variant="outline" size="sm" onClick={() => void load()}>
+                  <RefreshCwIcon aria-hidden="true" />
+                  {t.retry}
+                </Button>
+              </div>
+            )}
+            {!data && !error && <p className="text-sm text-muted-foreground">{t.loading}</p>}
+
+            {data && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Label htmlFor={filterId} className="text-sm text-muted-foreground">
+                  {t.filter}
+                </Label>
+                <NativeSelect
+                  id={filterId}
+                  className="max-w-full min-w-48"
+                  value={filter}
+                  onChange={(e) => {
+                    location.hash = secretsHash(e.target.value);
+                  }}
+                >
+                  <NativeSelectOption value="">{t.allProjects}</NativeSelectOption>
+                  {selectable.map(([id, name]) => (
+                    <NativeSelectOption key={id} value={id}>
+                      {name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                <Button variant="ghost" size="sm" onClick={() => void load()}>
+                  <RefreshCwIcon aria-hidden="true" />
+                  {t.refresh}
+                </Button>
+              </div>
+            )}
+
+            {data && rows.length === 0 && (
+              <p className="text-sm text-muted-foreground">{filter ? t.emptyFiltered : t.empty}</p>
+            )}
+            {data && rows.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <Th>{t.colName}</Th>
+                      <Th>{t.colProjects}</Th>
+                      <Th>{t.colChanged}</Th>
+                      <Th>
+                        <span className="sr-only">{t.colActions}</span>
+                      </Th>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((s) => (
+                      <TableRow key={s.name}>
+                        <Td className="min-w-40">
+                          <div className="font-mono text-sm font-medium break-all">{s.name}</div>
+                          {s.description && (
+                            <div className="text-xs break-words text-muted-foreground">{s.description}</div>
+                          )}
+                        </Td>
+                        <Td className="min-w-36">
+                          <div className="flex flex-wrap gap-1">
+                            {s.projects.length === 0 && (
+                              <span className="text-xs text-muted-foreground">{t.noProjects}</span>
+                            )}
+                            {s.projects.slice(0, 2).map((p) => (
+                              <Pill key={p.localId} small>
+                                {p.name}
+                              </Pill>
+                            ))}
+                            {s.projects.length > 2 && (
+                              <Pill small title={s.projects.map((p) => p.name).join(", ")}>
+                                {t.moreProjects(s.projects.length - 2)}
+                              </Pill>
+                            )}
+                          </div>
+                        </Td>
+                        <Td className="text-xs whitespace-nowrap text-muted-foreground">
+                          {formatWhen(s.valueChangedAt, lang)}
+                        </Td>
+                        <Td>
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              aria-label={t.edit(s.name)}
+                              onClick={() => setForm({ secret: s })}
+                            >
+                              <PencilIcon aria-hidden="true" />
+                              {t.editLabel}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              aria-label={t.remove(s.name)}
+                              onClick={() => setDeleting(s)}
+                            >
+                              <Trash2Icon aria-hidden="true" />
+                              {t.removeLabel}
+                            </Button>
+                          </div>
+                        </Td>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <SecretFormDialog
         open={form !== null}

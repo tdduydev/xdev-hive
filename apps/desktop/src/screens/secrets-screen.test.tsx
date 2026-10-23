@@ -51,6 +51,7 @@ export function fakeApp(opts: {
 }) {
   const calls: Call[] = [];
   let secrets = opts.secrets ?? [];
+  let log = opts.log ?? [];
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     secrets_status: () => opts.status ?? { available: true, locked: false, backend: "keychain", reason: "" },
     secrets_list: (): SecretsList => ({ secrets, reserved: RESERVED }),
@@ -68,8 +69,16 @@ export function fakeApp(opts: {
       secrets = secrets.filter((s) => s.name !== a?.name);
       return { deleted: a?.name, inUse: false };
     },
-    secrets_log: () => ({ entries: opts.log ?? [] }),
-    secrets_log_clear: () => ({ cleared: opts.log?.length ?? 0 }),
+    secrets_log: (a) => ({
+      entries: log.filter(
+        (e) => (!a?.name || e.names.some((n) => n.name === a.name)) && (!a?.project || e.project === a.project),
+      ),
+    }),
+    secrets_log_clear: () => {
+      const cleared = log.length;
+      log = [];
+      return { cleared };
+    },
     ...opts.override,
   };
   window.__TAURI__ = {
@@ -291,5 +300,108 @@ describe("màn Bí mật: xoá", () => {
     await user.click(within(dialog).getByRole("button", { name: "Huỷ" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(calls.some((c) => c.command === "secret_delete")).toBe(false);
+  });
+});
+
+const grant = (id: string, over: Partial<GrantEntry> = {}): GrantEntry => ({
+  id,
+  at: "2026-10-23T08:01:02Z",
+  kind: "run",
+  sessionId: "run_abc#1",
+  project: APP.localId,
+  projectName: "app",
+  names: [{ name: "DATABASE_URL", deleted: false, leaked: false }],
+  policy: "allow",
+  outcome: "granted",
+  ...over,
+});
+
+const LOG: GrantEntry[] = [
+  grant("g1", { names: [{ name: "STRIPE_TEST_KEY", deleted: false, leaked: true }] }),
+  grant("g2", { project: API.localId, projectName: "api", kind: "terminal", policy: "approve", outcome: "declined" }),
+  grant("g3", { kind: "reveal", copy: true, names: [{ name: "OLD_KEY", deleted: true, leaked: false }] }),
+];
+
+describe("màn Bí mật: nhật ký", () => {
+  async function openLog(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findByText("DATABASE_URL");
+    await user.click(screen.getByRole("tab", { name: "Nhật ký" }));
+    return await screen.findByRole("table");
+  }
+
+  it("hiện từng lần cấp, nhãn đã xoá và nhãn giá trị xuất hiện trong output; không có giá trị", async () => {
+    fakeApp({ secrets: [DATABASE, STRIPE], log: LOG });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    const table = await openLog(user);
+    const rows = within(table).getAllByRole("row");
+    expect(rows).toHaveLength(4);
+    expect(within(rows[1] as HTMLElement).getByText("STRIPE_TEST_KEY")).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).getByText("giá trị xuất hiện trong output")).toBeTruthy();
+    expect(within(rows[2] as HTMLElement).getByText("Terminal")).toBeTruthy();
+    expect(within(rows[2] as HTMLElement).getByText("Bị từ chối")).toBeTruthy();
+    expect(within(rows[2] as HTMLElement).getByText("cần duyệt")).toBeTruthy();
+    expect(within(rows[3] as HTMLElement).getByText("OLD_KEY")).toBeTruthy();
+    expect(within(rows[3] as HTMLElement).getByText("đã xoá")).toBeTruthy();
+    expect(within(rows[3] as HTMLElement).getByText("Sao chép")).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).queryByText("đã xoá")).toBeNull();
+  });
+
+  it("lọc theo bí mật và theo dự án gửi đúng tham số", async () => {
+    const { calls } = fakeApp({ secrets: [DATABASE, STRIPE], log: LOG });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    const table = await openLog(user);
+    const logCalls = () => calls.filter((c) => c.command === "secrets_log").map((c) => c.args);
+    expect(logCalls().at(-1)).toEqual({ limit: 200 });
+
+    await user.selectOptions(screen.getByLabelText("Lọc theo bí mật"), "STRIPE_TEST_KEY");
+    await waitFor(() => expect(within(table).getAllByRole("row")).toHaveLength(2));
+    expect(logCalls().at(-1)).toEqual({ name: "STRIPE_TEST_KEY", limit: 200 });
+
+    await user.selectOptions(screen.getByLabelText("Lọc theo bí mật"), "");
+    await user.selectOptions(screen.getByLabelText("Lọc theo dự án"), APP.localId);
+    await waitFor(() => expect(logCalls().at(-1)).toEqual({ project: APP.localId, limit: 200 }));
+    await waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(3));
+  });
+
+  it("nhật ký trống: báo chưa có; lọc không khớp: báo không khớp", async () => {
+    fakeApp({ secrets: [DATABASE], log: [] });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("DATABASE_URL");
+    await user.click(screen.getByRole("tab", { name: "Nhật ký" }));
+    expect(await screen.findByText("Chưa có lần cấp bí mật nào.")).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("Lọc theo bí mật"), "DATABASE_URL");
+    expect(await screen.findByText("Không có lần cấp nào khớp bộ lọc.")).toBeTruthy();
+  });
+
+  it("xoá nhật ký phải xác nhận; Huỷ được focus trước và không xoá", async () => {
+    const { calls } = fakeApp({ secrets: [DATABASE], log: LOG });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await openLog(user);
+    await user.click(screen.getByRole("button", { name: "Xoá nhật ký" }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Huỷ" })));
+    await user.click(within(dialog).getByRole("button", { name: "Huỷ" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.some((c) => c.command === "secrets_log_clear")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Xoá nhật ký" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Xoá nhật ký" }));
+    expect(await screen.findByText("Chưa có lần cấp bí mật nào.")).toBeTruthy();
+    expect(calls.filter((c) => c.command === "secrets_log_clear")).toHaveLength(1);
+  });
+
+  it("phím mũi tên đổi tab", async () => {
+    fakeApp({ secrets: [DATABASE], log: LOG });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("DATABASE_URL");
+    screen.getByRole("tab", { name: "Danh sách" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Nhật ký" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Nhật ký" }));
   });
 });
