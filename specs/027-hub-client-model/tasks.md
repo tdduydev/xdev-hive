@@ -131,7 +131,8 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 - [ ] T022 [US2] Màn "Hộp thư đi": mục `held`, `rejected`, `expired`, nút Bỏ, Gửi lại, Xuất; thanh trạng thái "Hub đang
   vắng – N mục chờ gửi" · `apps/desktop/src/components/outbox-panel.tsx`, `apps/desktop/src/lib/outbox.ts`,
   `apps/desktop/src/i18n.ts`
-- [x] T023 [P] [US2] VS Code ghi qua `outbox.submit` · `apps/vscode/src/worker/ipc.ts`
+- [x] T023 [P] [US2] VS Code ghi qua `outbox.submit` · `apps/vscode/src/worker/ipc.ts` (extension đã gỡ ở `main`,
+  e6751d68; mã này bỏ theo khi merge)
 - [x] T024 [US2] Sự kiện `watch`: `outbox`, `outbox.item` · `worker/cmd/hive-worker/outbox_ipc.go`,
   `worker/internal/terminal/local.go`
 - [ ] T025 [US2] Đăng xuất khi còn mục: hỏi "Gửi trước", "Giữ lại", "Bỏ" · `apps/desktop/src/components/outbox-panel.tsx`,
