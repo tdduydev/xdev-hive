@@ -175,6 +175,8 @@ export function DocSearch({ project, onOpen }: { project: string | undefined; on
           />
           <Input
             aria-label={t.searchLabel}
+            name="docs-search"
+            autoComplete="off"
             placeholder={t.searchPlaceholder}
             value={typed}
             onChange={(e) => {
@@ -212,7 +214,7 @@ export function DocSearch({ project, onOpen }: { project: string | undefined; on
                         type="button"
                         title={hit.key}
                         onClick={() => onOpen(hit.key)}
-                        className="flex w-full cursor-pointer flex-col gap-0.5 rounded-[5px] px-1.5 py-1 text-left hover:bg-muted"
+                        className="flex w-full cursor-pointer flex-col gap-0.5 rounded-[5px] px-1.5 py-1 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
                       >
                         <span className="truncate text-xs font-medium">{hit.title}</span>
                         {hit.headingPath.length > 0 && (
