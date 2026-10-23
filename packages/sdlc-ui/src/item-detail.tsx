@@ -15,6 +15,7 @@ import { OverrideDialog } from "./override-dialog.tsx";
 import { EmptyState } from "./parts.tsx";
 import { currentPhase, PhaseStepper } from "./phase-stepper.tsx";
 import { ProjectsPanel } from "./projects-panel.tsx";
+import { QaPanel } from "./qa-panel.tsx";
 import { Questions } from "./questions.tsx";
 import { StepsPanel } from "./steps-panel.tsx";
 import { SyncStatus } from "./sync-status.tsx";
@@ -314,6 +315,11 @@ function Overview({ item }: { item: SdlcItemDetail }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col gap-4">
+        {item.mode.phases.some(
+          (p) =>
+            p.steps.some((s) => s.action === "test-run") ||
+            p.gate.some((g) => g.gates.some((r) => r.rules?.includes("qa-tests"))),
+        ) && <QaPanel key={item.id} item={item} />}
         <section className={section}>
           <h2 className="text-base font-semibold">{d.gateTitle}</h2>
           {phase ? (
