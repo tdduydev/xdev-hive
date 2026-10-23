@@ -6,6 +6,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/oapi-codegen/runtime v1.2.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.58.0
@@ -23,7 +24,6 @@ require (
 	github.com/getkin/kin-openapi v0.142.0 // indirect
 	github.com/go-openapi/jsonpointer v0.23.1 // indirect
 	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.0 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect

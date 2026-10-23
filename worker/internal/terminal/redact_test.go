@@ -1,9 +1,22 @@
 package terminal
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestRedactorEncodedSecrets(t *testing.T) {
+	value := "giá-trị-'\"-thử\nxuống-dòng"
+	encoded, _ := json.Marshal(value)
+	for _, form := range []string{base64.StdEncoding.EncodeToString([]byte(value)), string(encoded[1 : len(encoded)-1])} {
+		cut := len(form) / 2
+		if got := feed(newRedactor([]string{value}), "x "+form[:cut], form[cut:]+" y"); got != "x *** y" {
+			t.Fatal("terminal chưa che dạng mã hoá qua hai khối")
+		}
+	}
+}
 
 func feed(r *redactor, parts ...string) string {
 	var out []byte

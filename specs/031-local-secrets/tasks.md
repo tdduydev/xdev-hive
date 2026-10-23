@@ -192,7 +192,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test: SC-008 (10 bí mật ≤500 ms với backend giả có trễ); dự án không gán thì không ghi nhật ký.
 
   Sau T004, T006.
-- [ ] T013 [US2] A·nặng — Nối `Grant` vào runner.
+- [x] T013 [US2] A·nặng — Nối `Grant` vào runner.
   - `worker/internal/channel/channel.go`: `localProject` gắn `LocalID` vào job (trường mới `runner.Job.LocalID`); job
     sandbox hay runner-host để rỗng (FR-018).
   - `worker/internal/runner/hooks.go`: `JobPolicy.SecretInjection string json:"secretInjection,omitempty"`.
@@ -222,7 +222,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1–3.
 
-- [ ] T014 [US5] A·nặng — Bọc Sink và che mọi Event.
+- [x] T014 [US5] A·nặng — Bọc Sink và che mọi Event.
   - `worker/internal/runner/secrets.go`: `secretSink` bọc `Sink`, che `Data` log (dùng `secretmask.Writer` theo
     `Stream`), `Result.Error`, đuôi `Commands`, `Artifacts`, `Subagent.Description`, `Steer`, báo cáo agent.
   - Khi có che: `MarkLeaked` một lần mỗi tên, và log tại máy `secret masked: NAME`.
@@ -235,11 +235,11 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     - nhật ký có `leaked`.
 
   Sau T013 và T005.
-- [ ] T015 [P] [US5] A2·vừa — `worker/internal/terminal/redact.go` dùng `secretmask` (mặt nạ `***` giữ như cũ). Test cũ
+- [x] T015 [P] [US5] A2·vừa — `worker/internal/terminal/redact.go` dùng `secretmask` (mặt nạ `***` giữ như cũ). Test cũ
   của terminal phải xanh, thêm test base64 và JSON.
 
   Sau T005.
-- [ ] T016 [US5] A·vừa — FR-038, chặn commit và push có giá trị.
+- [x] T016 [US5] A·vừa — FR-038, chặn commit và push có giá trị.
   - File `worker/internal/runner/secrets.go` có hàm `scanDiffForSecrets(work, base, masker)`. Hàm quét
     `git diff --cached -z` và `git log -p <base>..HEAD`.
   - `runner.go` gọi hàm trước bước commit của worker và trước `gitRetryLocked(…"push"…)`.
@@ -258,14 +258,14 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1 (agent không hỏi giá trị, SC-005).
 
-- [ ] T017 [P] [US4] A2·vừa — File mới `worker/internal/secretstore/context.go`, hàm `ContextBlock(policy, items)` theo
+- [x] T017 [P] [US4] A2·vừa — File mới `worker/internal/secretstore/context.go`, hàm `ContextBlock(policy, items)` theo
   [contracts/agent-context.md](contracts/agent-context.md).
   - Mô tả được quét lại; mô tả không đạt thì bỏ, giữ tên.
   - Tối đa 64 mục; mô tả cắt ở 200 ký tự.
   - Test golden cho khối có bí mật và khối "không có bí mật".
 
   Sau T004. Khác file với T012, nên A2 làm song song được.
-- [ ] T018 [US4] A·vừa — Đưa khối vào agent.
+- [x] T018 [US4] A·vừa — Đưa khối vào agent.
   - `worker/internal/runner/runner.go`: claude có `packInSystemPrompt` thì nối khối vào file
     `--append-system-prompt-file`; CLI khác thì ghép vào đầu `job.Prompt` sau gói ngữ cảnh.
   - `worker/internal/runner/interactive.go`: nối `InteractiveSpec.SystemPrompt`.
@@ -285,7 +285,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 4.
 
-- [ ] T019 [US3] A2·nặng — Lệnh `secrets exec`.
+- [x] T019 [US3] A2·nặng — Lệnh `secrets exec`.
   - File mới `worker/cmd/hive-worker/secrets_exec.go`, `secrets_exec_unix.go` (`syscall.Exec`),
     `secrets_exec_windows.go` (tiến trình con cùng console, chờ, trả mã thoát).
   - Trình tự: `Grant` kind `terminal`; nếu `--cli claude` thì thêm `--append-system-prompt <khối>`.
@@ -306,7 +306,7 @@ không chứa giá trị.
   - Test: script sinh ra không chứa giá trị; trích dẫn argv đúng trên sh và cmd.
 
   Viết theo contract, chạy song song với T019.
-- [ ] T021 [US3] A2·vừa — `worker/internal/terminal/local.go`: phiên `origin=local` (`hive chat`) có
+- [x] T021 [US3] A2·vừa — `worker/internal/terminal/local.go`: phiên `origin=local` (`hive chat`) có
   `CreateParams.ProjectID`, hoặc cwd khớp `FindFolder`, thì gọi `Grant` kind `terminal`.
   - Biến thêm vào `cmd.Env` sau `runner.LocalEnv`; giá trị thêm vào bộ che của `pump`.
   - Phiên `term_start` từ xa không nhận (research D6).
@@ -322,7 +322,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 2 (nhật ký và "Dùng 1 bí mật tại máy").
 
-- [ ] T022 [US6] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: thêm `secrets log [--name] [--project] [--limit]` và
+- [x] T022 [US6] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: thêm `secrets log [--name] [--project] [--limit]` và
   `secrets log clear` (FR-042). Fixture `testdata/cli/log.json`.
 
   Sau T007, T004.
@@ -378,7 +378,7 @@ không chứa giá trị.
     - `policy_snapshot` có trường.
 
   Sau T026.
-- [ ] T028 [US7] A·nặng — Chính sách và duyệt ở worker.
+- [x] T028 [US7] A·nặng — Chính sách và duyệt ở worker.
   - File mới `worker/internal/secretstore/policy.go` (`secrets-policy.json` theo hub) và `approvals.go`
     (`secret-approvals/<id>.json`, hạn 120 giây, dọn file quá hạn).
   - `grant.go`:
@@ -390,11 +390,11 @@ không chứa giá trị.
   - Test Go đọc fixture `worker-protocol.json` của T026; test mọi nhánh.
 
   Sau T012, T026.
-- [ ] T029 [US7] A·vừa — `worker/internal/runner/runner.go`: `approve` cho run nền chờ file trả lời. Run ghi sự kiện
+- [x] T029 [US7] A·vừa — `worker/internal/runner/runner.go`: `approve` cho run nền chờ file trả lời. Run ghi sự kiện
   chính sách, và khối ngữ cảnh "không có bí mật" khi `deny`, `declined` hoặc `timeout`. Test.
 
   Sau T028, T018.
-- [ ] T030 [US7] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: `secrets approvals`, `secrets approve --id --allow|--deny`.
+- [x] T030 [US7] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: `secrets approvals`, `secrets approve --id --allow|--deny`.
   Phần hỏi `[c/K]` trong terminal thuộc T019 (file của A2), không sửa ở đây.
 
   Sau T028, T022.
@@ -428,7 +428,7 @@ không chứa giá trị.
   - dòng có `missingInStore` hiện "Kho thiếu giá trị, hãy đặt lại".
 
   Kèm test. Sau T024.
-- [ ] T035 [US9] A2·vừa — Phân loại lỗi kho theo hệ điều hành.
+- [x] T035 [US9] A2·vừa — Phân loại lỗi kho theo hệ điều hành.
   - File mới `worker/internal/secretstore/keyring_{darwin,windows,linux}.go`.
   - Giới hạn 5 giây. Worker không có phiên người dùng thì không gọi API bật hộp thoại (FR-061).
   - `status` trên Linux thử D-Bus.
@@ -440,6 +440,8 @@ không chứa giá trị.
 
   Sau T003, T001.
 
+  Mã và bước CI đã có; kiểm kho thật macOS/Windows và hành vi hộp mở khoá còn chờ CI/T001, không chạy trên máy dev.
+
 ---
 
 ## Phase 11: User Story 8 — Xem lại giá trị, đổi giá trị, gỡ máy (P3)
@@ -448,7 +450,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 7.
 
-- [ ] T036 [US8] A·nhẹ — `worker/cmd/hive-worker/secrets.go`:
+- [x] T036 [US8] A·nhẹ — `worker/cmd/hive-worker/secrets.go`:
   - `secrets reveal [--copy]`: ghi dòng `reveal`, `copy` (FR-041);
   - `secrets purge --project|--all`: trả `removed` và `left` (FR-064).
 
@@ -490,7 +492,7 @@ không chứa giá trị.
   - `docs/srs.md`: FR của spec 031.
 
   Không sửa `docs/decisions.md`.
-- [ ] T041 A·vừa — Test quét SC-004 trong `worker/internal/secretstore/sc004_test.go`.
+- [x] T041 A·vừa — Test quét SC-004 trong `worker/internal/secretstore/sc004_test.go`.
   - Chạy chuỗi set → assign → Grant run giả → reveal → delete với backend giả.
   - Quét mọi file trong thư mục cấu hình tạm và pending dir giả.
   - Mong đợi: 0 byte giá trị, 0 byte base64 của giá trị.

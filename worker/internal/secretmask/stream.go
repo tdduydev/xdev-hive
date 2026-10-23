@@ -55,6 +55,13 @@ func (w *Writer) Found() []int {
 	return slices.Clone(w.found)
 }
 
+// Holding cho terminal biết còn đuôi phải nhả khi không có output mới.
+func (w *Writer) Holding() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.held) > 0
+}
+
 func (w *Writer) emit(buf []byte, hold bool) error {
 	cut := len(buf)
 	if hold {
