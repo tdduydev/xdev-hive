@@ -10,7 +10,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, updateProjectSettings } from "../catalog/index.ts";
-import { loadPolicy, type Policy, saveAgentPolicy } from "../governance/index.ts";
+import { loadPolicy, type Policy, resolvePermission, saveAgentPolicy } from "../governance/index.ts";
 import { BadRequestError, ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
 import { allowWith, requireOrgRole, teamRoleOf } from "../tenancy/index.ts";
 import { configVersion, resolveConfig } from "./engine.ts";
@@ -37,6 +37,7 @@ async function resolveFor(tx: Tx, project: ProjectLike) {
   const [policy, rows] = await Promise.all([loadPolicy(tx), tx.select().from(entries)]);
   return {
     orgId,
+    policy,
     resolved: resolveConfig(
       buildLayers({ orgId, projectId: project.id, policy, settings: project.settings, entries: rows }),
     ),
@@ -57,11 +58,12 @@ export async function resolveProjectSettings(tx: Tx, project: ProjectLike): Prom
 }
 
 export async function runSettingsOf(tx: Tx, project: ProjectLike) {
-  const { resolved } = await resolveFor(tx, project);
+  const { policy, resolved } = await resolveFor(tx, project);
   const value = (key: string) => resolved.find((r) => r.key === key)?.value;
   const mode = value("agent.permissionMode") === "full" ? "full" : "workspace";
   return {
-    permission: { mode, notice: null } as { mode: "workspace" | "full"; notice: string | null },
+    // Cấm toàn quyền là giới hạn an toàn của chính sách, không phải giá trị theo tầng: dự án ghi đè không vượt được.
+    permission: resolvePermission(policy, mode),
     resolveBudget(budget: ProjectBudget | undefined): ProjectBudget | undefined {
       const cap = value("limits.perRunUsd");
       if (typeof cap === "number") return { ...budget, perRunUsd: cap };

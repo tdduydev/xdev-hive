@@ -7,7 +7,8 @@ import {
 } from "@xdev-hive/contracts";
 import { eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
-import { BadRequestError, NotFoundError, type Tx } from "../platform/index.ts";
+import { loadPolicy } from "../governance/index.ts";
+import { BadRequestError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { allowWith, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { findProject } from "./projects.ts";
 import { projects } from "./schema.ts";
@@ -130,6 +131,12 @@ export async function updateProjectSettings(
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
   }
   await allowWith(tx, userId, "projects.settings", () => requireTeamRole(tx, userId, ref.teamId, "admin"), ref.teamId);
+  if (patch.runPermissions?.mode === "full" && !(await loadPolicy(tx)).allowFullPermission) {
+    throw new ForbiddenError(
+      "POLICY_FULL_ACCESS_LOCKED",
+      "Chính sách agent của tổ chức không cho dự án bật toàn quyền CLI.",
+    );
+  }
   const [row] = await tx
     .select({ settings: projects.settings })
     .from(projects)

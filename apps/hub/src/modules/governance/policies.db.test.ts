@@ -92,8 +92,16 @@ describe("lưu và đọc chính sách", () => {
     expect((await as("admin", (tx) => loadPolicy(tx))).allowFullPermission).toBe(true);
   });
 
-  it("dự án không bật được toàn quyền khi tổ chức khoá cấu hình", async () => {
+  it("dự án không bật được toàn quyền khi tổ chức cấm hoặc khoá cấu hình", async () => {
     await as("owner", (tx) => saveAgentPolicy(tx, org.user("owner"), policy({ allowFullPermission: false })));
+    expect(
+      await errorCode(() =>
+        as("tadmin", (tx) =>
+          updateProjectSettings(tx, org.user("tadmin"), `pol-${tag}`, { runPermissions: { mode: "full" } }),
+        ),
+      ),
+    ).toBe("POLICY_FULL_ACCESS_LOCKED");
+    await as("owner", (tx) => saveAgentPolicy(tx, org.user("owner"), policy({ allowFullPermission: true })));
     await as("owner", (tx) =>
       setOrgEntry(tx, org.user("owner"), { key: "agent.permissionMode", value: "workspace", locked: true }),
     );
