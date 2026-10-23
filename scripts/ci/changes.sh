@@ -59,16 +59,16 @@ need_desktop() { # cùng đường dẫn với desktop.yml, thêm packages/ (gia
   return 1
 }
 
-need_worker() { # script cài và script phát hành được shellcheck/test trong job này
+need_worker() { # script cài và script phát hành được shellcheck/test trong job này; test Go đọc fixtures của contracts
   case "$1" in
-    worker/* | scripts/install.* | scripts/release/* | scripts/ci/* | .github/workflows/ci.yml | .github/actions/*) return 0 ;;
+    worker/* | packages/contracts/fixtures/* | scripts/install.* | scripts/release/* | scripts/ci/* | .github/workflows/ci.yml | .github/actions/*) return 0 ;;
   esac
   return 1
 }
 
 need_worker_native() { # macOS và Windows chỉ để thử Go và script cài trên hệ điều hành thật
   case "$1" in
-    worker/* | scripts/install.* | .github/workflows/ci.yml | .github/actions/*) return 0 ;;
+    worker/* | packages/contracts/fixtures/* | scripts/install.* | .github/workflows/ci.yml | .github/actions/*) return 0 ;;
   esac
   return 1
 }
