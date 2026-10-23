@@ -53,6 +53,7 @@ export * from "./client-events.ts";
 export * from "./code-reviews.ts";
 export * from "./cost.ts";
 export * from "./delivery.ts";
+export * from "./delivery-worker.ts";
 export * from "./desktop-connect.ts";
 export * from "./doc-editor.ts";
 export * from "./doc-sync.ts";
