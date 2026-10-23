@@ -19,7 +19,7 @@ const featureSubagents = "subagents"
 // capabilities là capability khai trong hello. Chỉ khai accounts-remote khi máy có accounts pool: runner host không có
 // accounts.json nên không có gói để bật/tắt hay đăng nhập.
 func (c Config) capabilities() []string {
-	caps := runner.MachineCapabilities(c.Sandbox != nil)
+	caps := append(runner.MachineCapabilities(c.Sandbox != nil), capRunGitToken)
 	if c.Accounts != nil {
 		caps = append(caps, capAccountsRemote)
 	}

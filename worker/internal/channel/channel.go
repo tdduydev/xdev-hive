@@ -200,6 +200,9 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	if j.Branch == "" {
 		j.Branch = "ai/" + o.RunID
 	}
+	if l.Git != nil {
+		j.Git = runner.NewRunGit(runCredential(*l.Git))
+	}
 	return j, nil
 }
 
@@ -544,6 +547,8 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 			}
 		case *Steer:
 			jobs.steer(m)
+		case *GitToken:
+			jobs.onGitToken(m)
 		case *AccountSet:
 			jobs.onAccountSet(m)
 		case *AccountLoginStart:

@@ -50,6 +50,9 @@ type activeRun struct {
 	// account là tài khoản CLI giữ cho run từ lúc nhận đề nghị; nil là đăng nhập mặc định.
 	account     *accounts.Lease
 	waitAccount bool
+	// git là token git theo run (lease.git), nil với hub cũ; gitWake báo vòng xin token khi hub vừa gửi token mới.
+	git     *runner.RunGit
+	gitWake chan struct{}
 }
 
 func (r *activeRun) stop(grace time.Duration) {
@@ -86,6 +89,8 @@ type jobs struct {
 	pending string
 	markers string
 	now     func() time.Time
+	// after thay time.After trong test để không phải chờ đồng hồ thật.
+	after func(time.Duration) <-chan time.Time
 
 	// writeMu giữ thứ tự gói trên kết nối; mu giữ trạng thái. Không giữ mu khi ghi ra mạng.
 	writeMu  sync.Mutex
@@ -117,6 +122,7 @@ func newJobs(ctx context.Context, cfg Config) *jobs {
 		pending: filepath.Join(cfg.DataDir, "pending"),
 		markers: filepath.Join(cfg.DataDir, "active"),
 		now:     time.Now,
+		after:   time.After,
 		active:  map[string]*activeRun{},
 		offers:  map[string]pendingOffer{},
 		done:    make(chan struct{}),
@@ -317,9 +323,16 @@ func (j *jobs) onLease(l *Lease) {
 	ctx, cancel := context.WithCancel(j.ctx)
 	run := &activeRun{runID: l.RunID, attempt: l.Attempt, leaseID: l.LeaseID, cancel: cancel, steers: make(chan runner.Steer, steerBuffer), account: o.account, waitAccount: o.waitAccount}
 	run.grace.Store(int64(defaultGrace))
+	// Tạo token trước khi run vào danh sách để git_token đến sớm không gặp run chưa có token.
+	if l.Git != nil {
+		run.git, run.gitWake = runner.NewRunGit(runCredential(*l.Git)), make(chan struct{}, 1)
+	}
 	j.active[l.RunID] = run
 	j.wg.Add(1)
 	j.mu.Unlock()
+	if run.git != nil {
+		go j.refreshGit(ctx, run, j.write)
+	}
 	go j.execute(ctx, run, o.msg, *l)
 }
 
@@ -356,6 +369,8 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	if err == nil {
 		job.Steers = run.steers
+		// Dùng chung token với vòng xin token mới, không phải bản decodeJob vừa dựng.
+		job.Git = run.git
 		r := runner.Runner{DataDir: j.cfg.DataDir, WorkerConfig: j.cfg.Projects, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }, RemoveDir: j.removeDir, HTTP: j.cfg.HTTP}
 		err = r.Run(ctx, job, sink)
 	}
