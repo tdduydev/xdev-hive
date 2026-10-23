@@ -7,12 +7,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+	"github.com/tdduydev/xdev-hive/worker/internal/redact"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
 )
 
@@ -97,40 +97,13 @@ func checkEnv(host []string, jobEnv map[string]string) map[string]string {
 	return env
 }
 
-// secretPatterns bắt chuỗi giống bí mật trong output lệnh: lệnh test hay in biến môi trường hay URL có token khi lỗi.
-var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)`),
-	regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|AKIA[0-9A-Z]{16})\b`),
-	regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`),
-	regexp.MustCompile(`(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{12,}`),
-	regexp.MustCompile(`(?i)(://[^/\s:@]*:)[^/\s@]+@`),
-	regexp.MustCompile(`(?i)\b([A-Z0-9_.-]*(?:token|secret|password|passwd|api[_-]?key|credential|private[_-]?key)[A-Z0-9_.-]*\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)`),
-}
-
-const redacted = "[đã che]"
+const redacted = redact.Mask
 
 // redactSecrets che chuỗi giống bí mật và giá trị chính xác của env nhạy cảm của run (token chạy run không mang
 // dạng đặc trưng nào để regex bắt).
 func redactSecrets(s string, exact []string) string {
 	s, _ = secretmask.New(exact).String(s)
-	for _, v := range exact {
-		if len(v) >= 6 {
-			s = strings.ReplaceAll(s, v, redacted)
-		}
-	}
-	for i, re := range secretPatterns {
-		switch i {
-		case 3:
-			s = re.ReplaceAllString(s, "$1 "+redacted)
-		case 4:
-			s = re.ReplaceAllString(s, "${1}"+redacted+"@")
-		case 5:
-			s = re.ReplaceAllString(s, "${1}"+redacted)
-		default:
-			s = re.ReplaceAllString(s, redacted)
-		}
-	}
-	return s
+	return redact.Text(s, exact)
 }
 
 // secretValues là giá trị env của run mà tên cho thấy là bí mật.

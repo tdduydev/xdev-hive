@@ -76,6 +76,8 @@ func main() {
 		os.Exit(sandboxInit(os.Args[2:]))
 	case "config":
 		os.Exit(showConfig(os.Args[2:], os.Stdout, os.Stderr))
+	case "runs":
+		os.Exit(runsCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "accounts":
 		os.Exit(accountsCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "optimize":

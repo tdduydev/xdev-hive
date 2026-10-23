@@ -21,9 +21,9 @@ import { ScoreRing } from "@/components/score-ring.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import { useBuildInfo } from "@/lib/build-info.ts";
 import { folderName, useFolder } from "@/lib/folder.ts";
-import { hub } from "@/lib/hub-rpc.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { type LocalProject, localProjects } from "@/lib/local-projects.ts";
+import { readRunLog } from "@/lib/local-run-logs.ts";
 import { CLI_LABEL as AGENT_CLI, type AgentCounts, machineAgentCounts } from "@/lib/machine-agents.ts";
 import { duration, type MachineRun, machineRuns, thisMachine } from "@/lib/machine-runs.ts";
 import { can, navItems, type ScreenId } from "@/lib/nav.ts";
@@ -79,6 +79,7 @@ const text: Dict<{
   agentsMore: string;
   nothingRunning: string;
   noLog: string;
+  logOnMachine: (machine: string) => string;
   tail: string;
   secs: (s: number) => string;
   quotas: string;
@@ -171,6 +172,7 @@ const text: Dict<{
     agentsMore: "Xem chi tiết",
     nothingRunning: "Máy chưa chạy run nào lúc này. Run hub giao cho máy sẽ hiện ở đây.",
     noLog: "Chưa có log.",
+    logOnMachine: (machine) => `Log nằm trên máy ${machine}. Log không có trên máy này hoặc đã hết hạn giữ.`,
     tail: "Log gần nhất",
     secs: (s) => (s < 60 ? `${s} giây` : s < 3600 ? `${Math.round(s / 60)} phút` : `${(s / 3600).toFixed(1)} giờ`),
     quotas: "Hạn mức gói agent",
@@ -265,6 +267,7 @@ const text: Dict<{
     agentsMore: "See details",
     nothingRunning: "Nothing is running right now. Runs the hub gives this machine show up here.",
     noLog: "No log yet.",
+    logOnMachine: (machine) => `Logs are on ${machine}. They are unavailable here or past retention.`,
     tail: "Latest log",
     secs: (s) => (s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`),
     quotas: "Agent plan limits",
@@ -555,24 +558,34 @@ function useMachineRuns(signedIn: boolean) {
   return { machine, runs, error };
 }
 
-/** Vài dòng log cuối của run đang chạy, hỏi tiếp theo con trỏ như màn chi tiết run trên web. */
-function useRunTail(runId: string | null): string[] | null {
-  const [lines, setLines] = useState<string[] | null>(null);
+/** Chỉ đọc socket của worker tại máy; log lớn mở từ phần đuôi để không tải cả file qua sidecar. */
+function useRunTail(runId: string | null): string[] | null | undefined {
+  const [lines, setLines] = useState<string[] | null | undefined>(null);
   useEffect(() => {
     setLines(null);
     if (!runId) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const buffer = new LogBuffer();
+    let buffer = new LogBuffer();
     let after = 0;
+    let attempt: number | null = null;
     const tick = async () => {
       try {
-        const chunks = await hub.runs.logs({ id: runId, after, limit: 500 });
-        buffer.append(chunks);
-        after = chunks.at(-1)?.id ?? after;
+        let page = await readRunLog(runId, after);
+        if ((attempt !== null && page.attempt !== attempt) || page.size < after) {
+          after = 0;
+          buffer = new LogBuffer();
+          page = await readRunLog(runId, 0);
+        }
+        if (after === 0 && page.size > page.nextOffset) page = await readRunLog(runId, Math.max(0, page.size - 32768));
+        buffer.append([
+          { id: page.nextOffset, attempt: page.attempt, offset: page.offset, bytes: page.bytes, createdAt: "" },
+        ]);
+        after = page.nextOffset;
+        attempt = page.attempt;
         if (!stopped) setLines(lastLines(buffer.toString()));
       } catch {
-        /* Mất mạng giữa chừng: giữ dòng cũ, lần sau hỏi tiếp. */
+        if (!stopped) setLines(undefined);
       }
       if (!stopped) timer = setTimeout(() => void tick(), TAIL_POLL_MS);
     };
@@ -624,7 +637,13 @@ function CurrentRun({ run, now }: { run: MachineRun; now: number }) {
       </p>
       <section aria-label={t.tail}>
         <pre className="overflow-hidden rounded-lg bg-muted px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-          {tail === null ? t.loading : tail.length ? tail.join("\n") : t.noLog}
+          {tail === undefined
+            ? t.logOnMachine(run.machine ?? t.thisMachine)
+            : tail === null
+              ? t.loading
+              : tail.length
+                ? tail.join("\n")
+                : t.noLog}
         </pre>
       </section>
     </>

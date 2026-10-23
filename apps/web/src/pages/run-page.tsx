@@ -7,7 +7,6 @@ import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } 
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { LogCard } from "@/components/log-card.tsx";
 import { TaskHistory } from "@/components/task-history.tsx";
 import { TreeLinks } from "@/components/tree-links.tsx";
 import { Card } from "@/components/ui/card.tsx";
@@ -118,7 +117,12 @@ export function RunPage() {
         <Steps label="Các pha của run" steps={runPhases(r, stream.events, now)} />
         <div className="grid items-start gap-5 app:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
           <div className="grid min-w-0 gap-5">
-            <LogCard log={stream.log} status={stream.status} onRetry={stream.retry} />
+            <SectionCard title="Log trên máy">
+              <p className="break-words text-muted-foreground">
+                Log nằm trên máy {r.machineName ?? r.machineId ?? "chưa được giao run"}. Mở app desktop trên máy đã chạy
+                run hoặc dùng <code>hive runs log {r.id}</code> để đọc log còn trong thời hạn giữ.
+              </p>
+            </SectionCard>
             <EventsCard events={stream.events} />
             {/* Chưa có trang task riêng: trang run là nơi người xem mở từ bảng việc. */}
             {task.data && <TaskHistory taskId={task.data.id} />}

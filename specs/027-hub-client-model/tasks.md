@@ -162,16 +162,22 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 
 ## Phase 6: User Story 5 - Ranh giới dữ liệu (P2)
 
-- [ ] T034 [US5] Log run ghi file trên máy, xoá theo `runLogRetentionDays` · `worker/internal/runlogs/`,
+- [x] T034 [US5] Log run ghi file trên máy, xoá theo `runLogRetentionDays` · `worker/internal/runlogs/`,
   `worker/internal/runner/runner.go`
-- [ ] T035 [US5] Hub ngừng ghi `run_logs`, `terminal_chunks` · `apps/hub/src/modules/runs/engine.ts`, `stream.ts`,
+  Log ở `DataDir/runlogs/`, tách worktree; thời hạn chụp lúc giao run. Dọn lúc khởi động, hằng ngày và trước run mới.
+- [x] T035 [US5] Hub ngừng ghi `run_logs`, `terminal_chunks` · `apps/hub/src/modules/runs/engine.ts`, `stream.ts`,
   `terminal/gateway.ts`
-- [ ] T036 [US5] Che secret hai lần · `worker/internal/redact/`, `apps/hub/src/modules/runs/engine.ts`
-- [ ] T037 [US5] Op `runs.list`, `runs.log.read`; `hive runs` · `worker/cmd/hive-worker/local.go`, `worker/cmd/hive/runs.go`
-- [ ] T038 [US5] Web `run-page.tsx`, desktop `home-screen.tsx` đọc log từ máy hay báo "Log nằm trên máy …"
-- [ ] T039 [US5] Trang và tài liệu "Dữ liệu hub giữ", tài liệu SOC · `packages/contracts/src/hub-data.ts`,
+  ngoài phạm vi (quyết định 2026-10-23: giữ spec 010): tiếp tục ghi/phát lại `terminal_chunks` cho người vào sau.
+  SSE log run, steer và relay WebSocket giữ hoạt động. Log run mới chỉ đệm RAM có giới hạn, không INSERT database;
+  phát lại SSE sau khi hub khởi động lại hoặc quá cửa sổ đệm không bảo đảm đủ log. Không bật cờ `logs-local` vì sẽ cắt
+  `hive attach`. FR-051/SC-006 chưa đạt nguyên văn; không xoá bảng hay dữ liệu cũ.
+- [x] T036 [US5] Che secret hai lần · `worker/internal/redact/`, `apps/hub/src/modules/runs/engine.ts`
+- [x] T037 [US5] Op `runs.list`, `runs.log.read`; `hive runs` · `worker/cmd/hive-worker/local.go`, `worker/cmd/hive/runs.go`
+  Trang log tối đa 32 KiB để không vượt dòng IPC 64 KiB; CLI xuất chữ tự đọc tiếp, `--json` trả một trang.
+- [x] T038 [US5] Web `run-page.tsx`, desktop `home-screen.tsx` đọc log từ máy hay báo "Log nằm trên máy …"
+- [x] T039 [US5] Trang và tài liệu "Dữ liệu hub giữ", tài liệu SOC · `packages/contracts/src/hub-data.ts`,
   `apps/web/src/pages/admin/hub-data-page.tsx`, `docs/hub-data.md`, `docs/soc-hub-brief.md`
-- [ ] T040 [P] [US5] ADR 0034 · `docs/adr/0034-run-logs-stay-on-the-machine.md`
+- [x] T040 [P] [US5] ADR 0034 · `docs/adr/0034-run-logs-stay-on-the-machine.md`
 
 ## Phase 7: User Story 4 - Hub bền (P2)
 

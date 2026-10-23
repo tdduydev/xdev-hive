@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
+	"github.com/tdduydev/xdev-hive/worker/internal/redact"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 )
@@ -648,6 +649,7 @@ func (s *durableSink) Emit(e runner.Event) error {
 
 func resultMessage(runID string, attempt int, seq int64, r *runner.Result) RunResult {
 	report, _ := json.Marshal(r)
+	report, _ = redact.JSON(report, nil)
 	var sha *string
 	exit := 1
 	var stats *runner.DiffStats

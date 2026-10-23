@@ -19,6 +19,8 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+	"github.com/tdduydev/xdev-hive/worker/internal/redact"
+	"github.com/tdduydev/xdev-hive/worker/internal/runlogs"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
@@ -69,6 +71,7 @@ func Binary(cli string) string {
 }
 
 type Job struct {
+	RunLogRetentionDays                             int
 	Execution                                       string
 	SandboxPolicy                                   *SandboxJobConfig
 	RunID                                           string
@@ -295,6 +298,17 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := os.MkdirAll(r.DataDir, 0700); err != nil {
 		return err
 	}
+	store := runlogs.Store{Dir: filepath.Join(r.DataDir, "runlogs")}
+	if err := store.Cleanup(time.Now()); err != nil {
+		return err
+	}
+	logFile, err := store.Open(runlogs.Entry{RunID: job.RunID, Attempt: job.Attempt, ProjectID: job.ProjectID, CLI: job.CLI, RetentionDays: job.RunLogRetentionDays})
+	if err != nil {
+		return fmt.Errorf("Không mở được log tại máy: %w", err)
+	}
+	defer func() { retErr = errors.Join(retErr, logFile.Close()) }()
+	exact := append(secretValues(job.Env), secretValues(job.SetupEnv)...)
+	sink = &runLogSink{file: logFile, next: sink, job: job, stream: redact.Stream{Exact: exact}}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "prepare"}); err != nil {
 		return err
 	}

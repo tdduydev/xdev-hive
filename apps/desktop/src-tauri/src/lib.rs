@@ -27,6 +27,7 @@ mod outbox;
 mod profiles;
 mod register;
 mod remote;
+mod run_logs;
 mod secret_clipboard;
 mod secrets;
 mod settings;
@@ -1191,6 +1192,7 @@ pub fn run() {
             outbox::outbox_retry,
             outbox::outbox_export,
             local_projects::local_projects,
+            run_logs::read_run_log,
             local_projects::local_projects_import,
             local_projects::local_project_bind,
             local_projects::local_project_unbind,

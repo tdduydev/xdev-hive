@@ -97,6 +97,7 @@ fn main() {
         "outbox_retry",
         "outbox_export",
         "local_projects",
+        "read_run_log",
         "local_projects_import",
         "local_project_bind",
         "local_project_unbind",
