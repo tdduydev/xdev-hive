@@ -1,5 +1,6 @@
 import { type DeliveryRouteDeps, deliveryApi, notImplemented } from "../deps.ts";
 import { createEnvironment, listEnvironments, reorderEnvironments, updateEnvironment } from "../environments.ts";
+import { listRunnerCandidates, setEnvironmentRunner } from "../runners.ts";
 
 /** Môi trường của hệ thống (FR-012). Khoá và mở khoá thuộc T027. */
 export function environmentsRoutes(deps: DeliveryRouteDeps) {
@@ -11,5 +12,9 @@ export function environmentsRoutes(deps: DeliveryRouteDeps) {
     reorder: api.reorder.handler(({ context, input }) => reorderEnvironments(context.tx, context.user.id, input)),
     lock: api.lock.handler(notImplemented),
     unlock: api.unlock.handler(notImplemented),
+    setRunner: api.setRunner.handler(({ context, input }) => setEnvironmentRunner(context.tx, context.user.id, input)),
+    runnerCandidates: api.runnerCandidates.handler(({ context, input }) =>
+      listRunnerCandidates(context.tx, context.user.id, input.id),
+    ),
   };
 }

@@ -39,6 +39,7 @@ type Env = {
   position: number;
   policy: unknown;
   lock: null;
+  runner: unknown;
   createdAt: string;
   updatedAt: string;
 };
@@ -102,6 +103,7 @@ export function deliveryServersFixture() {
       position: 0,
       policy: { deployRoles: [], approveRoles: [], approvals: 0, approvalTtlHours: 24 },
       lock: null,
+      runner: { mode: "worker", machines: [], requireLabel: false },
       createdAt: NOW,
       updatedAt: NOW,
     },
@@ -112,6 +114,7 @@ export function deliveryServersFixture() {
       position: 1,
       policy: { deployRoles: ["admin"], approveRoles: ["admin"], approvals: 1, approvalTtlHours: 48 },
       lock: null,
+      runner: { mode: "worker", machines: [], requireLabel: false },
       createdAt: NOW,
       updatedAt: NOW,
     },
@@ -301,6 +304,7 @@ export function deliveryServersFixture() {
         position: envs.length,
         policy: v.policy,
         lock: null,
+        runner: { mode: "worker", machines: [], requireLabel: false },
         createdAt: NOW,
         updatedAt: NOW,
       };

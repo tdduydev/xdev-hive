@@ -11,7 +11,7 @@ import { deployEnvironments } from "./schema.ts";
 // (spec không nói ai tạo môi trường nên theo FR-030: cùng quyền với khai báo đích). Khoá/mở khoá thuộc T027.
 
 const systemNotFound = () => new NotFoundError("NOT_FOUND", "Không tìm thấy hệ thống.");
-const environmentNotFound = () => new NotFoundError("NOT_FOUND", "Không tìm thấy môi trường.");
+export const environmentNotFound = () => new NotFoundError("NOT_FOUND", "Không tìm thấy môi trường.");
 
 /**
  * Quyền của người dùng trên đội. Thiếu `ci.view` thì báo như đối tượng không tồn tại (không lộ việc có hay không);
@@ -60,12 +60,17 @@ function view(r: Row, people: Map<string, DeliveryPerson>): DeployEnvironment {
             reason: r.lockReason,
           }
         : null,
+    runner: {
+      mode: r.runner as DeployEnvironment["runner"]["mode"],
+      machines: r.runnerMachines,
+      requireLabel: r.runnerLabelRequired,
+    },
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
 }
 
-async function views(tx: Tx, rows: Row[]): Promise<DeployEnvironment[]> {
+export async function environmentViews(tx: Tx, rows: Row[]): Promise<DeployEnvironment[]> {
   const people = await peopleOf(
     tx,
     rows.map((r) => r.lockedBy),
@@ -89,7 +94,7 @@ export async function listEnvironments(tx: Tx, userId: string, systemId: string)
   const system = await findSystem(tx, systemId);
   if (!system) throw systemNotFound();
   await requireTeamPermission(tx, userId, system.teamId, "ci.view", systemNotFound);
-  return views(tx, await inSystem(tx, systemId));
+  return environmentViews(tx, await inSystem(tx, systemId));
 }
 
 const nameTaken = (name: string) =>
@@ -133,7 +138,7 @@ export async function createEnvironment(
     targetId: row.id,
     data: { systemId: system.id, name: row.name, position: row.position, policy: row.policy },
   });
-  return (await views(tx, [row]))[0] as DeployEnvironment;
+  return (await environmentViews(tx, [row]))[0] as DeployEnvironment;
 }
 
 export async function updateEnvironment(
@@ -172,7 +177,7 @@ export async function updateEnvironment(
         : {}),
     },
   });
-  return (await views(tx, [row]))[0] as DeployEnvironment;
+  return (await environmentViews(tx, [row]))[0] as DeployEnvironment;
 }
 
 /** Danh sách mới phải đủ mọi môi trường của hệ thống: thiếu hay thừa thì một môi trường lạc vị trí mà không ai hay. */
@@ -205,5 +210,5 @@ export async function reorderEnvironments(
       to: input.ids.map((id) => current.find((r) => r.id === id)?.name),
     },
   });
-  return views(tx, await inSystem(tx, system.id));
+  return environmentViews(tx, await inSystem(tx, system.id));
 }

@@ -411,6 +411,13 @@ export const deliveryJobs = hive
       errorCode: text("error_code"),
       errorMessage: text("error_message"),
       credentialNames: text("credential_names").array().notNull().default(sql`'{}'::text[]`),
+      /**
+       * `deliveryJobSpec` (trừ jobId) dựng lúc giao: máy nhận đúng cấu hình đã khoá dù đích bị sửa sau đó (FR-021). Chỉ có
+       * tên credential.
+       */
+      spec: jsonb("spec").$type<Record<string, unknown>>().notNull(),
+      /** Việc `waiting`: vì sao chưa có máy nhận (runner-select), hiện cho người bấm. */
+      waitReason: text("wait_reason"),
       ...times(),
       finishedAt: at("finished_at"),
     },
@@ -428,5 +435,24 @@ export const deliveryJobs = hive
       index("delivery_jobs_deploy").on(t.deployId),
       orgScoped("delivery_jobs"),
     ],
+  )
+  .enableRLS();
+
+/**
+ * Khả năng delivery máy báo theo từng đăng ký (FR-010): cách chạy và TÊN credential trong kho của máy. Bảng riêng của
+ * delivery vì danh sách credential dài hơn nhiều so với `capabilities` của fleet. Không khoá ngoại sang fleet: máy bị
+ * thu hồi thì dòng còn đó nhưng không bao giờ trực tuyến nên không được chọn.
+ */
+export const deliveryRunners = hive
+  .table(
+    "delivery_runners",
+    {
+      ...identity(),
+      machineId: uuid("machine_id").notNull(),
+      methods: text("methods").array().notNull().default(sql`'{}'::text[]`),
+      credentials: text("credentials").array().notNull().default(sql`'{}'::text[]`),
+      reportedAt: at("reported_at").notNull().defaultNow(),
+    },
+    (t) => [unique("delivery_runners_org_machine").on(t.orgId, t.machineId), orgScoped("delivery_runners")],
   )
   .enableRLS();

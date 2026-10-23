@@ -280060,6 +280060,34 @@
                           }
                         ]
                       },
+                      "runner": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "enum": [
+                              "worker",
+                              "legacy"
+                            ],
+                            "type": "string"
+                          },
+                          "machines": {
+                            "type": "array",
+                            "maxItems": 20,
+                            "items": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          },
+                          "requireLabel": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "machines",
+                          "requireLabel"
+                        ]
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
@@ -280076,6 +280104,7 @@
                       "position",
                       "policy",
                       "lock",
+                      "runner",
                       "createdAt",
                       "updatedAt"
                     ]
@@ -280782,6 +280811,34 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "worker",
+                            "legacy"
+                          ],
+                          "type": "string"
+                        },
+                        "machines": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "requireLabel": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "machines",
+                        "requireLabel"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -280798,6 +280855,7 @@
                     "position",
                     "policy",
                     "lock",
+                    "runner",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -281501,6 +281559,34 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "worker",
+                            "legacy"
+                          ],
+                          "type": "string"
+                        },
+                        "machines": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "requireLabel": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "machines",
+                        "requireLabel"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -281517,6 +281603,7 @@
                     "position",
                     "policy",
                     "lock",
+                    "runner",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -282183,6 +282270,34 @@
                           }
                         ]
                       },
+                      "runner": {
+                        "type": "object",
+                        "properties": {
+                          "mode": {
+                            "enum": [
+                              "worker",
+                              "legacy"
+                            ],
+                            "type": "string"
+                          },
+                          "machines": {
+                            "type": "array",
+                            "maxItems": 20,
+                            "items": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          },
+                          "requireLabel": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "mode",
+                          "machines",
+                          "requireLabel"
+                        ]
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
@@ -282199,6 +282314,7 @@
                       "position",
                       "policy",
                       "lock",
+                      "runner",
                       "createdAt",
                       "updatedAt"
                     ]
@@ -282860,6 +282976,34 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "worker",
+                            "legacy"
+                          ],
+                          "type": "string"
+                        },
+                        "machines": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "requireLabel": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "machines",
+                        "requireLabel"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -282876,6 +283020,7 @@
                     "position",
                     "policy",
                     "lock",
+                    "runner",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -283516,6 +283661,34 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "worker",
+                            "legacy"
+                          ],
+                          "type": "string"
+                        },
+                        "machines": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "requireLabel": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "machines",
+                        "requireLabel"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -283532,9 +283705,1343 @@
                     "position",
                     "policy",
                     "lock",
+                    "runner",
                     "createdAt",
                     "updatedAt"
                   ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments/{id}/runner": {
+      "patch": {
+        "operationId": "environments.setRunner",
+        "summary": "Chọn máy chạy deploy của môi trường (servers.manage)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "delivery"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "runner": {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "enum": [
+                          "worker",
+                          "legacy"
+                        ],
+                        "type": "string"
+                      },
+                      "machines": {
+                        "type": "array",
+                        "maxItems": 20,
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "requireLabel": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "mode",
+                      "machines",
+                      "requireLabel"
+                    ]
+                  }
+                },
+                "required": [
+                  "runner"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "systemId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "position": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "policy": {
+                      "type": "object",
+                      "properties": {
+                        "deployRoles": {
+                          "default": []
+                        },
+                        "approveRoles": {
+                          "default": []
+                        },
+                        "approvals": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 5,
+                          "default": 0
+                        },
+                        "approvalTtlHours": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 168,
+                          "default": 24
+                        }
+                      }
+                    },
+                    "lock": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "by",
+                            "at",
+                            "reason"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runner": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "worker",
+                            "legacy"
+                          ],
+                          "type": "string"
+                        },
+                        "machines": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        },
+                        "requireLabel": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "machines",
+                        "requireLabel"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "systemId",
+                    "name",
+                    "position",
+                    "policy",
+                    "lock",
+                    "runner",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "deployId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "userId": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "userId",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "since": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "configVersion": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "connectionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments/{id}/runner-candidates": {
+      "get": {
+        "operationId": "environments.runnerCandidates",
+        "summary": "Máy có thể chạy deploy của môi trường (ci.view)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "delivery"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "machineId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "online": {
+                        "type": "boolean"
+                      },
+                      "labeled": {
+                        "type": "boolean"
+                      },
+                      "methods": {
+                        "type": "array",
+                        "items": {
+                          "enum": [
+                            "jenkins-job",
+                            "argocd"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "credentials": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "reportedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "machineId",
+                      "name",
+                      "online",
+                      "labeled",
+                      "methods",
+                      "credentials",
+                      "reportedAt"
+                    ]
+                  }
                 }
               }
             }
@@ -284505,6 +286012,18 @@
                                 ],
                                 "default": null
                               },
+                              "credential": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^[a-z0-9-]{1,64}$"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null
+                              },
                               "health": {
                                 "anyOf": [
                                   {
@@ -284712,6 +286231,18 @@
                                 "minimum": 10,
                                 "maximum": 7200,
                                 "default": 600
+                              },
+                              "credential": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^[a-z0-9-]{1,64}$"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null
                               },
                               "health": {
                                 "anyOf": [
@@ -285874,6 +287405,18 @@
                             ],
                             "default": null
                           },
+                          "credential": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[a-z0-9-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
+                          },
                           "health": {
                             "anyOf": [
                               {
@@ -286081,6 +287624,18 @@
                             "minimum": 10,
                             "maximum": 7200,
                             "default": 600
+                          },
+                          "credential": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[a-z0-9-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
                           },
                           "health": {
                             "anyOf": [
@@ -286698,6 +288253,18 @@
                               ],
                               "default": null
                             },
+                            "credential": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9-]{1,64}$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
+                            },
                             "health": {
                               "anyOf": [
                                 {
@@ -286905,6 +288472,18 @@
                               "minimum": 10,
                               "maximum": 7200,
                               "default": 600
+                            },
+                            "credential": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9-]{1,64}$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
                             },
                             "health": {
                               "anyOf": [
@@ -288090,6 +289669,18 @@
                               ],
                               "default": null
                             },
+                            "credential": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9-]{1,64}$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
+                            },
                             "health": {
                               "anyOf": [
                                 {
@@ -288297,6 +289888,18 @@
                               "minimum": 10,
                               "maximum": 7200,
                               "default": 600
+                            },
+                            "credential": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9-]{1,64}$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
                             },
                             "health": {
                               "anyOf": [
@@ -290151,6 +291754,63 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "enum": [
+                                "worker",
+                                "legacy"
+                              ],
+                              "type": "string"
+                            },
+                            "machine": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "waiting": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "machine",
+                            "waiting"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -290197,6 +291857,7 @@
                     "external",
                     "health",
                     "approval",
+                    "runner",
                     "createdAt",
                     "startedAt",
                     "finishedAt"
@@ -291259,6 +292920,63 @@
                               }
                             ]
                           },
+                          "runner": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "mode": {
+                                    "enum": [
+                                      "worker",
+                                      "legacy"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "machine": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                          },
+                                          "name": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "name"
+                                        ]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "waiting": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "mode",
+                                  "machine",
+                                  "waiting"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -291305,6 +293023,7 @@
                           "external",
                           "health",
                           "approval",
+                          "runner",
                           "createdAt",
                           "startedAt",
                           "finishedAt"
@@ -292295,6 +294014,63 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "enum": [
+                                "worker",
+                                "legacy"
+                              ],
+                              "type": "string"
+                            },
+                            "machine": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "waiting": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "machine",
+                            "waiting"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -292341,6 +294117,7 @@
                     "external",
                     "health",
                     "approval",
+                    "runner",
                     "createdAt",
                     "startedAt",
                     "finishedAt"
@@ -292987,6 +294764,34 @@
                               }
                             ]
                           },
+                          "runner": {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "enum": [
+                                  "worker",
+                                  "legacy"
+                                ],
+                                "type": "string"
+                              },
+                              "machines": {
+                                "type": "array",
+                                "maxItems": 20,
+                                "items": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                }
+                              },
+                              "requireLabel": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "mode",
+                              "machines",
+                              "requireLabel"
+                            ]
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -293003,6 +294808,7 @@
                           "position",
                           "policy",
                           "lock",
+                          "runner",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -293477,6 +295283,63 @@
                                             }
                                           ]
                                         },
+                                        "runner": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "mode": {
+                                                  "enum": [
+                                                    "worker",
+                                                    "legacy"
+                                                  ],
+                                                  "type": "string"
+                                                },
+                                                "machine": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "id": {
+                                                          "type": "string",
+                                                          "format": "uuid"
+                                                        },
+                                                        "name": {
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "id",
+                                                        "name"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                },
+                                                "waiting": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string"
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              "required": [
+                                                "mode",
+                                                "machine",
+                                                "waiting"
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
                                         "createdAt": {
                                           "type": "string",
                                           "format": "date-time"
@@ -293523,6 +295386,7 @@
                                         "external",
                                         "health",
                                         "approval",
+                                        "runner",
                                         "createdAt",
                                         "startedAt",
                                         "finishedAt"
@@ -293953,6 +295817,63 @@
                                             }
                                           ]
                                         },
+                                        "runner": {
+                                          "anyOf": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "mode": {
+                                                  "enum": [
+                                                    "worker",
+                                                    "legacy"
+                                                  ],
+                                                  "type": "string"
+                                                },
+                                                "machine": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "id": {
+                                                          "type": "string",
+                                                          "format": "uuid"
+                                                        },
+                                                        "name": {
+                                                          "type": "string"
+                                                        }
+                                                      },
+                                                      "required": [
+                                                        "id",
+                                                        "name"
+                                                      ]
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                },
+                                                "waiting": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string"
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              "required": [
+                                                "mode",
+                                                "machine",
+                                                "waiting"
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
                                         "createdAt": {
                                           "type": "string",
                                           "format": "date-time"
@@ -293999,6 +295920,7 @@
                                         "external",
                                         "health",
                                         "approval",
+                                        "runner",
                                         "createdAt",
                                         "startedAt",
                                         "finishedAt"
@@ -294999,6 +296921,63 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "enum": [
+                                "worker",
+                                "legacy"
+                              ],
+                              "type": "string"
+                            },
+                            "machine": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "waiting": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "machine",
+                            "waiting"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -295045,6 +297024,7 @@
                     "external",
                     "health",
                     "approval",
+                    "runner",
                     "createdAt",
                     "startedAt",
                     "finishedAt"
@@ -296016,6 +297996,63 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "enum": [
+                                "worker",
+                                "legacy"
+                              ],
+                              "type": "string"
+                            },
+                            "machine": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "waiting": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "machine",
+                            "waiting"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -296062,6 +298099,7 @@
                     "external",
                     "health",
                     "approval",
+                    "runner",
                     "createdAt",
                     "startedAt",
                     "finishedAt"
@@ -297055,6 +299093,63 @@
                                 }
                               ]
                             },
+                            "runner": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "mode": {
+                                      "enum": [
+                                        "worker",
+                                        "legacy"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "machine": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "format": "uuid"
+                                            },
+                                            "name": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "name"
+                                          ]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "waiting": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "mode",
+                                    "machine",
+                                    "waiting"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "createdAt": {
                               "type": "string",
                               "format": "date-time"
@@ -297101,6 +299196,7 @@
                             "external",
                             "health",
                             "approval",
+                            "runner",
                             "createdAt",
                             "startedAt",
                             "finishedAt"
@@ -297531,6 +299627,63 @@
                                 }
                               ]
                             },
+                            "runner": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "mode": {
+                                      "enum": [
+                                        "worker",
+                                        "legacy"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "machine": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "format": "uuid"
+                                            },
+                                            "name": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "name"
+                                          ]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "waiting": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "mode",
+                                    "machine",
+                                    "waiting"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "createdAt": {
                               "type": "string",
                               "format": "date-time"
@@ -297577,6 +299730,7 @@
                             "external",
                             "health",
                             "approval",
+                            "runner",
                             "createdAt",
                             "startedAt",
                             "finishedAt"
@@ -298578,6 +300732,63 @@
                           }
                         ]
                       },
+                      "runner": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "enum": [
+                                  "worker",
+                                  "legacy"
+                                ],
+                                "type": "string"
+                              },
+                              "machine": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "name"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "waiting": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "mode",
+                              "machine",
+                              "waiting"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
@@ -298624,6 +300835,7 @@
                       "external",
                       "health",
                       "approval",
+                      "runner",
                       "createdAt",
                       "startedAt",
                       "finishedAt"
@@ -299612,6 +301824,63 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "enum": [
+                                "worker",
+                                "legacy"
+                              ],
+                              "type": "string"
+                            },
+                            "machine": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "waiting": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "machine",
+                            "waiting"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -299658,6 +301927,7 @@
                     "external",
                     "health",
                     "approval",
+                    "runner",
                     "createdAt",
                     "startedAt",
                     "finishedAt"
@@ -300649,6 +302919,63 @@
                         }
                       ]
                     },
+                    "runner": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "enum": [
+                                "worker",
+                                "legacy"
+                              ],
+                              "type": "string"
+                            },
+                            "machine": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "name"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "waiting": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "machine",
+                            "waiting"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -300695,6 +303022,7 @@
                     "external",
                     "health",
                     "approval",
+                    "runner",
                     "createdAt",
                     "startedAt",
                     "finishedAt"

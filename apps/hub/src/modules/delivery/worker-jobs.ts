@@ -1,7 +1,7 @@
-import type { DeliveryEvent, DeliveryJobKind, DeployState } from "@xdev-hive/contracts";
+import type { DeliveryEvent, DeliveryJobKind, DeliveryJobSpec, DeployState } from "@xdev-hive/contracts";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import type { Tx } from "../platform/index.ts";
-import { emitDeployEvent } from "./deploys/orchestrator.ts";
+import { emitDeployEvent } from "./deploys/events.ts";
 import type { DeliveryDeps } from "./deps.ts";
 import { applyDeliveryEvent, type DeployOutcome, isSettled } from "./job-events.ts";
 import { notifyDeploy } from "./logs.ts";
@@ -24,6 +24,10 @@ export interface NewDeliveryJob {
   credentialNames: string[];
   /** Máy đã chọn (runner-select). null thì việc chờ, chưa có lease. */
   workerId: string | null;
+  /** Spec đã dựng (trừ jobId), khoá theo cấu hình lúc giao. */
+  spec: Omit<DeliveryJobSpec, "jobId">;
+  /** Việc chờ: lý do runner-select chưa chọn được máy. */
+  waitReason?: string | null | undefined;
   now: Date;
 }
 
@@ -39,7 +43,12 @@ export async function createDeliveryJob(tx: Tx, input: NewDeliveryJob): Promise<
       workerId: input.workerId,
       configVersion: input.configVersion,
       credentialNames: input.credentialNames,
+      spec: input.spec,
+      waitReason: leased ? null : (input.waitReason ?? null),
       leaseExpiresAt: leased ? new Date(input.now.getTime() + LEASE_TTL_MS) : null,
+      // Hạn chờ máy 15 phút tính từ đây theo cùng đồng hồ với nhịp kiểm, không theo đồng hồ database.
+      createdAt: input.now,
+      updatedAt: input.now,
     })
     .returning();
   if (!row) throw new Error("Không tạo được việc delivery");
@@ -60,6 +69,18 @@ export async function renewLease(tx: Tx, jobId: string, workerId: string, now: D
     )
     .returning({ id: deliveryJobs.id });
   return rows.length > 0;
+}
+
+/** Việc đang giữ lease của một máy: gửi lại khi máy nối lại kênh (T017). */
+export async function leasedJobsFor(tx: Tx, workerId: string): Promise<DeliveryJobRow[]> {
+  return tx
+    .select()
+    .from(deliveryJobs)
+    .where(and(eq(deliveryJobs.workerId, workerId), eq(deliveryJobs.state, "leased")));
+}
+
+export function deliveryJobSpecOf(row: DeliveryJobRow): DeliveryJobSpec {
+  return { ...(row.spec as Omit<DeliveryJobSpec, "jobId">), jobId: row.id };
 }
 
 export type IngestResult = "applied" | "duplicate" | "rejected" | "unknown_job";

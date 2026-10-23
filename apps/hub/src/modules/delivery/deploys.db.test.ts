@@ -346,6 +346,8 @@ beforeAll(async () => {
   stagingId = (await env("staging", { deployRoles: [], approveRoles: [], approvals: 0, approvalTtlHours: 24 })).id;
   prodId = (await env("prod", { deployRoles: ["admin"], approveRoles: ["admin"], approvals: 1, approvalTtlHours: 12 }))
     .id;
+  // Các test ở đây đo đường hub tự chạy method; đường giao cho máy chạy nằm ở dispatch.db.test.ts.
+  await admin.query("update hive.deploy_environments set runner = 'legacy' where system_id = $1", [org.systemId]);
 });
 
 afterAll(async () => {

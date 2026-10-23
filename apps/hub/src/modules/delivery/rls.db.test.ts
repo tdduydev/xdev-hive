@@ -25,6 +25,7 @@ const tableNames = [
   "deploy_log_chunks",
   "deploy_approvals",
   "delivery_jobs",
+  "delivery_runners",
 ] as const;
 type Table = (typeof tableNames)[number];
 type Row = Record<string, string | number | boolean | Buffer | null>;
@@ -153,7 +154,16 @@ async function seed(name: string): Promise<Seed> {
     }),
     deploy_log_chunks: { org_id: orgId, deploy_id: deploy, seq: 0, data: Buffer.from("bước 1\n") },
     deploy_approvals: row({ deploy_id: deploy, user_id: userId, decision: "approve" }),
-    delivery_jobs: row({ deploy_id: deploy, kind: "jenkins-job", state: "waiting" }),
+    delivery_jobs: row({
+      deploy_id: deploy,
+      kind: "jenkins-job",
+      state: "waiting",
+      spec: json({
+        kind: "jenkins-job",
+        target: { baseUrl: "https://jenkins.example.invalid", job: "billing/deploy" },
+      }),
+    }),
+    delivery_runners: row({ machine_id: randomUUID(), methods: "{jenkins-job}", credentials: "{jenkins-ci}" }),
   };
   await withTenant(app, { orgId, userId }, async (tx) => {
     for (const table of tableNames) await insert(tx, table, rows[table]);
@@ -306,7 +316,7 @@ describe("RLS các bảng CI/CD và triển khai", () => {
     expect(await pgCode(() => again({ state: "succeeded" }))).toBeUndefined();
   });
 
-  it("unique: tên kết nối, token mỗi người, job của dự án, lượt CI đã thấy, máy chủ, môi trường, đích, phiếu duyệt", async () => {
+  it("unique: tên kết nối, token mỗi người, job của dự án, lượt CI đã thấy, máy chủ, môi trường, đích, phiếu duyệt, máy chạy", async () => {
     for (const table of [
       "ci_jenkins_connections",
       "ci_jenkins_user_tokens",
@@ -317,6 +327,7 @@ describe("RLS các bảng CI/CD và triển khai", () => {
       "deploy_environments",
       "deploy_targets",
       "deploy_approvals",
+      "delivery_runners",
     ] as const) {
       expect(
         await pgCode(() => asA((tx) => insert(tx, table, { ...seeds.a.rows[table], id: randomUUID() }))),

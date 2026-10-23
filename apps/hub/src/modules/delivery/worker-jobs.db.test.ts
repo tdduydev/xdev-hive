@@ -97,6 +97,16 @@ const ev = (jobId: string, seq: number, rest: Record<string, unknown>) =>
 const send = (event: DeliveryEvent, workerId = WORKER, now = at(event.seq)) =>
   as((tx) => ingestDeliveryEvent(tx, deps, { workerId, event, now }));
 
+const SPEC = {
+  kind: "jenkins-job" as const,
+  deployId: null,
+  configVersion: 1,
+  target: { baseUrl: "https://jenkins.example.test", job: "app/deploy" },
+  credential: "jenkins-ci",
+  params: {},
+  timeoutSeconds: 1800,
+};
+
 async function started() {
   const deployId = await newDeploy();
   const job = await as((tx) =>
@@ -107,6 +117,7 @@ async function started() {
       configVersion: 1,
       credentialNames: ["jenkins-ci"],
       workerId: WORKER,
+      spec: SPEC,
       now: T0,
     }),
   );
@@ -125,11 +136,14 @@ describe("delivery_jobs", () => {
         configVersion: null,
         credentialNames: [],
         workerId: null,
+        spec: { ...SPEC, kind: "argocd", deployId: null },
+        waitReason: "Chưa có máy trực tuyến.",
         now: T0,
       }),
     );
     expect(waiting.state).toBe("waiting");
     expect(waiting.leaseExpiresAt).toBeNull();
+    expect(waiting.waitReason).toBe("Chưa có máy trực tuyến.");
   });
 
   it("chạy trọn một lần: started, step, finished cập nhật lần triển khai và ghi máy đã chạy", async () => {
@@ -180,8 +194,9 @@ describe("delivery_jobs", () => {
     await send(ev(jobId, 0, { type: "started", workerId: "m1" }));
     expect(await as((tx) => renewLease(tx, jobId, OTHER_WORKER, at(1)))).toBe(false);
     expect(await as((tx) => renewLease(tx, jobId, WORKER, at(60)))).toBe(true);
-    // Chưa quá hạn kể từ lần heartbeat.
-    expect(await as((tx) => expireLostJobs(tx, deps, at(60 + LEASE_TTL_MS / 1000 - 1)))).toBe(0);
+    // Chưa quá hạn kể từ lần heartbeat. Việc của test trước (không heartbeat) thì đã quá hạn nên không đếm số trả về.
+    await as((tx) => expireLostJobs(tx, deps, at(60 + LEASE_TTL_MS / 1000 - 1)));
+    expect((await jobOf(jobId)).state).toBe("running");
     const late = at(60 + LEASE_TTL_MS / 1000 + 1);
     expect(await as((tx) => expireLostJobs(tx, deps, late))).toBeGreaterThanOrEqual(1);
     expect(await jobOf(jobId)).toMatchObject({ state: "lost", error_code: "lease_expired" });
