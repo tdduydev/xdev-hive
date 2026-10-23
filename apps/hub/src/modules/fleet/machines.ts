@@ -469,6 +469,18 @@ export async function machinesOfUser(tx: Tx, userId: string) {
 }
 
 /**
+ * Máy mà lần ghi của người dùng khai trong `X-Hive-Machine` (specs/027): chỉ nhận máy chính họ đăng ký và chưa thu hồi,
+ * để không ai gắn lần ghi của mình vào máy người khác trong lịch sử task.
+ */
+export async function clientMachineOf(tx: Tx, userId: string, machineId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: machines.id })
+    .from(machines)
+    .where(and(eq(machines.id, machineId), eq(machines.registeredBy, userId), isNull(machines.revokedAt)));
+  return row?.id ?? null;
+}
+
+/**
  * Quota tài khoản CLI trên máy của chính người dùng (ADR 0017: máy cá nhân chỉ chủ thấy tài khoản), cho lệnh /quota của
  * chat. Chỉ tóm tắt worker báo, không chứa token.
  */

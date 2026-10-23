@@ -48,7 +48,7 @@ import {
   handleWordUpload,
   wordImportHealth,
 } from "./modules/docsync/index.ts";
-import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
+import { clientMachineOf, fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
@@ -157,6 +157,7 @@ export function createApp({
       : requireOrgRole(tx, userId, min),
   );
   registry.provideProjects(findProject);
+  registry.provideClientMachine(clientMachineOf);
   runsMcpTools(registry);
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);

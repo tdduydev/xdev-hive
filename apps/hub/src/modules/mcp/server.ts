@@ -1,9 +1,23 @@
 import { type CallToolResult, McpServer, type Tool } from "@modelcontextprotocol/server";
+import { type ClientEventResult, MCP_IDEMPOTENCY_META } from "@xdev-hive/contracts";
 import type pg from "pg";
 import { z } from "zod";
 import { recordAudit } from "../audit/index.ts";
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
+import {
+  BadRequestError,
+  type ClientRequest,
+  ConflictError,
+  ForbiddenError,
+  INVALID_KEY_MESSAGE,
+  NotFoundError,
+  noteMissingKey,
+  type Tx,
+  withClientEvent,
+  withMetaKey,
+  withTenant,
+} from "../platform/index.ts";
 import { disabledTools, requireActivePersonalToken, requireEnabledTool } from "./admin-service.ts";
+import { rejectedResult, rejectionOf, sourceOf, type ToolOutput, targetOf, toResult } from "./client-event.ts";
 import type { McpPrincipal } from "./principal.ts";
 import type { McpOrgMembership, McpTool, McpToolRegistry } from "./registry.ts";
 
@@ -17,6 +31,16 @@ const ORG_PARAM = z.string().min(1).optional().describe("Mã hoặc slug tổ ch
 
 /** Lỗi trả về cho agent dưới dạng kết quả tool (isError), không phải lỗi giao thức. */
 class McpToolError extends Error {}
+
+/** Lần ghi có khoá bị hub từ chối (hay gửi lại lần đã bị từ chối): client đọc `_meta` để không gửi lại nữa. */
+class RejectedToolCall extends McpToolError {
+  readonly event: ClientEventResult;
+
+  constructor(event: ClientEventResult) {
+    super(event.reason ?? "Hub không nhận lần ghi này.");
+    this.event = event;
+  }
+}
 
 const describe = (orgs: McpOrgMembership[]) => orgs.map((o) => `${o.slug} (${o.name})`).join(", ");
 
@@ -33,18 +57,29 @@ function pickOrg(orgs: McpOrgMembership[], requested: string | undefined): McpOr
   return only;
 }
 
+const NO_CLIENT: ClientRequest = { invalidKey: false, source: "unknown" };
+
 /**
  * Chạy một tool trong withTenant của tổ chức thuộc principal, rồi ghi audit trong cùng transaction. Lời gọi bị từ
  * chối trước khi chọn được tổ chức thì không có dòng audit, vì audit_log luôn thuộc một tổ chức.
+ *
+ * Tool có ghi mà lời gọi mang khoá chống trùng thì chạy qua `withClientEvent` (specs/027 FR-001): gửi lại cùng khoá
+ * nhận kết quả đã lưu thay vì ghi lần hai. Chỉ lỗi handler ném vì trạng thái dữ liệu mới thành lần từ chối được lưu;
+ * lỗi quyền, token hay tool bị tắt xảy ra trước handler thì không để lại dòng, để client sửa xong gửi lại được.
  */
 async function runTool(
   deps: McpServerDeps,
   principal: McpPrincipal,
   tool: McpTool<z.ZodObject, unknown>,
   raw: Record<string, unknown>,
-) {
+  request: ClientRequest = NO_CLIENT,
+): Promise<ToolOutput> {
   const { org, ...args } = raw as { org?: string } & Record<string, unknown>;
   const { pool, registry } = deps;
+  // Chạy như client cũ khi khoá sai dạng thì lần gửi lại sẽ ghi thêm một lần nữa.
+  if (tool.writes && request.invalidKey) throw new McpToolError(INVALID_KEY_MESSAGE);
+  const key = tool.writes ? request.key : undefined;
+  if (tool.writes && !key) noteMissingKey(tool.name, request.client);
   let orgId: string;
   if (principal.kind === "run" || principal.personalTokenId || principal.terminal) {
     if (!principal.orgId) throw new McpToolError("Token thiếu tổ chức.");
@@ -67,12 +102,17 @@ async function runTool(
       ? { terminalSessionId: principal.terminal.sessionId, terminalMode: principal.terminal.mode }
       : {}),
   };
+  const tenant = { userId: principal.userId, orgId };
   try {
     // Kiểm trước prepare để tool bị tắt không gọi dịch vụ ngoài; kiểm lại lúc thực thi để không dùng trạng thái cũ.
-    await withTenant(pool, { userId: principal.userId, orgId }, (tx) => requireEnabledTool(tx, tool.name));
+    const machineId = await withTenant(pool, tenant, async (tx) => {
+      await requireEnabledTool(tx, tool.name);
+      // Máy client tự khai chỉ được ghi khi là máy của người gọi; máy lạ thì bỏ, không từ chối lần ghi.
+      return key && request.machineId ? registry.clientMachine(tx, principal.userId, request.machineId) : null;
+    });
     const prepared = tool.prepare ? await tool.prepare(args) : undefined;
     const after: Array<() => void> = [];
-    const output = await withTenant(pool, { userId: principal.userId, orgId }, async (tx) => {
+    const execute = async (tx: Tx) => {
       // Xét lại trong transaction sẽ chạy tool: RLS chỉ lọc theo tổ chức trong context, không theo tư cách thành viên,
       // và người dùng có thể vừa bị khoá giữa hai transaction.
       if (
@@ -83,11 +123,16 @@ async function runTool(
       }
       await requireActivePersonalToken(tx, principal);
       await requireEnabledTool(tx, tool.name);
-      const result = await tool.handler(
-        args,
-        { tx, orgId, principal, afterCommit: (fn: () => void) => after.push(fn) },
-        prepared,
-      );
+      let result: unknown;
+      try {
+        result = await tool.handler(
+          args,
+          { tx, orgId, principal, afterCommit: (fn: () => void) => after.push(fn) },
+          prepared,
+        );
+      } catch (error) {
+        throw (key && rejectionOf(error)) || error;
+      }
       await recordAudit(tx, {
         action: `mcp.${tool.name}`,
         targetType: "mcp_tool",
@@ -99,12 +144,33 @@ async function runTool(
         },
       });
       return result;
-    });
-    for (const fn of after) fn();
-    return output;
+    };
+    if (!key) {
+      const value = await withTenant(pool, tenant, execute);
+      for (const fn of after) fn();
+      return { value };
+    }
+    const { response, ...event } = await withClientEvent(
+      pool,
+      tenant,
+      {
+        key,
+        source: sourceOf(principal, request),
+        kind: tool.name,
+        machineId: machineId ?? undefined,
+        userId: principal.userId,
+        ...targetOf(principal, args),
+        clientCreatedAt: request.clientCreatedAt,
+      },
+      execute,
+    );
+    // Lần từ chối đã rollback cả phần handler ghi; lần trùng không chạy handler: việc sau commit chỉ của lần nhận.
+    if (event.outcome === "accepted") for (const fn of after) fn();
+    if (event.code) throw new RejectedToolCall(event);
+    return { value: response, event };
   } catch (error) {
     // Transaction lỗi đã rollback; ghi số lỗi riêng, không lưu thông báo nội bộ hay tham số có thể chứa secret.
-    await withTenant(pool, { userId: principal.userId, orgId }, (tx) =>
+    await withTenant(pool, tenant, (tx) =>
       recordAudit(tx, {
         action: `mcp.${tool.name}`,
         targetType: "mcp_tool",
@@ -116,11 +182,10 @@ async function runTool(
   }
 }
 
-function toResult(value: unknown): CallToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(value) }] };
-}
-
 function toError(error: unknown): CallToolResult {
+  if (error instanceof RejectedToolCall) {
+    return rejectedResult(error.event, error.message);
+  }
   const known =
     error instanceof McpToolError ||
     error instanceof ForbiddenError ||
@@ -134,7 +199,11 @@ function toError(error: unknown): CallToolResult {
 }
 
 /** Một McpServer cho một request: cổng chạy stateless nên mỗi request dựng server riêng, gắn sẵn principal. */
-export async function buildMcpServer(deps: McpServerDeps, principal: McpPrincipal): Promise<McpServer> {
+export async function buildMcpServer(
+  deps: McpServerDeps,
+  principal: McpPrincipal,
+  client: ClientRequest = NO_CLIENT,
+): Promise<McpServer> {
   const server = new McpServer({ name: "xdev-hive", version: deps.version });
   const orgs = principal.orgId
     ? [{ id: principal.orgId }]
@@ -159,9 +228,10 @@ export async function buildMcpServer(deps: McpServerDeps, principal: McpPrincipa
         inputSchema: inputFor(tool),
         annotations: { readOnlyHint: tool.readOnly ?? false },
       },
-      async (args) => {
+      async (args, ctx) => {
         try {
-          return toResult(await runTool(deps, principal, tool, args as Record<string, unknown>));
+          const request = withMetaKey(client, ctx.mcpReq._meta?.[MCP_IDEMPOTENCY_META]);
+          return toResult(await runTool(deps, principal, tool, args as Record<string, unknown>, request));
         } catch (error) {
           return toError(error);
         }

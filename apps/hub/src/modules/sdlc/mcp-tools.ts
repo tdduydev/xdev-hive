@@ -156,6 +156,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "sdlc_ask",
+    writes: true,
     title: "Hỏi người giao việc",
     description:
       "Chỉ dành cho run soạn tài liệu AI SDLC: gửi câu hỏi cho người giao (tối đa 5 câu mỗi lượt, mỗi câu nên có " +
@@ -180,6 +181,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "sdlc_report",
+    writes: true,
     title: "Báo kết quả bước AI SDLC",
     description:
       "Chỉ dành cho run AI SDLC: báo kết quả có cấu trúc của bước. `size`: {size: S|M|L|XL, modeRef, reason}. " +

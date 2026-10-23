@@ -67,17 +67,17 @@ description: "Danh sách task: Hub giữ dữ liệu và tiến độ, client l�
 **Independent Test**: gọi `task_update` hai lần cùng `Idempotency-Key` → lần hai trả `duplicate`, chỉ một dòng
 `client_events`, checklist đổi một lần. Gọi vào task đã huỷ → `rejected` có `code`, dòng `rejected` còn sau rollback.
 
-- [ ] T006 [P] [US1] Cờ `writes: true` cho mọi tool có ghi; test: tool `writes` ⇔ có trong `CLIENT_WRITE_TOOLS`, tool
+- [x] T006 [P] [US1] Cờ `writes: true` cho mọi tool có ghi; test: tool `writes` ⇔ có trong `CLIENT_WRITE_TOOLS`, tool
   trong bảng phải tồn tại · `apps/hub/src/modules/mcp/registry.ts`, `apps/hub/src/modules/*/mcp-tools.ts` (chỉ thêm
   cờ), `apps/hub/src/modules/mcp/client-write-tools.test.ts`
-- [ ] T007 [US1] `runTool` bọc tool có ghi bằng `withClientEvent` khi có khoá: khoá từ header, rồi
+- [x] T007 [US1] `runTool` bọc tool có ghi bằng `withClientEvent` khi có khoá: khoá từ header, rồi
   `params._meta["dev.xdev.hive/idempotencyKey"]`; lỗi nghiệp vụ (`McpToolError`, `ConflictError`, `BadRequestError`,
   `NotFoundError`, `ForbiddenError`) thành `rejected` với `code`; audit chỉ ghi lần `accepted` và `rejected`;
   `X-Hive-Machine` chỉ nhận khi máy cùng tổ chức và do người của token đăng ký hay là máy dùng chung của đội ·
   `apps/hub/src/modules/mcp/server.ts`, `apps/hub/src/modules/mcp/endpoint.ts`, `apps/hub/src/modules/mcp/principal.ts`
-- [ ] T008 [US1] Kết quả tool có `_meta["dev.xdev.hive/clientEvent"]`; `duplicate` của lần đầu `rejected` vẫn là lỗi
+- [x] T008 [US1] Kết quả tool có `_meta["dev.xdev.hive/clientEvent"]`; `duplicate` của lần đầu `rejected` vẫn là lỗi
   cùng `code` · `apps/hub/src/modules/mcp/server.ts`, `apps/hub/src/modules/mcp/client-event-result.test.ts`
-- [ ] T009 [P] [US1] Test database: trùng khoá, rejected sau rollback, máy lạ bị bỏ qua ·
+- [x] T009 [P] [US1] Test database: trùng khoá, rejected sau rollback, máy lạ bị bỏ qua ·
   `apps/hub/src/modules/mcp/client-events.db.test.ts`
 - [ ] T010 [US1] `memory.write` qua `withClientEvent` khi có khoá; header trả `Hive-Client-Event` ·
   `apps/hub/src/modules/knowledge/router.ts`, `apps/hub/src/app.ts` (đưa `resHeaders` vào context oRPC),

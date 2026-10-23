@@ -16,6 +16,7 @@ export {
 export {
   type AuthedMachine,
   checkMachineOffline,
+  clientMachineOf,
   FLEET_OFFLINE_QUEUE,
   findMachine,
   findMachineByRef,
