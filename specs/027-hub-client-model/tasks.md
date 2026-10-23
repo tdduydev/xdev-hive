@@ -108,7 +108,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
   `worker/internal/outbox/identity.go`, `worker/internal/outbox/store_test.go`
 - [x] T015 [P] [US2] Bảng nhóm Go khớp fixture `client-write-tools.json` · `worker/internal/outbox/tools.go`,
   `worker/internal/outbox/tools_test.go`
-- [ ] T016 [US2] Sender cho người dùng: `POST /mcp` (`tools/call` kèm `Idempotency-Key`, `X-Hive-Source`,
+- [x] T016 [US2] Sender cho người dùng: `POST /mcp` (`tools/call` kèm `Idempotency-Key`, `X-Hive-Source`,
   `X-Hive-Machine`, `X-Hive-Created-At`, `X-Hive-Client`) và `POST /rpc/<path>`; đọc `_meta` và header
   `Hive-Client-Event`; 401 → `held` (`login_required`); lỗi tool không có kết quả sự kiện → thử lại ·
   `worker/internal/outbox/user_sender.go`, `worker/internal/outbox/user_sender_test.go`, `worker/internal/outbox/sender.go`

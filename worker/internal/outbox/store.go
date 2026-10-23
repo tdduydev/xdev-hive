@@ -96,6 +96,7 @@ type Item struct {
 	Group         string          `json:"group"`
 	Stream        string          `json:"stream"`
 	Target        *Target         `json:"target,omitempty"`
+	Project       string          `json:"project,omitempty"`
 	Body          json.RawMessage `json:"body"`
 	CreatedAt     time.Time       `json:"createdAt"`
 	State         State           `json:"state"`
@@ -160,6 +161,7 @@ type Submission struct {
 	Source    string
 	Stream    string
 	Target    *Target
+	Project   string
 	Payload   json.RawMessage
 	Key       string
 	CreatedAt time.Time
@@ -199,7 +201,7 @@ func (s Store) Submit(id Identity, sub Submission) (Item, error) {
 	now := s.now()
 	it := Item{
 		Key: sub.Key, Source: sub.Source, Identity: id, Transport: transport, Kind: sub.Kind, Group: group,
-		Stream: sub.Stream, Target: sub.Target, Body: json.RawMessage(payload), CreatedAt: sub.CreatedAt.UTC(),
+		Stream: sub.Stream, Target: sub.Target, Project: sub.Project, Body: json.RawMessage(payload), CreatedAt: sub.CreatedAt.UTC(),
 		State: StatePending,
 	}
 	it.Identity.HubURL = normalizeHub(id.HubURL)
