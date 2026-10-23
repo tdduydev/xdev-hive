@@ -590,6 +590,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 ## Phase 8: User Story 7 — PWA và thông báo đẩy (P2)
 
 - [ ] T070 [US7] Web: PWA
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Một phần (SPEC10NEXT): vite-plugin-pwa `injectManifest`, `sw.ts` chỉ đệm vỏ, manifest `manifest.json`, icon, nút
     cài + hướng dẫn iOS, thanh phím + ô soạn ở trang terminal Leader (phần của T032), e2e `pwa.spec.ts`,
     `leader-terminal-mobile.spec.ts`. `start_url` đang là `/` (chưa có `/remote`). **Còn**: `push.ts`, `push`/
@@ -603,6 +604,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Phụ thuộc**: T028 (cùng làn) · **Mức**: vừa
 
 - [ ] T071 [US7] Hub: Web Push
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - `push.ts`: khoá VAPID sinh lần đầu, mã hoá bằng khoá chủ; route `pushKey|pushSubscribe|pushUnsubscribe`; gửi khi
     `term_event{attention|idle}`, `term_exit`, phiên mở từ xa; xoá subscription hết hạn (404/410); nội dung không có
     output.
@@ -611,6 +613,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Phụ thuộc**: T051 (cùng làn) · **Mức**: vừa
 
 - [ ] T072 [US7] Worker: tín hiệu "agent cần bạn"
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Claude tương tác: file settings tạm với hook `Notification` (+ `Stop`) gọi `hive __hook attention`, ghép với hook
     quản lý của tổ chức như `runner/hooks.go`; CLI khác: im 60 s sau output → `idle`; gửi `term_event`.
   - Lệnh `hive __hook` (chuyển từ T012): gửi tín hiệu tới worker qua socket nội bộ.
@@ -622,12 +625,14 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 ## Phase 9: User Story 8 — Xem cùng (P3)
 
 - [ ] T080 [US8] Hub: chế độ xem `team`
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Quyền xem cho thành viên đội / người xem run của dự án; đóng người xem khác khi tắt; giới hạn số người xem; danh sách
     người đang xem cho chủ.
   - **Scope**: `apps/hub/src/modules/terminal/{queries.ts,live.ts,visibility.db.test.ts}`
   - **Phụ thuộc**: T071 (cùng làn) · **Mức**: vừa
 
 - [ ] T081 [US8] Web: nút "Cho đội xem" và danh sách người xem
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - **Scope**: `apps/web/src/pages/remote/session-page.tsx`, `apps/web/e2e/{remote-share.spec.ts,fake-hub.ts}`
   - **Phụ thuộc**: T070 (cùng làn), T080 · **Mức**: nhẹ
 
@@ -635,7 +640,18 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 10: Kiểm và tài liệu
 
-- [ ] T090 e2e và hiệu năng
+- [x] T090 e2e và hiệu năng
+  - Đã làm (CLI010B): `apps/hub/src/terminal-perf.db.test.ts` (project `db-isolated`): 10 máy × 5 phiên × 3 người xem,
+    mỗi phiên 50 chunk 4 KiB cách 200 ms qua `/ws/terminal`. Test kiểm mọi người xem nhận đủ `seq` 0..49, không `sync`,
+    không lỗi, DB đủ 2.500 chunk. CPU đo bằng `process.threadCpuUsage()` của luồng hub; ELU nhiễu khi máy bận nên chỉ ghi
+    kèm. Hai lần chạy trên máy dev Windows: CPU luồng hub 43,9–48,6% một nhân khi phát (nghỉ 0%), trễ p50 6–10 ms, p95
+    16–18 ms, max 50–66 ms. **SC-008 CPU chưa đạt** nếu hiểu "tăng ≤ 15%" là 15% một nhân; spec chưa nói rõ một nhân hay
+    cả máy. Test chỉ chặn hồi quy ở 80%. Điểm nóng theo cpuprofile: `writev` 750 khung/s tới người xem, mỗi chunk một
+    transaction (drizzle + pg). Việc tiếp: gom ghi `term_output` theo lô, gộp khung gửi người xem.
+    `scripts/e2e-remote.ts` (`pnpm e2e:remote`, chỉ macOS/Linux): hub, worker và `hive` thật, CLI giả, Chromium có
+    virtual authenticator, proxy TCP trễ 50 ms mỗi chiều. Script đo SC-002 (gõ phím), SC-003 (mở phiên), SC-004 (mất mạng
+    30 s: không mất `seq`, không ký passkey lại), SC-005 (tắt qua API hub và qua `hive remote off`). **Chưa chạy** vì máy
+    làm là Windows; mới qua `tsc -p scripts` và biome. Chưa thêm job CI.
   - `scripts/e2e-remote.ts`: hub thật + worker thật + CLI giả + Chromium (virtual authenticator, mạng trễ 50 ms mỗi
     chặng); đo SC-002, SC-003, SC-004, SC-005; test hiệu năng SC-008 (50 phiên × 3 người xem).
   - **Scope**: `scripts/e2e-remote.ts`, `apps/hub/src/terminal-perf.db.test.ts`, `.github/workflows/ci.yml` (job tuỳ chọn)
