@@ -10,10 +10,12 @@ import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
 import {
+  ARTIFACT_UPLOAD_PATH,
   registerMcpTools as artifactsMcpTools,
   artifactsRouter,
   frameRoutes,
   frameTicketKey,
+  handleArtifactUpload,
   provideLinkTarget,
   provideThreadHost,
 } from "./modules/artifacts/index.ts";
@@ -357,6 +359,8 @@ export function createApp({
   app.post("/hooks/docs/:homeId", (c) => handleDocsWebhook(docSyncDeps, c.req.param("homeId"), c.req.raw));
   app.post("/api/v1/docs/assets", (c) => handleAssetUpload(docSyncDeps, c.req.raw));
   app.get("/api/v1/docs/assets", (c) => handleAssetDownload(docSyncDeps, c.req.raw));
+  // Ảnh và PDF của artifact: tệp nhị phân đi qua Hono như đính kèm tài liệu, metadata vẫn do oRPC `artifacts` trả.
+  app.post(ARTIFACT_UPLOAD_PATH, (c) => handleArtifactUpload({ pool, auth, jobs, publicUrl }, c.req.raw));
   app.get("/api/v1/docs/assets/:id", (c, next) =>
     c.req.param("id") === "list" ? next() : handleAssetDownload(docSyncDeps, c.req.raw, c.req.param("id")),
   );

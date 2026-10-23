@@ -30,7 +30,7 @@ export type ArtifactType = z.output<typeof artifactType>;
 /** Loại bật mặc định (PO chốt 2026-10-14); loại khác có trình xem sau MVP. */
 export const ARTIFACT_MVP_TYPES: readonly ArtifactType[] = ["markdown", "code", "html", "mermaid", "react"];
 /** Loại chạy trong khung cách ly ở hub và app; trên trang công khai mọi loại đều vào khung (FR-144). */
-export const ARTIFACT_FRAME_TYPES: readonly ArtifactType[] = ["html", "react", "svg", "mermaid", "csv", "pdf"];
+export const ARTIFACT_FRAME_TYPES: readonly ArtifactType[] = ["html", "react", "svg", "mermaid", "csv", "image", "pdf"];
 
 export const artifactScope = z.enum(["private", "project", "team", "org"]);
 export type ArtifactScope = z.output<typeof artifactScope>;
@@ -236,6 +236,8 @@ export const artifactVersionMeta = z.object({
   version: z.int().min(1),
   sha256: z.string(),
   sizeBytes: z.number().int().nonnegative(),
+  /** Ảnh và PDF: tệp nằm ở kho file của nền tảng, `content` luôn null. */
+  hasBlob: z.boolean(),
   /** Tác giả là người hoặc run, không bao giờ cả hai. */
   authorUser: userRef.nullable(),
   authorRunId: id.nullable(),
@@ -252,7 +254,7 @@ export const artifactVersionMeta = z.object({
 export type ArtifactVersionMeta = z.output<typeof artifactVersionMeta>;
 
 export const artifactVersion = artifactVersionMeta.extend({
-  /** null khi bản đã bị xoá vì bí mật (hoặc là blob, sau MVP). */
+  /** null khi bản đã bị xoá vì bí mật (hoặc là ảnh/PDF: xem `hasBlob`). */
   content: z.string().nullable(),
   compileError: z.string().nullable(),
 });

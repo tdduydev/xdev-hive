@@ -236388,6 +236388,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -236486,6 +236489,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -237364,6 +237368,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -237482,6 +237489,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -239211,6 +239219,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -239309,6 +239320,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -239981,6 +239993,9 @@
                         "minimum": 0,
                         "maximum": 9007199254740991
                       },
+                      "hasBlob": {
+                        "type": "boolean"
+                      },
                       "authorUser": {
                         "anyOf": [
                           {
@@ -240079,6 +240094,7 @@
                       "version",
                       "sha256",
                       "sizeBytes",
+                      "hasBlob",
                       "authorUser",
                       "authorRunId",
                       "origin",
@@ -243486,6 +243502,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -243584,6 +243603,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -245113,6 +245133,9 @@
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
+                    "hasBlob": {
+                      "type": "boolean"
+                    },
                     "authorUser": {
                       "anyOf": [
                         {
@@ -245211,6 +245234,7 @@
                     "version",
                     "sha256",
                     "sizeBytes",
+                    "hasBlob",
                     "authorUser",
                     "authorRunId",
                     "origin",
@@ -246088,6 +246112,9 @@
                           "minimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "hasBlob": {
+                          "type": "boolean"
+                        },
                         "authorUser": {
                           "anyOf": [
                             {
@@ -246186,6 +246213,7 @@
                         "version",
                         "sha256",
                         "sizeBytes",
+                        "hasBlob",
                         "authorUser",
                         "authorRunId",
                         "origin",
@@ -246868,6 +246896,9 @@
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
+                    "hasBlob": {
+                      "type": "boolean"
+                    },
                     "authorUser": {
                       "anyOf": [
                         {
@@ -246966,6 +246997,7 @@
                     "version",
                     "sha256",
                     "sizeBytes",
+                    "hasBlob",
                     "authorUser",
                     "authorRunId",
                     "origin",

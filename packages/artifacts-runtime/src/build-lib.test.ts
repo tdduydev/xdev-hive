@@ -17,6 +17,8 @@ const NAMES = [
   "@tailwindcss/browser",
   "mermaid",
   "markdown-it",
+  "pdfjs-dist",
+  "pdfjs-dist/worker",
 ];
 // Chỉ bốn tên này được là import ngoài: chúng đi qua import map về cùng một file nên cả khung có một bản React.
 const SHARED = new Set(["react", "react/jsx-runtime", "react-dom", "react-dom/client"]);
@@ -68,6 +70,13 @@ describe("thư viện đã dựng", () => {
     expect(specifiers(recharts)).toContain("react");
     // Bản React gói sẵn sẽ chứa tên nội bộ này.
     expect(recharts).not.toContain("react.transitional.element");
+  });
+
+  it("pdf.js có bộ xử lý worker riêng để chạy trên luồng chính trong khung", () => {
+    const worker = readFileSync(join(LIB_DIST_DIR, manifest["pdfjs-dist/worker"]?.path as string), "utf8");
+    expect(worker).toMatch(/export\s*\{[^}]*\bWorkerMessageHandler\b/);
+    const pdf = readFileSync(join(LIB_DIST_DIR, manifest["pdfjs-dist"]?.path as string), "utf8");
+    expect(pdf).toMatch(/export\s*\{[^}]*\bgetDocument\b/);
   });
 
   it("export có tên dùng được qua import map", () => {

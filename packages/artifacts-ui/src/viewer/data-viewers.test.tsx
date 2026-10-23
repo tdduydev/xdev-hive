@@ -27,6 +27,37 @@ describe("SvgViewer", () => {
   });
 });
 
+describe("ImageViewer và PdfViewer", () => {
+  function fileView(type: "image" | "pdf", hasBlob: boolean) {
+    const d = detail({ type, content: null, hasBlob });
+    const client = fakeClient({ [ID_A]: d });
+    renderWithEnv(
+      <ArtifactViewer artifact={d.artifact} version={d.version} />,
+      testEnv(client, { frameBase: "http://hub.test" }),
+    );
+    return client;
+  }
+
+  it.each(["image", "pdf"] as const)(
+    "%s có tệp: chạy trong khung cách ly, xin vé khung của đúng phiên bản",
+    async (type) => {
+      const client = fileView(type, true);
+      const frame = (await screen.findByTitle("Trang của artifact Luồng hoàn tiền")) as HTMLIFrameElement;
+      expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+      expect(client.artifacts.frameUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ id: ID_A, version: 1 }),
+        expect.anything(),
+      );
+    },
+  );
+
+  it.each(["image", "pdf"] as const)("%s mất tệp (xoá vì bí mật): báo bản đã bị xoá, không mở khung", (type) => {
+    const client = fileView(type, false);
+    expect(screen.getByText(/đã bị xoá/)).toBeTruthy();
+    expect(client.artifacts.frameUrl).not.toHaveBeenCalled();
+  });
+});
+
 describe("JsonViewer", () => {
   it("dựng cây thu mở được, khoá và chuỗi chỉ là chữ", async () => {
     const content = JSON.stringify({

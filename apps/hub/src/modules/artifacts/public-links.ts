@@ -94,9 +94,10 @@ export async function createPublicLink(
     );
   const v = await versionRow(tx, row.id, input.version);
   if (!v) throw artifactError("ARTIFACT_NOT_FOUND", "Không tìm thấy phiên bản này.");
-  if (v.tombstonedAt || v.content === null)
+  if (v.tombstonedAt || (v.content === null && !v.blobId))
     throw artifactError("ARTIFACT_NOT_FOUND", "Phiên bản này đã bị xoá vì chứa bí mật.");
-  assertNoSecrets(v.content, { artifactId: row.id, type: row.type });
+  // Ảnh và PDF không quét bí mật được (nhị phân), nên chỉ văn bản mới qua bước này.
+  if (v.content !== null) assertNoSecrets(v.content, { artifactId: row.id, type: row.type });
   const [active] = await tx
     .select({ n: count() })
     .from(artifactPublicLinks)
@@ -254,7 +255,9 @@ export interface PublicTarget {
   type: ArtifactType;
   version: number;
   expiresAt: Date;
-  content: string;
+  /** `null` với ảnh và PDF: nội dung nằm ở `blobId`. */
+  content: string | null;
+  blobId: string | null;
   compiled: string | null;
   compileError: string | null;
 }
@@ -274,7 +277,7 @@ export async function publicTarget(tx: Tx, linkId: string): Promise<PublicTarget
   // Chủ rời tổ chức thì job hằng giờ mới đặt `revoked_at`; không để link sống thêm trong khoảng đó.
   if (!(await orgRoleOf(tx, a.ownerUserId))) return null;
   const v = await versionRow(tx, a.id, found.row.version);
-  if (!v || v.tombstonedAt || v.content === null) return null;
+  if (!v || v.tombstonedAt || (v.content === null && !v.blobId)) return null;
   return {
     linkId: found.row.id,
     artifactId: a.id,
@@ -283,6 +286,7 @@ export async function publicTarget(tx: Tx, linkId: string): Promise<PublicTarget
     version: v.version,
     expiresAt: found.row.expiresAt,
     content: v.content,
+    blobId: v.blobId,
     compiled: v.compiled,
     compileError: v.compileError,
   };

@@ -11,6 +11,7 @@ export {
   readerFor,
   visibleArtifactsWhere,
 } from "./access.ts";
+export { isBlobType } from "./blob-types.ts";
 export { APP_LIB_BASE, type FrameRoutesDeps, frameRoutes } from "./frame-routes.ts";
 export {
   allLinkTargets,
@@ -45,6 +46,7 @@ export {
   visibleSummaries,
 } from "./service.ts";
 export { FRAME_TICKET_TTL_SEC, frameTicketKey, signFrameTicket, verifyFrameTicket } from "./ticket.ts";
+export { ARTIFACT_UPLOAD_PATH, type ArtifactUploadDeps, handleArtifactUpload } from "./upload.ts";
 export {
   type ArtifactDeps,
   type Compiled,
