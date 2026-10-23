@@ -19,7 +19,9 @@ export function DeployCompare({ deployId }: { deployId: string }) {
   const { api } = useOrg();
   const headingId = useId();
   // Mỗi lần đọc là một lần hub gọi GitLab/GitHub, còn commit giữa hai bản thì không đổi.
-  const query = useQuery(api.deploys.approvals.compare.queryOptions({ input: { id: deployId }, staleTime: 5 * 60_000 }));
+  const query = useQuery(
+    api.deploys.approvals.compare.queryOptions({ input: { id: deployId }, staleTime: 5 * 60_000 }),
+  );
   const data = query.data;
   return (
     <section aria-labelledby={headingId} className="grid min-w-0 gap-2.5">
