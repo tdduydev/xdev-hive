@@ -582,3 +582,99 @@ describe("TokenScoreCard: nút Tối ưu", () => {
     expect(commands(calls)).toEqual(["token_score", "optimize_all_preview", "optimize_all_apply", "token_score"]);
   });
 });
+
+describe("TokenScoreCard: chính sách dự án", () => {
+  const POLICY_ID = "7f3c1b52-0a1e-4c0e-9d57-2f4c8f0b6a11";
+  const policies = { [POLICY_ID]: { level: "balanced", rtk: true, codegraph: false, autoCompactWindow: null } };
+  const planStep = (over: Record<string, unknown>) => ({
+    id: "optimizer.enable",
+    group: "cli",
+    target: "claude-2",
+    title: "Bật tối ưu balanced cho Claude 2",
+    changes: [],
+    selected: true,
+    requiresConfirm: false,
+    undoable: true,
+    reason: "Theo chính sách dự án Acme Web",
+    ...over,
+  });
+  const planOf = (...steps: unknown[]) => ({
+    createdAt: "2026-10-23T09:00:00Z",
+    scoreBefore: 55,
+    policySources: [POLICY_ID],
+    steps,
+  });
+  const previews = (calls: { command: string; args?: Record<string, unknown> | undefined }[]) =>
+    calls.filter((c) => c.command === "optimize_all_preview");
+
+  it("máy lệch: báo từng mục kèm dự án đòi mục đó, và đưa chính sách cho bản xem trước", async () => {
+    const calls = fakeTauri({
+      token_score: () => sampleScore(),
+      optimize_all_preview: () =>
+        planOf(planStep({}), planStep({ id: "fix.optimizer.rtk", title: "Bật RTK cho Claude 2" })),
+    });
+    render(<TokenScoreCard policies={policies} />);
+    const drift = await screen.findByRole("region", { name: "Lệch chính sách" });
+    expect(within(drift).getByText("Mức tối ưu")).toBeTruthy();
+    expect(within(drift).getByText("RTK")).toBeTruthy();
+    expect(within(drift).getAllByText("Theo chính sách dự án Acme Web")).toHaveLength(2);
+    expect(previews(calls)[0]?.args).toEqual({ policy: policies });
+  });
+
+  it("máy đã khớp chính sách thì nói khớp, không liệt kê mục lệch", async () => {
+    fakeTauri({
+      token_score: () => sampleScore(),
+      optimize_all_preview: () => planOf(planStep({ id: "score.recompute", group: "score", reason: "Mặc định" })),
+    });
+    render(<TokenScoreCard policies={policies} />);
+    expect(await screen.findByText("Máy khớp chính sách tối ưu của các dự án đã gắn.")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Lệch chính sách" })).toBeNull();
+  });
+
+  it("không dự án nào có chính sách thì không dựng bản xem trước và không nói gì về lệch", async () => {
+    const calls = fakeTauri({ token_score: () => sampleScore(), optimize_all_preview: () => planOf() });
+    render(<TokenScoreCard policies={{}} />);
+    await screen.findByText("55,0");
+    expect(previews(calls)).toHaveLength(0);
+    expect(screen.queryByText("Máy khớp chính sách tối ưu của các dự án đã gắn.")).toBeNull();
+  });
+
+  it("bản xem trước lỗi thì không báo lệch thay vì báo sai", async () => {
+    fakeTauri({
+      token_score: () => sampleScore(),
+      optimize_all_preview: () => {
+        throw "optimize.lock đang bận";
+      },
+    });
+    render(<TokenScoreCard policies={policies} />);
+    await screen.findByText("55,0");
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Lệch chính sách" })).toBeNull());
+    expect(screen.queryByText("Máy khớp chính sách tối ưu của các dự án đã gắn.")).toBeNull();
+  });
+
+  it("dự án không đọc được chính sách thì nói rõ là chưa so", async () => {
+    fakeTauri({ token_score: () => sampleScore(), optimize_all_preview: () => planOf() });
+    render(<TokenScoreCard policies={policies} policiesUnread={2} />);
+    expect(await screen.findByText(/Chưa đọc được chính sách của 2 dự án đã gắn/)).toBeTruthy();
+  });
+
+  it("nút Tối ưu mở hộp xem trước với cùng chính sách; mức aggressive vẫn phải chọn tay", async () => {
+    const user = userEvent.setup();
+    const aggressive = planStep({
+      title: "Đổi tối ưu của Claude 2 từ balanced sang aggressive",
+      level: "aggressive",
+      selected: false,
+      requiresConfirm: true,
+    });
+    const calls = fakeTauri({
+      token_score: () => sampleScore(),
+      optimize_all_preview: () => planOf(planStep({}), aggressive),
+    });
+    render(<TokenScoreCard policies={policies} />);
+    await screen.findByRole("region", { name: "Lệch chính sách" });
+    await user.click(screen.getByRole("button", { name: "Tối ưu" }));
+    // Chỉ dòng balanced được chọn sẵn, dù chính sách đích là aggressive.
+    expect(await screen.findByRole("button", { name: "Áp dụng 1 dòng" })).toBeTruthy();
+    expect(previews(calls).every((c) => c.args?.policy === policies)).toBe(true);
+  });
+});

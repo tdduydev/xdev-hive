@@ -484,6 +484,7 @@ func run(args []string) int {
 	go pool.Watch(ctx)
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
 	status := newWorkerStatus(cfg, *owner, dataDir)
+	terminal.SetLocalSecretsConfig(path)
 	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status, ob)
 	defer stopLocal()
 	slots := *capacity

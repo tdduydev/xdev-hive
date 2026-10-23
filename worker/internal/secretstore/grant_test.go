@@ -194,7 +194,7 @@ func TestGrantStoreErrorListsNames(t *testing.T) {
 	if err := store.Set("API_TOKEN", value); err != nil {
 		t.Fatal(err)
 	}
-	cfg := grantFixture(t, "API_TOKEN", "DB_URL", "SMTP_PASS")
+	cfg := grantFixture(t, "DB_URL", "API_TOKEN", "SMTP_PASS")
 	g, err := Grant(t.Context(), GrantRequest{WorkerConfig: cfg, Kind: KindRun, LocalID: grantLocalID, Store: store})
 	if !errors.Is(err, ErrMissing) {
 		t.Fatalf("muốn ErrMissing, có %v", err)

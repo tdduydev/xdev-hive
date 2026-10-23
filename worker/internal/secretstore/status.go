@@ -31,12 +31,11 @@ func backendName() string {
 	return "unknown"
 }
 
-// Status cho desktop biết kho dùng được không. Chỉ Credential Manager được đọc thử: nó không bao giờ khoá hay bật hộp
-// thoại. Keychain và Secret Service có thể bật hộp mở khoá khi đọc, nên chưa thử; cách kiểm không hộp thoại theo từng
-// hệ điều hành thuộc T035.
+// Keychain giữ trạng thái chưa biết để không bật hộp thoại từ màn danh sách. Backend Linux kiểm Locked mà không gọi
+// Unlock/Prompt; Credential Manager không có hộp mở khoá, nên cả hai có thể đọc thử một tên không tồn tại.
 func (s *Store) Status() Status {
 	st := Status{Available: true, Backend: backendName()}
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		return st
 	}
 	no := false

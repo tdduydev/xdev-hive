@@ -31,6 +31,9 @@ var secretsClock = time.Date(2026, 10, 1, 8, 30, 0, 0, time.UTC)
 func secretsEnv(t *testing.T) string {
 	t.Helper()
 	keyring.MockInit()
+	oldStore := secretsStore
+	secretsStore = secretstore.NewStore
+	t.Cleanup(func() { secretsStore = oldStore })
 	now := secretsClock
 	oldNow := secretsNow
 	secretsNow = func() time.Time { return now }
