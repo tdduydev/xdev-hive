@@ -7,7 +7,9 @@ import { FolderForm } from "@/components/folder-form.tsx";
 import { OptimizerPanel } from "@/components/optimizer-panel.tsx";
 import { TokenScoreCard } from "@/components/token-score-card.tsx";
 import type { ExtraHint } from "@/components/token-score-detail.tsx";
+import { useLinkedAccount } from "@/lib/account.ts";
 import { useFolder } from "@/lib/folder.ts";
+import { useProjectPolicies } from "@/lib/hub-context.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
 import type { CriterionId } from "@/lib/token-score.ts";
@@ -282,6 +284,7 @@ function ContextBar({ report }: { report: ContextReport }) {
 export function TokensScreen() {
   const t = useT(text);
   const lang = useLang();
+  const projectPolicies = useProjectPolicies(useLinkedAccount() !== null);
   const [engine, setEngine] = useState<Engine>("claude");
   const [applied, setApplied] = useFolder();
   const [folder, setFolder] = useState(applied);
@@ -315,7 +318,12 @@ export function TokensScreen() {
 
   return (
     <div className="flex flex-col gap-3.5">
-      <TokenScoreCard hints={tipHints} tips={generalTips} />
+      <TokenScoreCard
+        hints={tipHints}
+        tips={generalTips}
+        policies={projectPolicies.policies}
+        policiesUnread={projectPolicies.failed}
+      />
       <OptimizerPanel />
       <header className="flex flex-wrap items-center gap-3">
         <p className="min-w-60 flex-1 text-sm text-muted-foreground">{t.lead}</p>

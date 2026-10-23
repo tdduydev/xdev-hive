@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-outbox-status"
+description = "Enables the outbox_status command without any pre-configured scope."
+commands.allow = ["outbox_status"]
+
+[[permission]]
+identifier = "deny-outbox-status"
+description = "Denies the outbox_status command without any pre-configured scope."
+commands.deny = ["outbox_status"]

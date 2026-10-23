@@ -13,7 +13,9 @@ import {
   TokenScoreDetail,
 } from "@/components/token-score-detail.tsx";
 import { TokenScoreHistory } from "@/components/token-score-history.tsx";
+import { type DriftItem, type PolicyDrift, policyDrift } from "@/lib/hub-context.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { type OptimizePolicies, optimizeAllPreview } from "@/lib/optimize-all.ts";
 import { appSettings, setAppSetting } from "@/lib/settings.ts";
 import { errorText, onTauriEvent } from "@/lib/tauri.ts";
 import {
@@ -70,6 +72,10 @@ const text: Dict<{
   reportHint: string;
   reportUnregistered: string;
   reportFailed: string;
+  driftTitle: string;
+  driftItems: Record<DriftItem, string>;
+  driftOk: string;
+  policyUnread: (n: number) => string;
   note: string;
 }> = {
   vi: {
@@ -110,6 +116,10 @@ const text: Dict<{
     reportHint: "Chỉ gửi số điểm, không gửi đường dẫn hay tên dự án; tối đa mỗi giờ một lần.",
     reportUnregistered: "Máy chưa đăng ký với hub nên chưa gửi điểm được.",
     reportFailed: "Không lưu được cài đặt gửi điểm lên hub.",
+    driftTitle: "Lệch chính sách",
+    driftItems: { level: "Mức tối ưu", compact: "Trần nén ngữ cảnh", rtk: "RTK", codegraph: "Codegraph" },
+    driftOk: "Máy khớp chính sách tối ưu của các dự án đã gắn.",
+    policyUnread: (n) => `Chưa đọc được chính sách của ${n} dự án đã gắn nên chưa so được với dự án đó.`,
     note: "Điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.",
   },
   en: {
@@ -150,6 +160,16 @@ const text: Dict<{
     reportHint: "Sends only the score figures, never paths or project names; at most once an hour.",
     reportUnregistered: "This machine is not registered with a hub, so the score cannot be sent.",
     reportFailed: "Could not save the setting for sending the score to the hub.",
+    driftTitle: "Policy drift",
+    driftItems: {
+      level: "Optimization level",
+      compact: "Context compaction limit",
+      rtk: "RTK",
+      codegraph: "Codegraph",
+    },
+    driftOk: "This machine matches the optimization policy of the linked projects.",
+    policyUnread: (n) =>
+      `Could not read the policy of ${n} linked project(s), so this machine is not compared with it.`,
     note: "The score measures configuration and context size, not the quality of the agent's results.",
   },
 };
@@ -167,10 +187,14 @@ interface Props {
   hints?: ExtraHint[];
   /** Gợi ý chung, không gắn với tiêu chí nào (vd. subagent). */
   tips?: { title: string; why: string }[];
+  /** Chính sách tối ưu của các dự án đã gắn (T018): làm đích của nút "Tối ưu" và để báo máy lệch ở mục nào. */
+  policies?: OptimizePolicies | null;
+  /** Số dự án đã gắn mà chưa đọc được chính sách. */
+  policiesUnread?: number;
 }
 
 /** Thẻ đầu màn Token: điểm máy, hai nhóm, điểm từng gói và chi tiết có sửa nhanh (spec 025 US1–US3). */
-export function TokenScoreCard({ hints = [], tips = [] }: Props) {
+export function TokenScoreCard({ hints = [], tips = [], policies = null, policiesUnread = 0 }: Props) {
   const t = useT(text);
   const lang = useLang();
   const [state, setState] = useState<State>({ score: null, error: null, loading: true });
@@ -184,7 +208,13 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
   // null: chưa đọc được (ngoài Tauri, hay worker cũ chưa có `optimize report on|off`), công tắc gửi điểm chưa hiện.
   const [report, setReport] = useState<ScoreReportStatus | null>(null);
   const [reportError, setReportError] = useState(false);
+  // null: không có chính sách để so, hoặc chưa dựng được bản xem trước.
+  const [drift, setDrift] = useState<PolicyDrift[] | null>(null);
   const latest = useRef(0);
+  const policiesRef = useRef(policies);
+  policiesRef.current = policies;
+  // Cha truyền object mới mỗi lần vẽ: so theo nội dung để không dựng lại bản xem trước vô ích.
+  const policiesKey = policies && Object.keys(policies).length > 0 ? JSON.stringify(policies) : "";
 
   const load = useCallback(async (fresh: boolean, profileId: string | null = null) => {
     const id = ++latest.current;
@@ -228,6 +258,24 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
       live = false;
     };
   }, [generatedAt]);
+
+  // Lệch chính sách lấy từ bản xem trước của nút "Tối ưu" (không ghi gì), và dựng lại mỗi khi điểm được tính lại.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dựng lại khi chính sách đổi hay có lần tính mới (generatedAt đổi)
+  useEffect(() => {
+    if (!policiesKey) {
+      setDrift(null);
+      return;
+    }
+    let live = true;
+    optimizeAllPreview(policiesRef.current).then(
+      (plan) => live && setDrift(policyDrift(plan)),
+      // Sidecar bận hay lỗi: không báo lệch thay vì báo sai.
+      () => live && setDrift(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [policiesKey, generatedAt]);
 
   useEffect(() => {
     let live = true;
@@ -305,7 +353,7 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
     <section aria-label={t.title} className="overflow-hidden rounded-xl border bg-card text-card-foreground">
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
         <h2 className="min-w-40 flex-1 text-[15px] font-semibold">{t.title}</h2>
-        <OptimizeAllButton onDone={() => void load(false)} />
+        <OptimizeAllButton policy={policies} onDone={() => void load(false)} />
         <Button variant="outline" size="sm" disabled={loading} onClick={() => void load(false)}>
           <RefreshCwIcon aria-hidden="true" className={loading ? "animate-spin" : undefined} />
           {t.recalc}
@@ -366,6 +414,30 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
             <GroupBar label={t.groupA} earned={groups.A.earned} max={groups.A.max} none={t.unmeasured} fmt={pts} />
             <GroupBar label={t.groupB} earned={groups.B.earned} max={groups.B.max} none={t.unmeasured} fmt={pts} />
           </div>
+
+          {(drift !== null || policiesUnread > 0) && (
+            <div className="flex flex-col gap-1.5">
+              {drift !== null && drift.length > 0 && (
+                <section aria-label={t.driftTitle} className="rounded-lg border bg-muted/40 px-3 py-2">
+                  <h3 className="text-sm font-semibold">{t.driftTitle}</h3>
+                  <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+                    {drift.map((d) => (
+                      <li key={`${d.item}|${d.reason}`} className="flex flex-wrap gap-x-2">
+                        <strong className="font-medium">{t.driftItems[d.item]}</strong>
+                        <span className="text-muted-foreground">{d.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {drift !== null && drift.length === 0 && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {t.driftOk}
+                </p>
+              )}
+              {policiesUnread > 0 && <p className="text-xs text-muted-foreground">{t.policyUnread(policiesUnread)}</p>}
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <h3 className="text-sm font-semibold">{t.profiles}</h3>
