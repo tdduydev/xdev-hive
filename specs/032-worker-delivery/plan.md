@@ -21,6 +21,10 @@ chuyển phần **gọi hệ thống ngoài** sang worker; hub giữ cấu hình
 - `deliveryCapability`: khả năng worker báo ở `hello`/heartbeat;
 - `credentialRef`: tên tham chiếu `[a-z0-9-]{1,64}`.
 
+Mọi dữ liệu delivery trên worker gắn với `Scope` (một đăng ký máy-tổ chức-hub, specs/034): kho credential
+`delivery/<registration>/<tên>`, `<root>/<registration>/delivery-logs`, `delivery-work`. Gói không đọc `internal/config`;
+nơi gọi truyền `Scope` vào (FR-104..106).
+
 **Worker** (`worker/internal/delivery/`, gói mới):
 
 - `CredentialReader`: giao diện đọc credential theo tên. Bản thật bọc `secretstore` (do luồng khác sở hữu); bản thử là map;

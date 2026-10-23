@@ -39,3 +39,14 @@ waiting -> leased -> running -> succeeded | failed
    |         |          \-> lost (mất lease, giao lại: attempt + 1, quay về leased)
    \-> canceled (huỷ hoặc quá 15 phút chưa có máy: failed runner_offline)
 ```
+
+## Cách ly theo đăng ký (FR-104)
+
+Mọi thứ ở worker nằm dưới một `registrationId`:
+
+- credential: khoá kho `delivery/<registrationId>/<tên>`;
+- log: `<root>/<registrationId>/delivery-logs/<jobId>.log`;
+- thư mục làm việc: `<root>/<registrationId>/delivery-work/`;
+- hàng việc và outbox: mỗi đăng ký một hàng riêng (do `channel`, luồng X).
+
+Ở hub, `delivery_jobs.worker_id` là máy trong phạm vi tổ chức của dòng (RLS), nên chọn máy chạy theo từng tổ chức.

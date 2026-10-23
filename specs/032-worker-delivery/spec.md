@@ -462,6 +462,16 @@ không chứa giá trị bí mật.
 - **FR-102**: Linux không có kho bí mật PHẢI không nhận việc delivery và báo rõ. Không có chế độ lưu credential vào file.
 - **FR-103**: Mọi cách triển khai PHẢI có test hợp đồng chạy trên ba hệ điều hành trong CI.
 
+### Một máy, nhiều tổ chức (specs/034)
+
+- **FR-104**: Một máy có thể đăng ký với hai tổ chức cùng lúc, cùng hub hoặc khác hub. Credential, hàng việc, thư mục làm
+  việc và log của delivery PHẢI gắn với **đăng ký** (máy + tổ chức + hub) và KHÔNG ĐƯỢC dùng chung giữa các đăng ký, kể cả
+  khi hai tổ chức đặt cùng tên credential.
+- **FR-105**: Việc chọn "máy chạy deploy" (FR-001, FR-013) PHẢI theo từng tổ chức: máy trực tuyến, khả năng và nhãn được
+  xét trong phạm vi đăng ký của tổ chức đó.
+- **FR-106**: Gói delivery PHẢI nhận ngữ cảnh đăng ký từ nơi gọi, không tự đọc cấu hình một đăng ký của worker, để nối
+  nhiều đăng ký sau này mà không đổi gói.
+
 ### Key Entities
 
 - **Máy chạy của môi trường**: môi trường (hoặc đích), máy, thứ tự ưu tiên, chế độ (cố định, máy của người bấm, theo
@@ -509,6 +519,7 @@ không chứa giá trị bí mật.
 - **A6**: Webhook GitLab về hub vẫn hoạt động vì chiều gọi vào hub là chiều hub cho phép.
 - **A7**: Worker tự làm SSH, gọi REST Argo CD và Kubernetes, không cần binary ngoài. Chọn thư viện thuộc plan.
 - **A8**: Hộp thư đi, chống trùng và hợp đồng sự kiện đến từ spec 027 và có trước khi spec này code xong.
+- **A10**: Khái niệm "đăng ký" và việc chạy nhiều đăng ký thuộc spec 034; 032 chỉ bảo đảm cách ly dữ liệu theo đăng ký (FR-104..106).
 - **A9**: Egress allowlist của worker (`worker/internal/egress`) không chặn đường delivery vì delivery là việc của máy, không
   phải việc của agent. Cần kiểm ở plan.
 

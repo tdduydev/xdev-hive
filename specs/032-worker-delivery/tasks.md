@@ -39,8 +39,8 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 
 ## Phase 2: Nền worker (US7)
 
-- [x] T002 [P] [US7] W — Kiểu lỗi và `CredentialReader`, `MapCredentials` cho test, `missing_credential`
-  (`worker/internal/delivery/errors.go`, `creds.go`, `creds_test.go`)
+- [x] T002 [P] [US7] W — Kiểu lỗi và `CredentialReader`, `MapCredentials` cho test, `missing_credential`; `Scope`, `ScopedCredentials`, thư mục log và làm việc theo đăng ký (FR-104)
+  (`worker/internal/delivery/errors.go`, `creds.go`, `creds_test.go`, `scope.go`, `scope_test.go`)
 - [x] T003 [P] [US2] W — Bộ ghi log ra đĩa theo `jobId`, bỏ giá trị bí mật khỏi log
   (`worker/internal/delivery/joblog.go`, `joblog_test.go`)
 
@@ -71,6 +71,7 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 - [ ] T014 [US8] H — Cờ `HIVE_DELIVERY_OUTBOUND` và `runner=legacy`; trang "Chuyển sang worker"
 - [ ] T015 [US6] U — Cột "Máy chạy", thẻ "Log nằm trên máy X" thay khung log
 - [ ] T016 [US7] U — Tab "Credential triển khai" ở màn Bí mật desktop
+- [ ] T020 [US1] X — Mỗi đăng ký một hàng việc, một outbox và một `Scope` truyền vào `delivery.Executor` (specs/034)
 - [ ] T017 [US1] X — Nối `channel`: nhận `deliveryJobSpec` qua lease, gửi `deliveryEvent` qua outbox, báo khả năng ở `hello`
 - [ ] T018 [US10] X — Test hợp đồng trên ba hệ điều hành trong CI
 - [ ] T019 H — Sinh migration sau `git merge origin/main`, `pnpm openapi`

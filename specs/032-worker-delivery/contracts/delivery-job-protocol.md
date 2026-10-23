@@ -41,3 +41,8 @@ Không có kiểu sự kiện nào mang thân log (FR-050). `message` cắt ở 
 - Worker gửi qua hàng chờ trên đĩa hiện có; hub bỏ sự kiện trùng theo `(jobId, seq)`.
 - Hub chỉ giao khi worker báo đúng `method` ở khả năng (FR-011).
 - Hub không giao lại việc đã `started` mà chưa hết lease.
+
+## Nhiều tổ chức trên một máy
+
+Mỗi kết nối hub-tổ chức là một đăng ký riêng, có lease, hàng chờ và khả năng (`deliveryCapability.credentials`) riêng.
+Hub không bao giờ thấy tên credential của đăng ký khác. Worker không gộp việc của hai đăng ký vào một hàng.
