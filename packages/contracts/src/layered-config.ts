@@ -72,8 +72,8 @@ export type LayerEntry = z.output<typeof layerEntry>;
 export const teamSetInput = z.object({
   teamId: id,
   key: settingKey,
-  /** null là gỡ giá trị của đội (dùng giá trị thừa kế, FR-013). */
-  value: z.unknown().nullable(),
+  /** null là gỡ giá trị của đội (dùng giá trị thừa kế, FR-013); vắng mặt là giữ giá trị cũ, chỉ đổi cờ khoá. */
+  value: z.unknown(),
   locked: z.boolean().optional(),
   /** Phiên bản đã đọc; lệch thì báo xung đột thay vì ghi đè (edge case sửa cùng lúc). */
   expectedVersion: z.number().int().min(0).optional(),
@@ -91,7 +91,7 @@ export const layeredConfigContract = {
     .output(z.object({ entries: z.array(layerEntry) })),
   teamSet: orgRoute("POST", "/v1/config/team", "Đặt hoặc gỡ cấu hình của đội", "config")
     .input(teamSetInput)
-    .output(layerEntry),
+    .output(layerEntry.nullable()),
   orgLock: orgRoute("POST", "/v1/config/org-lock", "Khoá hoặc mở khoá một cài đặt cho cả công ty", "config")
     .input(z.object({ key: settingKey, locked: z.boolean() }))
     .output(z.object({ key: settingKey, locked: z.boolean() })),

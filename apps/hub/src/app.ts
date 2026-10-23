@@ -58,6 +58,7 @@ import {
   registerMcpTools as knowledgeMcpTools,
   knowledgeRouter,
 } from "./modules/knowledge/index.ts";
+import { layeredConfigRouter } from "./modules/layers/index.ts";
 import {
   createThreadHost,
   createThreadLinkTarget,
@@ -329,6 +330,7 @@ export function createApp({
       templates: templateService({ publicUrl, jobs }),
       remote: remotePolicyHook,
     }),
+    layeredConfig: layeredConfigRouter({ auth, pool }),
     terminal: terminalRouter({ auth, pool, terminal }),
     remote: remoteRouter({ auth, pool, remote: { enabled: terminal.enabled, publicUrl } }),
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),

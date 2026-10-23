@@ -20,15 +20,15 @@ The MVP is Phases 1 to 4. Later phases are listed so nothing is lost; they are n
 ## Phase 2: Sources and storage (MVP)
 
 - [x] T005 [US8] Adapters from org policy and project settings to flat values; golden test that the engine matches `clampBudget`, `resolvePermission` and `machineSlots` (`apps/hub/src/modules/layers/sources.ts`, `sources.test.ts`)
-- [ ] T006 [US3] Table `config_layer_entries` with forced RLS (`apps/hub/src/modules/layers/schema.ts`)
-- [ ] T007 [US3] Service: effective config for a project, team entries read and write with permission, ceiling and lock checks, optimistic version, audit (`apps/hub/src/modules/layers/service.ts`)
-- [ ] T008 [US2] Org lock write path with audit (`apps/hub/src/modules/layers/service.ts`)
+- [x] T006 [US3] Table `config_layer_entries` with forced RLS (`apps/hub/src/modules/layers/schema.ts`)
+- [x] T007 [US3] Service: effective config for a project, team entries read and write with permission, ceiling and lock checks, optimistic version, audit (`apps/hub/src/modules/layers/service.ts`)
+- [x] T008 [US2] Org lock write path with audit (`apps/hub/src/modules/layers/service.ts`)
 
 ## Phase 3: API (MVP)
 
-- [ ] T009 [US1] oRPC router and mount in `app.ts`; public surface in `index.ts` (`apps/hub/src/modules/layers/router.ts`, `index.ts`, `apps/hub/src/app.ts`)
-- [ ] T010 [US1] DB tests for the service, including permission matrix and a project that is not visible to the caller (`apps/hub/src/modules/layers/service.db.test.ts`)
-- [ ] T011 RLS test in the pattern of `rls.db.test.ts` (`apps/hub/src/modules/layers/rls.db.test.ts`)
+- [x] T009 [US1] oRPC router and mount in `app.ts`; public surface in `index.ts` (`apps/hub/src/modules/layers/router.ts`, `index.ts`, `apps/hub/src/app.ts`)
+- [x] T010 [US1] DB tests for the service, including permission matrix and a project that is not visible to the caller (`apps/hub/src/modules/layers/service.db.test.ts`)
+- [x] T011 RLS test in the pattern of `rls.db.test.ts` (`apps/hub/src/modules/layers/rls.db.test.ts`)
 
 ## Phase 4: Wrap up (MVP)
 

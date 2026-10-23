@@ -13,7 +13,7 @@ export type LayerInput = {
 type Candidate = { layer: ConfigLayer; targetId: string | null; value: unknown; locked: boolean; valid: boolean };
 
 /** Rank nhỏ là chặt. Vô cực là "không giới hạn", không bao giờ thắng. */
-function rankOf(rule: CeilingRule, value: unknown): number {
+export function rankOf(rule: CeilingRule, value: unknown): number {
   if (rule === "restrictive-true") return value === true ? 0 : 1;
   if (rule === "restrictive-false") return value === false ? 0 : 1;
   if (rule === "min-number") return typeof value === "number" ? value : Number.POSITIVE_INFINITY;
