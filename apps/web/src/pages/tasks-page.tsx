@@ -35,6 +35,7 @@ import {
 } from "@/lib/task-board.ts";
 import { sessionsWithTask } from "@/lib/terminal/sessions.ts";
 import { useNow } from "@/lib/use-now.ts";
+import { LinkedArtifactsSection } from "@/pages/artifacts/linked-section.tsx";
 import { RemoteSessionRow } from "@/pages/remote/session-row.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -139,6 +140,7 @@ export function ProjectTasksPage() {
           </Link>
         </>
       }
+      footer={<LinkedArtifactsSection target={{ kind: "project", projectKey: project.key }} />}
       creatable={project.state === "active" ? [project] : []}
       blockedReason={createTaskBlockedReason(project.state, project.state === "active" ? 1 : 0, lang)}
       notice={
@@ -175,6 +177,7 @@ function Board({
   actions,
   blockedReason,
   notice,
+  footer,
 }: {
   crumb: ReactNode;
   /** Nút thêm ở đầu trang, trước "Tạo việc". */
@@ -187,6 +190,8 @@ function Board({
   blockedReason?: string | null;
   /** Thẻ đầu trang, trước số liệu (vd. các bước khởi tạo của dự án chưa hoạt động). */
   notice?: ReactNode;
+  /** Mục cuối trang, sau các phiên tương tác (vd. artifact của dự án). */
+  footer?: ReactNode;
   search: TasksSearch;
   onSearch: (next: TasksSearch) => void;
 }) {
@@ -256,6 +261,7 @@ function Board({
         {notice}
         {body}
         <InteractiveSessions projectId={projectId} now={now} />
+        {footer}
       </PageBody>
     </>
   );

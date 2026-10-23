@@ -4,6 +4,8 @@
 - Date: 2026-10-13
 - Deciders: product owner (tdduydev), maintainers
 - Accepted: 2026-10-13, with the three open questions settled by the product owner (see Decision 10 to 12)
+- Amended: 2026-10-23 by [0032](0032-client-events-and-outbox.md): the local socket also carries the outbox ops
+  (Decision 13)
 
 ## Context
 
@@ -99,6 +101,11 @@ operator, or a stolen web session. Each of these must be unable to start a sessi
     turns on "Cho đội xem" for each session; a session linked to a task does not open itself to the team.
 12. **Remote sessions never run with all permissions** unless the owner enables that on the machine and the
     organization policy allows it.
+13. **The local socket carries the outbox** (amended by [0032](0032-client-events-and-outbox.md)). Besides sessions, the
+    same per-user socket accepts `outbox.submit`, `outbox.status`, `outbox.list`, `outbox.drop`, `outbox.retry` and
+    `outbox.export`, and `watch` streams `outbox` and `outbox.item` events. The peer checks above apply unchanged: only
+    the same OS user can queue, read or drop items. The desktop app, `hive outbox`, `hive mcp` and VS Code use these
+    ops instead of writing to the hub directly.
 
 ## Consequences
 

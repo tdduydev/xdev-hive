@@ -59,6 +59,13 @@ export interface ArtifactsText {
   open: string;
   unavailable: string;
   cardLabel: (title: string, n: number) => string;
+  linkedTitle: string;
+  linkedEmpty: string;
+  linkedAttach: string;
+  linkedPick: string;
+  linkedNone: string;
+  linkedUnlink: string;
+  linkedUnlinkLabel: (title: string) => string;
   csvTable: string;
   csvChart: string;
   csvView: string;
@@ -128,6 +135,13 @@ export const artifactsText: Dict<ArtifactsText> = {
     open: "Mở",
     unavailable: "Artifact không còn truy cập được.",
     cardLabel: (title, n) => `Artifact ${title}, phiên bản ${n}`,
+    linkedTitle: "Artifact",
+    linkedEmpty: "Chưa có artifact nào được gắn.",
+    linkedAttach: "Gắn artifact",
+    linkedPick: "Chọn artifact của bạn để gắn",
+    linkedNone: "Bạn chưa có artifact nào chưa gắn.",
+    linkedUnlink: "Bỏ gắn",
+    linkedUnlinkLabel: (title) => `Bỏ gắn artifact ${title}`,
     csvTable: "Bảng",
     csvChart: "Biểu đồ",
     csvView: "Cách xem CSV",
@@ -195,6 +209,13 @@ export const artifactsText: Dict<ArtifactsText> = {
     open: "Open",
     unavailable: "Artifact is no longer accessible.",
     cardLabel: (title, n) => `Artifact ${title}, version ${n}`,
+    linkedTitle: "Artifacts",
+    linkedEmpty: "No artifacts attached yet.",
+    linkedAttach: "Attach artifact",
+    linkedPick: "Pick one of your artifacts to attach",
+    linkedNone: "You have no unattached artifacts.",
+    linkedUnlink: "Detach",
+    linkedUnlinkLabel: (title) => `Detach artifact ${title}`,
     csvTable: "Table",
     csvChart: "Chart",
     csvView: "CSV view",

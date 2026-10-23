@@ -2,6 +2,7 @@ import type { ClientEventResult, ClientSource } from "@xdev-hive/contracts";
 import { and, eq, sql } from "drizzle-orm";
 import type pg from "pg";
 import { type TenantContext, type Tx, withTenant } from "./db.ts";
+import { ConflictError } from "./errors.ts";
 import type { Jobs } from "./jobs.ts";
 import { clientEvents } from "./schema.ts";
 
@@ -66,7 +67,7 @@ export async function withClientEvent<T>(
       .values({ ...values, outcome: "accepted" })
       .onConflictDoNothing()
       .returning({ id: clientEvents.id, receivedAt: clientEvents.receivedAt });
-    if (!row) return duplicateOf<T>(tx, ctx.orgId, meta.key);
+    if (!row) return duplicateOf<T>(tx, ctx.orgId, meta);
     let response: T;
     try {
       response = await fn(tx);
@@ -95,7 +96,7 @@ export async function withClientEvent<T>(
       .onConflictDoNothing()
       .returning({ receivedAt: clientEvents.receivedAt });
     // Một lần gửi khác cùng khoá vừa ghi trước: trả theo dòng đó.
-    if (!row) return duplicateOf<T>(tx, ctx.orgId, meta.key);
+    if (!row) return duplicateOf<T>(tx, ctx.orgId, meta);
     return {
       key: meta.key,
       outcome: "rejected",
@@ -107,12 +108,18 @@ export async function withClientEvent<T>(
   });
 }
 
-async function duplicateOf<T>(tx: Tx, orgId: string, key: string): Promise<ClientEventOutcome<T>> {
+async function duplicateOf<T>(tx: Tx, orgId: string, meta: ClientEventMeta): Promise<ClientEventOutcome<T>> {
+  const key = meta.key;
   const [prev] = await tx
     .select()
     .from(clientEvents)
     .where(and(eq(clientEvents.orgId, orgId), eq(clientEvents.idempotencyKey, key)));
   if (!prev) throw new Error("Sự kiện client vừa trùng khoá nhưng không đọc lại được.");
+  // Khoá chỉ duy nhất trong tổ chức: trả lại kết quả cho người, máy hay loại ghi khác thì lộ kết quả của họ và lần ghi
+  // này bị nuốt mất.
+  if (prev.kind !== meta.kind || prev.userId !== (meta.userId ?? null) || prev.machineId !== (meta.machineId ?? null)) {
+    throw new ConflictError("IDEMPOTENCY_KEY_REUSED", "Khoá chống trùng này đã dùng cho một lần ghi khác.");
+  }
   return {
     key,
     outcome: "duplicate",

@@ -20,6 +20,7 @@ export function detail(
     version?: number;
     latestVersion?: number;
     content?: string | null;
+    hasBlob?: boolean;
     compileError?: string | null;
     language?: string | null;
     write?: boolean;
@@ -52,6 +53,7 @@ export function detail(
       version,
       sha256: "x",
       sizeBytes: 10,
+      hasBlob: over.hasBlob ?? false,
       authorUser: null,
       authorRunId: null,
       origin: "leader",

@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ArtifactSummary } from "@xdev-hive/contracts";
+import type { ArtifactScope, ArtifactSummary } from "@xdev-hive/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { ShareDialog } from "./share-dialog.tsx";
 import { asFake, editClient } from "./test-edit-fixtures.tsx";
@@ -13,8 +13,8 @@ const summary = (over: Partial<ArtifactSummary> = {}): ArtifactSummary => ({
   ...over,
 });
 
-function open(artifact: ArtifactSummary, version = 3, over: { offline?: boolean } = {}) {
-  const client = editClient();
+function open(artifact: ArtifactSummary, version = 3, over: { offline?: boolean } = {}, scopes?: ArtifactScope[]) {
+  const client = editClient({}, [], scopes);
   renderWithEnv(
     <ShareDialog artifact={artifact} version={version} open onOpenChange={vi.fn()} />,
     testEnv(asFake(client), over),
@@ -27,8 +27,46 @@ describe("ShareDialog", () => {
     open(summary());
     expect(await screen.findByRole("radio", { name: /Cá nhân/ })).toHaveProperty("checked", true);
     expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toHaveProperty("disabled", true);
-    // Chỉ hai phạm vi MVP: team và org chưa có giao diện.
+    // Chính sách mặc định chỉ bật hai phạm vi MVP.
     expect(screen.getAllByRole("radio")).toHaveLength(2);
+  });
+
+  it("chính sách bật team và org thì hiện thêm hai phạm vi", async () => {
+    open(summary(), 3, {}, ["private", "project", "team", "org"]);
+    expect(await screen.findByRole("radio", { name: /Đội/ })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /Tổ chức/ })).toBeTruthy();
+    expect(screen.getAllByRole("radio")).toHaveLength(4);
+  });
+
+  it("chia sẻ cho đội cần chọn đội và tick xác nhận", async () => {
+    const client = open(summary(), 3, {}, ["private", "team"]);
+    await user.click(await screen.findByRole("radio", { name: /Đội/ }));
+    await user.selectOptions(await screen.findByLabelText("Đội", { selector: "select" }), "t2");
+    expect(screen.getByText("Mọi thành viên đội Tăng trưởng sẽ thấy cả các phiên bản cũ.")).toBeTruthy();
+    const save = screen.getByRole("button", { name: "Lưu thay đổi" });
+    expect(save).toHaveProperty("disabled", true);
+    await user.click(screen.getByRole("checkbox", { name: "Tôi đã kiểm tra các phiên bản cũ." }));
+    await user.click(save);
+    await waitFor(() => expect(client.artifacts.setScope).toHaveBeenCalled());
+    expect(client.artifacts.setScope.mock.calls[0]?.[0]).toEqual({ id: ID_A, scope: "team", teamId: "t2" });
+  });
+
+  it("chia sẻ cho cả tổ chức không cần chọn gì thêm ngoài xác nhận", async () => {
+    const client = open(summary(), 3, {}, ["private", "org"]);
+    await user.click(await screen.findByRole("radio", { name: /Tổ chức/ }));
+    expect(screen.getByText("Mọi thành viên tổ chức sẽ thấy cả các phiên bản cũ.")).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "Tôi đã kiểm tra các phiên bản cũ." }));
+    await user.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    await waitFor(() => expect(client.artifacts.setScope).toHaveBeenCalled());
+    expect(client.artifacts.setScope.mock.calls[0]?.[0]).toEqual({ id: ID_A, scope: "org" });
+  });
+
+  it("phạm vi hiện tại vẫn hiện dù chính sách đã tắt, và thu hẹp không cần xác nhận", async () => {
+    open(summary({ scope: "org" }), 3, {}, ["private", "project"]);
+    expect(await screen.findByRole("radio", { name: /Tổ chức/ })).toHaveProperty("checked", true);
+    await user.click(screen.getByRole("radio", { name: /Cá nhân/ }));
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toHaveProperty("disabled", false);
   });
 
   it("chia sẻ cho dự án cần chọn dự án và tick đã kiểm tra các phiên bản cũ", async () => {

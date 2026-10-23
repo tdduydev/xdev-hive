@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type AgentPolicy,
   type AgentPolicyInput,
+  DEFAULT_AGENT_GIT_POLICY,
   DEFAULT_AGENT_MEMORY_POLICY,
   DEFAULT_AGENT_REMOTE_POLICY,
   DEFAULT_AGENT_SKILL_LEARNING_POLICY,
@@ -49,6 +50,7 @@ import { cx } from "@/lib/cx.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { ArtifactsPolicySection } from "@/pages/admin/policies/artifacts-section.tsx";
 import { SdlcPolicyStats } from "@/pages/admin/policies-sdlc-stats.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -544,6 +546,7 @@ const formOf = (p: AgentPolicy): Form => ({
   // Hub cũ chưa có mục này thì `allow`, đúng hành vi trước specs/031.
   secretInjection: p.secretInjection ?? "allow",
   remote: p.remote ?? { ...DEFAULT_AGENT_REMOTE_POLICY },
+  git: p.git ?? { ...DEFAULT_AGENT_GIT_POLICY },
   sdlc: p.sdlc ?? DEFAULT_ORG_SDLC_POLICY,
 });
 
@@ -840,6 +843,7 @@ function PolicyEditor({
       { id: "templates", label: t.instr },
       { id: "limits", label: t.limits },
       { id: "sdlc", label: "AI SDLC" },
+      { id: "artifacts", label: "Artifact" },
     ],
     [t],
   );
@@ -1350,6 +1354,8 @@ function PolicyEditor({
           </div>
           <SdlcPolicyStats />
         </SettingsSection>
+
+        <ArtifactsPolicySection policy={policy} canWrite={canWrite} />
       </SettingsLayout>
 
       <Dialog open={confirmFull} onOpenChange={setConfirmFull}>

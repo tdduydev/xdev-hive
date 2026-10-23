@@ -393,8 +393,32 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
     else await rest("POST", base, body);
   }
 
+  const accessTokens = (ref: RepoRef) => `projects/${encodeURIComponent(projectPath(ref))}/access_tokens`;
+
   return {
     kind: "gitlab",
+
+    async issueRunToken(ref, label) {
+      // GitLab chỉ nhận hạn theo ngày; ngày sớm nhất được nhận là ngày mai (UTC). Hub thu hồi ngay khi run xong.
+      const tomorrow = new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const created = await rest<{ id: number; token: string; expires_at: string }>("POST", accessTokens(ref), {
+        name: label.slice(0, 255),
+        scopes: ["write_repository"],
+        access_level: DEVELOPER,
+        expires_at: tomorrow,
+      });
+      return {
+        host: new URL(host).host,
+        username: "oauth2",
+        token: created.token,
+        expiresAt: new Date(`${created.expires_at}T00:00:00Z`),
+        externalId: String(created.id),
+      };
+    },
+
+    async revokeRunToken(ref, externalId) {
+      await orNull(() => rest("DELETE", `${accessTokens(ref)}/${encodeURIComponent(externalId)}`));
+    },
 
     async checkAccess(owner) {
       const user = (await gl.users.showCurrentUser()) as unknown as {

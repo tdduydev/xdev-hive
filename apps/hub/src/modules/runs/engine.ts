@@ -24,6 +24,8 @@ import {
   checkCommandResult,
   type DiffStats,
   diffStats,
+  RUN_GIT_TOKEN_CAPABILITY,
+  type RunGitCredential,
   reportRepo,
   type SdlcJobSpec,
   sdlcJobSpec,
@@ -95,9 +97,13 @@ import {
 } from "../platform/index.ts";
 import { loadSandboxJobConfig } from "../sandbox/index.ts";
 import {
+  canIssueRunGitToken,
   isGitProviderError,
+  issueRunGitToken,
   loadConnection,
   type ProviderFactory,
+  registerRunGitTokenSweep,
+  revokeRunGitTokens,
   type ScmEventRegistry,
   scmEvents,
 } from "../scm/index.ts";
@@ -316,6 +322,8 @@ const FULL_ONLY_CLIS: readonly string[] = ["antigravity"];
  */
 const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist", "brief", "skill_proposal", "sdlc"];
 /** Run phải nộp kết quả qua tool MCP nên chỉ giao cho CLI gọi được tool khi chạy không tương tác. */
+const GIT_TOKEN_UNAVAILABLE =
+  "Chính sách của tổ chức bắt buộc token git theo run, mà kết nối Git của dự án không cấp được (cần GitHub App hoặc GitLab cấp được project access token); run chờ trong hàng đợi.";
 const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck", "docassist", "brief", "skill_proposal"];
 /** Worker cũ không biết các kind này sẽ chạy chúng như run code (có quyền ghi): chỉ giao cho máy đã khai kind đó. */
 const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist", "brief", "skill_proposal", "sdlc"];
@@ -341,14 +349,16 @@ export function labelsMatch(
 }
 
 /**
- * Lý do chờ máy của run AI SDLC hay run có nhãn: chưa máy nào có worker mới (capability `sdlc`) hoặc có đủ nhãn. null
- * thì dùng lý do chung (máy cá nhân, máy dùng chung).
+ * Lý do chờ máy của run AI SDLC, run có nhãn hay run cần token git theo run: chưa máy nào có worker mới (capability
+ * `sdlc`, `run_git_token`) hoặc có đủ nhãn. null thì dùng lý do chung (máy cá nhân, máy dùng chung).
  */
-async function sdlcWaitingReason(tx: Tx, run: RunRow, sandboxed: boolean): Promise<string | null> {
-  if (run.kind !== "sdlc" && run.requiredLabels.length === 0) return null;
+async function sdlcWaitingReason(tx: Tx, run: RunRow, sandboxed: boolean, requireGit: boolean): Promise<string | null> {
+  if (run.kind !== "sdlc" && run.requiredLabels.length === 0 && !requireGit) return null;
   const online = (await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker")).filter((m) =>
     usableBy(m, run, sandboxed),
   );
+  if (requireGit && !online.some((m) => m.capabilities.includes(RUN_GIT_TOKEN_CAPABILITY)))
+    return "Chính sách của tổ chức bắt buộc token git theo run: chưa máy online nào của đội có worker dùng được token này. Cập nhật worker trên máy của đội.";
   if (run.kind === "sdlc" && !online.some((m) => m.capabilities.includes("sdlc")))
     return "Cần worker mới: chưa máy online nào của đội chạy được bước AI SDLC. Cập nhật worker trên máy dùng chung của đội.";
   if (run.requiredLabels.length && !online.some((m) => labelsMatch(m, run.requiredLabels))) {
@@ -686,6 +696,30 @@ export function createRunsEngine(deps: RunsDeps) {
     p.catch((e: unknown) => log.error(what, e));
   };
 
+  // Không có khoá chủ thì không giải mã được kết nối Git: không cấp token theo run, máy dùng thông tin git sẵn có.
+  const gitTokens = deps.masterKey
+    ? { pool: deps.pool, masterKey: deps.masterKey, providerFactory: deps.providerFactory }
+    : null;
+  const gitTokenPossible = (tx: Tx, project: ProjectRow) =>
+    gitTokens ? canIssueRunGitToken(tx, gitTokens, project.scmConnectionId) : Promise.resolve(false);
+
+  /** Token git cho lần thử của run. Null khi kết nối không cấp được hoặc gọi GitHub/GitLab lỗi (đã ghi log). */
+  async function runGitToken(run: RunRow, project: ProjectRow): Promise<RunGitCredential | null> {
+    if (!gitTokens) return null;
+    try {
+      return await issueRunGitToken(gitTokens, {
+        orgId: run.orgId,
+        runId: run.id,
+        attempt: run.attempt,
+        connectionId: project.scmConnectionId,
+        repo: { owner: project.repoOwner, name: project.repoName },
+      });
+    } catch (e) {
+      log.warn(`Không cấp được token git cho run ${run.id} (lần ${run.attempt})`, e);
+      return null;
+    }
+  }
+
   /** Hẹn giờ trong transaction khi có pg-boss: job chỉ thành hình khi transaction commit. */
   async function schedule(t: RunTimer, at: Date, tx?: Tx): Promise<void> {
     if (deps.jobs) {
@@ -743,6 +777,7 @@ export function createRunsEngine(deps: RunsDeps) {
         !run.rejectedBy.includes(m.id) &&
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
         (!CAPABILITY_KINDS.includes(run.kind) || m.capabilities.includes(run.kind)) &&
+        (!policy.git.requireRunGitToken || m.capabilities.includes(RUN_GIT_TOKEN_CAPABILITY)) &&
         labelsMatch(m, run.requiredLabels) &&
         (run.cli
           ? m.clis.includes(run.cli) && runsCli(m, run.cli)
@@ -808,6 +843,12 @@ export function createRunsEngine(deps: RunsDeps) {
         });
         return null;
       }
+      // Kết nối không cấp được token theo run (PAT) thì có giao cũng bị chặn lúc nhận lease: chờ tổ chức đổi kết nối
+      // hoặc chính sách, không đề nghị máy nào.
+      if (policy.git.requireRunGitToken && !(await gitTokenPossible(tx, project))) {
+        await noteOnce(tx, run, "policy_git_token", { message: GIT_TOKEN_UNAVAILABLE });
+        return null;
+      }
       const sandboxed = sandboxedRun(project, policy, run.kind);
       const runSettings = await runSettingsOf(tx, project);
       const permission = runSettings.permission;
@@ -817,7 +858,7 @@ export function createRunsEngine(deps: RunsDeps) {
       if (!machine && contended) return "contended" as const;
       if (!machine) {
         if (!sandboxed) {
-          const special = await sdlcWaitingReason(tx, run, sandboxed);
+          const special = await sdlcWaitingReason(tx, run, sandboxed, policy.git.requireRunGitToken);
           await noteOnce(tx, run, "waiting_machine", {
             message:
               special ??
@@ -1059,10 +1100,15 @@ export function createRunsEngine(deps: RunsDeps) {
     const out = await tenant(machine.orgId, async (tx) => {
       const run = await lockRun(tx, msg.runId);
       if (!run || run.attempt !== msg.attempt) return null;
+      const project = await loadProject(tx, run.projectId);
+      if (!project) return null;
+      const requireGit = (await loadPolicy(tx)).git.requireRunGitToken;
+      // Worker cũ bỏ qua lease.git và dùng thông tin git của máy: không cấp token cho máy không khai capability.
+      const gitCapable = (await findMachine(tx, machine.id))?.capabilities.includes(RUN_GIT_TOKEN_CAPABILITY) ?? false;
       // job_accept gửi lại (worker nối lại trước khi nhận gói lease): gửi lại lease đang giữ.
       if (run.machineId === machine.id && ON_MACHINE.includes(run.state) && run.state !== "cancelling") {
         const [lease] = await tx.select().from(runLeases).where(eq(runLeases.runId, run.id));
-        return lease ? { run, lease } : null;
+        return lease ? { run, lease, project, requireGit, gitCapable } : null;
       }
       if (run.state !== "queued" || run.offerMachineId !== machine.id) return null;
       if (await machineIsPaused(tx, machine.id)) {
@@ -1097,12 +1143,20 @@ export function createRunsEngine(deps: RunsDeps) {
       // Task của run review đã ở running theo run cha đang kiểm kết quả. Run plan là agent bắt đầu làm task.
       if (run.kind !== "review" && run.kind !== "leader" && run.taskId) await setTaskStatus(tx, run.taskId, "running");
       await schedule({ kind: "lease", orgId: run.orgId, runId: run.id, leaseId: lease.id }, expiresAt, tx);
-      return { run: leased, lease };
+      return { run: leased, lease, project, requireGit, gitCapable };
     });
     if (!out) {
       // Máy đã tạm dừng hoặc đề nghị đã hết hạn: bảo worker không chạy offer cũ.
       send(machine.id, { type: "cancel", runId: msg.runId, graceSec: 0 });
       background(dispatchTeam(machine.orgId, machine.teamId), "Không giao được run sau khi máy từ chối offer");
+      return;
+    }
+    // Cấp sau khi lease đã ghi: gọi GitHub/GitLab ngoài transaction đang khoá run.
+    const git = out.gitCapable ? await runGitToken(out.run, out.project) : null;
+    if (!git && out.requireGit) {
+      // job_accept gửi lại khi run đã chạy: máy đã có lease và đang làm, không huỷ giữa chừng.
+      if (await requeueWithoutGit(machine, out.run))
+        send(machine.id, { type: "cancel", runId: out.run.id, graceSec: 0 });
       return;
     }
     const { token } = signRunToken(tokenKey, deps.publicUrl, {
@@ -1119,7 +1173,37 @@ export function createRunsEngine(deps: RunsDeps) {
       leaseId: out.lease.id,
       expiresAt: out.lease.expiresAt.toISOString(),
       runToken: token,
+      git,
     });
+  }
+
+  /**
+   * Chính sách bắt buộc token git mà không cấp được (GitHub/GitLab lỗi, kết nối đổi sang PAT sau lúc giao): trả run về
+   * hàng đợi thay vì để máy chạy bằng thông tin git của máy. Lần giao sau (heartbeat) thử cấp lại. false khi run không
+   * còn ở `leased` (đã chạy, đã huỷ): không đổi gì.
+   */
+  async function requeueWithoutGit(machine: AuthedMachine, leased: RunRow): Promise<boolean> {
+    return tenant(machine.orgId, async (tx) => {
+      const run = await fenced(tx, machine, leased.id, leased.attempt);
+      if (run?.state !== "leased") return false;
+      await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
+      await transition(tx, run, "queued", { machineId: null, offerMachineId: null, offerExpiresAt: null });
+      if (run.kind !== "review" && run.kind !== "leader" && run.taskId) await setTaskStatus(tx, run.taskId, "queued");
+      await noteOnce(tx, run, "policy_git_token", { message: GIT_TOKEN_UNAVAILABLE });
+      return true;
+    });
+  }
+
+  async function onGitTokenRequest(machine: AuthedMachine, msg: Extract<RunMessage, { type: "git_token_request" }>) {
+    const out = await tenant(machine.orgId, async (tx) => {
+      const run = await fenced(tx, machine, msg.runId, msg.attempt);
+      const project = run ? await loadProject(tx, run.projectId) : null;
+      return run && project ? { run, project } : null;
+    });
+    // Run đã rời máy thì không trả lời: worker dừng dùng token cũ khi nhận cancel.
+    if (!out) return;
+    const git = await runGitToken(out.run, out.project);
+    if (git) send(machine.id, { type: "git_token", runId: out.run.id, attempt: out.run.attempt, git });
   }
 
   async function onReject(machine: AuthedMachine, msg: Extract<RunMessage, { type: "job_reject" }>) {
@@ -1297,6 +1381,13 @@ export function createRunsEngine(deps: RunsDeps) {
       return "verify" as const;
     });
     send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
+    // Agent đã xong trên máy: token GitLab hết việc. Lỗi thì job quét thu hồi sau.
+    if (next && gitTokens) {
+      background(
+        revokeRunGitTokens(gitTokens, machine.orgId, msg.runId),
+        `Không thu hồi được token git của run ${msg.runId}`,
+      );
+    }
     if (next === "verify") background(verify(machine.orgId, msg.runId), `verifying run ${msg.runId} lỗi`);
     if (next === "cancelled" && cancelledRun) verifyParent(cancelledRun);
     if (next) background(dispatchTeam(machine.orgId, machine.teamId), "Không giao được run đang chờ");
@@ -1423,6 +1514,8 @@ export function createRunsEngine(deps: RunsDeps) {
           return onLogChunk(machine, msg);
         case "run_result":
           return onRunResult(machine, msg);
+        case "git_token_request":
+          return onGitTokenRequest(machine, msg);
       }
     },
   };
@@ -3293,6 +3386,19 @@ export function createRunsEngine(deps: RunsDeps) {
     /** Xử lý hẹn giờ trên pg-boss; chỉ gọi ở tiến trình có vai trò `jobs` (cùng tiến trình với gateway). */
     async registerJobs(jobs: Jobs) {
       await jobs.work<RunTimer>(RUNS_TIMER_QUEUE, (job) => fire(job.data), { pollingIntervalSeconds: 1 });
+      if (gitTokens) {
+        await registerRunGitTokenSweep(jobs, {
+          ...gitTokens,
+          logger: log,
+          async isLive(tx, runId, attempt) {
+            const [run] = await tx
+              .select({ state: runs.state, attempt: runs.attempt })
+              .from(runs)
+              .where(eq(runs.id, runId));
+            return run?.attempt === attempt && ON_MACHINE.includes(run.state);
+          },
+        });
+      }
     },
     stop() {
       stopped = true;

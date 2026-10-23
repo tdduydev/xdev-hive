@@ -215,6 +215,14 @@ export const agentRemotePolicy = z.object({ totpFallback: z.boolean() });
 export type AgentRemotePolicy = z.output<typeof agentRemotePolicy>;
 export const DEFAULT_AGENT_REMOTE_POLICY: AgentRemotePolicy = { totpFallback: true };
 
+/**
+ * Token git của run (specs/027 R9). `requireRunGitToken`: run nào hub không cấp được token theo run (kết nối PAT, hub
+ * không gọi được GitHub/GitLab) thì không giao, thay vì để máy dùng thông tin git sẵn có của nó.
+ */
+export const agentGitPolicy = z.object({ requireRunGitToken: z.boolean() });
+export type AgentGitPolicy = z.output<typeof agentGitPolicy>;
+export const DEFAULT_AGENT_GIT_POLICY: AgentGitPolicy = { requireRunGitToken: false };
+
 export const agentPolicyInput = z.object({
   allowedModels,
   /** Hub không để CLI tự chọn model: run không chỉ định model thì dùng model đầu trong danh sách của CLI đó. */
@@ -251,6 +259,8 @@ export const agentPolicyInput = z.object({
   remote: agentRemotePolicy.default(() => ({ ...DEFAULT_AGENT_REMOTE_POLICY })),
   /** Có mặc định vì chính sách đã lưu trước specs/031 không có mục này; `allow` giữ nguyên hành vi cũ. */
   secretInjection: secretInjection.default("allow"),
+  /** Có mặc định vì chính sách đã lưu trước specs/027 không có mục này. */
+  git: agentGitPolicy.default(() => ({ ...DEFAULT_AGENT_GIT_POLICY })),
 });
 export type AgentPolicyInput = z.input<typeof agentPolicyInput>;
 
@@ -291,6 +301,7 @@ export const DEFAULT_AGENT_POLICY: z.output<typeof agentPolicyInput> = {
   skillLearning: { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
   remote: { ...DEFAULT_AGENT_REMOTE_POLICY },
   secretInjection: "allow",
+  git: { ...DEFAULT_AGENT_GIT_POLICY },
 };
 
 /**

@@ -20,4 +20,6 @@ export const TEST_MANIFEST: LibManifest = {
   "@tailwindcss/browser": entry("@tailwindcss/browser@4.0.0/index.js", "script"),
   mermaid: entry("mermaid@12.0.0/index.js"),
   "markdown-it": entry("markdown-it@15.0.0/index.js"),
+  "pdfjs-dist": entry("pdfjs-dist@6.0.0/index.js"),
+  "pdfjs-dist/worker": entry("pdfjs-dist@6.0.0/worker.js"),
 };

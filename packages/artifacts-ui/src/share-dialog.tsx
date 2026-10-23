@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ArtifactScope, ArtifactSummary } from "@xdev-hive/contracts";
+import { ARTIFACT_MVP_SCOPES, type ArtifactScope, type ArtifactSummary } from "@xdev-hive/contracts";
 import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
@@ -22,12 +22,14 @@ export interface ShareDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Phạm vi MVP (D2): `team` và `org` chưa có giao diện nên chỉ hai giá trị này chọn được. */
-type ShareScope = Extract<ArtifactScope, "private" | "project">;
+/** Từ hẹp tới rộng: chia sẻ rộng hơn thì người mới thấy cả lịch sử, nên đòi tick xác nhận. */
+const SCOPE_ORDER: readonly ArtifactScope[] = ["private", "project", "team", "org"];
+const scopeRank = (scope: ArtifactScope) => SCOPE_ORDER.indexOf(scope);
 
 /**
- * Đổi phạm vi `private`/`project` (ArtifactShare.dc.html). Chia sẻ cho dự án cho cả đội thấy mọi phiên bản cũ, nên phải
- * tick xác nhận đã xem lại lịch sử. Link công khai là việc khác, mở ở hộp riêng của chủ.
+ * Đổi phạm vi (ArtifactShare.dc.html). Chia sẻ rộng hơn cho cả dự án, đội hay tổ chức cho họ thấy mọi phiên bản cũ, nên
+ * phải tick xác nhận đã xem lại lịch sử. `team` và `org` chỉ hiện khi chính sách tổ chức bật. Link công khai là việc
+ * khác, mở ở hộp riêng của chủ.
  */
 export function ShareDialog({ artifact, version, open, onOpenChange }: ShareDialogProps) {
   return (
@@ -50,8 +52,10 @@ function ShareBody({
   const queryClient = useQueryClient();
   const scopeName = useId();
   const projectId = useId();
-  const [scope, setScope] = useState<ShareScope>(artifact.scope === "project" ? "project" : "private");
+  const teamId = useId();
+  const [scope, setScope] = useState<ArtifactScope>(artifact.scope);
   const [project, setProject] = useState(artifact.project?.key ?? "");
+  const [team, setTeam] = useState(artifact.teamId ?? "");
   const [ack, setAck] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -59,6 +63,9 @@ function ShareBody({
     ...env.api.projects.list.queryOptions({ input: {} }),
     enabled: !env.offline && scope === "project",
   });
+  const teams = useQuery({ ...env.api.teams.list.queryOptions(), enabled: !env.offline && scope === "team" });
+  // Chưa tải được chính sách thì chỉ đưa phạm vi MVP; hub vẫn chặn phạm vi đang tắt (`ARTIFACT_SCOPE_DISABLED`).
+  const settings = useQuery({ ...env.api.artifacts.settings.queryOptions(), enabled: !env.offline });
   const setScopeMutation = useMutation(
     env.api.artifacts.setScope.mutationOptions({
       onSuccess: () => {
@@ -73,17 +80,37 @@ function ShareBody({
   const suggested = list.find((p) => p.id === artifact.originProjectId)?.key ?? "";
   const projectKey = project || suggested;
   const projectName = artifact.project?.name ?? list.find((p) => p.key === projectKey)?.name ?? projectKey;
-  const widening = scope === "project" && artifact.scope !== "project";
-  const unchanged = scope === artifact.scope && (scope === "private" || projectKey === artifact.project?.key);
+  const teamList = teams.data ?? [];
+  const teamName = teamList.find((x) => x.id === team)?.name ?? team;
+  const enabled = settings.data?.scopes ?? ARTIFACT_MVP_SCOPES;
+  // Phạm vi hiện tại của artifact luôn có trong danh sách dù chính sách đã tắt nó sau đó.
+  const offered = SCOPE_ORDER.filter((s) => enabled.includes(s) || s === artifact.scope);
+  const widening = scopeRank(scope) > scopeRank(artifact.scope);
+  const unchanged =
+    scope === artifact.scope &&
+    (scope === "project" ? projectKey === artifact.project?.key : scope !== "team" || team === artifact.teamId);
   const cannotSave =
     env.offline ||
     setScopeMutation.isPending ||
     unchanged ||
     (scope === "project" && !projectKey) ||
+    (scope === "team" && !team) ||
     (widening && !ack);
   const older = version < artifact.latestVersion;
 
-  const choose = (next: ShareScope) => {
+  const scopeLabel: Record<ArtifactScope, string> = {
+    private: t.scopePrivate,
+    project: t.scopeProject,
+    team: t.scopeTeam,
+    org: t.scopeOrg,
+  };
+  const scopeHelp: Record<ArtifactScope, string> = {
+    private: t.scopePrivateHelp,
+    project: t.scopeProjectHelp,
+    team: t.scopeTeamHelp,
+    org: t.scopeOrgHelp,
+  };
+  const choose = (next: ArtifactScope) => {
     setScope(next);
     setSaved(false);
     setAck(false);
@@ -111,36 +138,23 @@ function ShareBody({
 
       <fieldset className="flex flex-col gap-3 border-0 p-0">
         <legend className="mb-1 font-medium">{t.shareScope}</legend>
-        <label className="flex items-start gap-2">
-          <input
-            type="radio"
-            name={scopeName}
-            value="private"
-            checked={scope === "private"}
-            disabled={env.offline}
-            onChange={() => choose("private")}
-            className="mt-1"
-          />
-          <span>
-            <strong className="block font-medium">{t.scopePrivate}</strong>
-            <span className="text-muted-foreground">{t.scopePrivateHelp}</span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2">
-          <input
-            type="radio"
-            name={scopeName}
-            value="project"
-            checked={scope === "project"}
-            disabled={env.offline}
-            onChange={() => choose("project")}
-            className="mt-1"
-          />
-          <span>
-            <strong className="block font-medium">{t.scopeProject}</strong>
-            <span className="text-muted-foreground">{t.scopeProjectHelp}</span>
-          </span>
-        </label>
+        {offered.map((value) => (
+          <label key={value} className="flex items-start gap-2">
+            <input
+              type="radio"
+              name={scopeName}
+              value={value}
+              checked={scope === value}
+              disabled={env.offline}
+              onChange={() => choose(value)}
+              className="mt-1"
+            />
+            <span>
+              <strong className="block font-medium">{scopeLabel[value]}</strong>
+              <span className="text-muted-foreground">{scopeHelp[value]}</span>
+            </span>
+          </label>
+        ))}
       </fieldset>
 
       {scope === "project" && (
@@ -175,15 +189,51 @@ function ShareBody({
               {env.errorMessage(projects.error)}
             </p>
           )}
-          {widening && (
-            <div role="alert" className="flex flex-col gap-2 rounded-md bg-warning-soft p-3 text-warning">
-              <strong>{t.historyWarning(projectName)}</strong>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-                {t.ack}
-              </label>
-            </div>
+        </div>
+      )}
+
+      {scope === "team" && (
+        <div className="flex flex-col gap-3">
+          <label htmlFor={teamId} className="flex flex-col gap-1">
+            {t.teamLabel}
+            <NativeSelect
+              id={teamId}
+              value={team}
+              disabled={env.offline || teams.isPending}
+              onChange={(e) => {
+                setTeam(e.target.value);
+                setSaved(false);
+              }}
+            >
+              <NativeSelectOption value="">{teams.isPending ? t.teamsLoading : t.teamChoose}</NativeSelectOption>
+              {teamList.map((x) => (
+                <NativeSelectOption key={x.id} value={x.id}>
+                  {x.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </label>
+          {teams.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {env.errorMessage(teams.error)}
+            </p>
           )}
+        </div>
+      )}
+
+      {widening && (
+        <div role="alert" className="flex flex-col gap-2 rounded-md bg-warning-soft p-3 text-warning">
+          <strong>
+            {scope === "project"
+              ? t.historyWarning(projectName)
+              : scope === "team"
+                ? t.historyWarningTeam(teamName)
+                : t.historyWarningOrg}
+          </strong>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+            {t.ack}
+          </label>
         </div>
       )}
 
@@ -208,7 +258,11 @@ function ShareBody({
           disabled={cannotSave}
           onClick={() =>
             setScopeMutation.mutate(
-              scope === "project" ? { id: artifact.id, scope, projectKey } : { id: artifact.id, scope },
+              scope === "project"
+                ? { id: artifact.id, scope, projectKey }
+                : scope === "team"
+                  ? { id: artifact.id, scope, teamId: team }
+                  : { id: artifact.id, scope },
             )
           }
         >

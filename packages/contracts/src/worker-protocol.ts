@@ -98,6 +98,12 @@ export const heartbeat = z.object({
   accounts: z.array(workerAccountSummary).max(32).optional(),
 });
 
+/**
+ * Access token máy mới, gửi trước khi token đang dùng hết hạn (ADR 0033). Hub kiểm cùng máy, sai thì đóng `4401`. Worker
+ * chỉ gửi khi `welcome.accessTokenExp` có giá trị, vì hub cũ đóng kết nối khi gặp loại gói lạ.
+ */
+export const reauth = z.object({ ...envelope("reauth"), accessToken: z.string().min(1).max(2048) });
+
 /** Cách đăng nhập gói từ web (T063): Claude theo gói, SSO, Console hoặc dán token `claude setup-token`; Codex mã thiết bị. */
 export const accountLoginHow = z.enum(["plan", "sso", "console", "token", "device"]);
 export type AccountLoginHow = z.output<typeof accountLoginHow>;
@@ -358,7 +364,7 @@ export const welcome = z.object({
   ...envelope("welcome"),
   sessionId: z.string(),
   heartbeatSec: z.number().int().min(5).max(300),
-  // Chưa có access token ngắn hạn (mục 6): máy đang xác thực bằng machine token tới khi bị thu hồi.
+  // `exp` của access token đã mở kết nối. Thiếu khi máy còn mở bằng machine token (máy chưa có khoá, hub cũ).
   accessTokenExp: z.iso.datetime().optional(),
   /**
    * Điều hub cho máy này (vd. `shared`: máy dùng chung, nên được nhận `account_set`). Worker không tự khai cờ này vì
@@ -413,6 +419,26 @@ export const jobOffer = z.object({
   ttl: z.number().int().min(1).max(600),
 });
 
+/**
+ * Token git chỉ dùng cho một run (specs/027 R9): GitHub App là installation token giới hạn ở repo của run, GitLab là
+ * project access token hub thu hồi khi run xong. `username` là tên git cần đi kèm (`x-access-token` với GitHub,
+ * `oauth2` với GitLab). Worker chỉ đưa token cho git qua askpass, không ghi ra đĩa và không đặt vào môi trường của CLI.
+ */
+export const runGitCredential = z.object({
+  host: z.string().min(1).max(255),
+  username: z.string().min(1).max(100),
+  token: z.string().min(1).max(4096),
+  expiresAt: z.iso.datetime(),
+  repo: z.string().min(1).max(500),
+});
+export type RunGitCredential = z.output<typeof runGitCredential>;
+
+/**
+ * Capability worker khai trong hello khi dùng được `lease.git`. Hub chỉ cấp token git cho máy có capability này: worker
+ * cũ bỏ qua token và dùng thông tin git của máy, nên chính sách `requireRunGitToken` chỉ giao run cho máy có nó.
+ */
+export const RUN_GIT_TOKEN_CAPABILITY = "run_git_token";
+
 // runId và attempt để worker ghép lease với job đã nhận; bảng ở mục 5 chỉ ghi leaseId, expiresAt, runToken.
 export const lease = z.object({
   ...envelope("lease"),
@@ -421,7 +447,18 @@ export const lease = z.object({
   leaseId,
   expiresAt: z.iso.datetime(),
   runToken: z.string().min(1),
+  /**
+   * `null`: hub biết token theo run nhưng kết nối của dự án không cấp được (PAT), máy dùng thông tin git sẵn có. Thiếu:
+   * hub cũ. Chỉ khi có giá trị worker mới gửi `git_token_request`, vì hub cũ đóng kết nối khi gặp loại gói lạ.
+   */
+  git: runGitCredential.nullable().optional(),
 });
+
+/** Xin token git mới cho run đang chạy khi token cũ sắp hết hạn (GitHub App: 1 giờ). */
+export const gitTokenRequest = z.object({ ...envelope("git_token_request"), runId, attempt });
+
+/** Trả lời `git_token_request`. Run không còn trên máy này thì hub không trả, worker để token cũ hết hạn. */
+export const gitToken = z.object({ ...envelope("git_token"), runId, attempt, git: runGitCredential });
 
 export const ack = z.object({ ...envelope("ack"), runId, uptoSeq: seq });
 
@@ -859,11 +896,13 @@ export const termPairResult = z.object({
 export const workerToHub = z.discriminatedUnion("type", [
   hello,
   heartbeat,
+  reauth,
   jobAccept,
   jobReject,
   runEvent,
   logChunk,
   runResult,
+  gitTokenRequest,
   accountLoginEvent,
   termOpened,
   termOutput,
@@ -881,6 +920,7 @@ export const hubToWorker = z.discriminatedUnion("type", [
   heartbeatAck,
   jobOffer,
   lease,
+  gitToken,
   ack,
   steer,
   approvalResult,
