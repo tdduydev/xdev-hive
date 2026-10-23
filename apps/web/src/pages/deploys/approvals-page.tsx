@@ -8,6 +8,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { ClipboardCheckIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { DeployCompare } from "@/components/deploy-compare.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { EmptyState, LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
@@ -111,6 +112,7 @@ export function DeployApprovalsPage() {
                         </span>
                       </div>
                       <VersionLines version={d.version} />
+                      <DeployCompare deployId={d.id} />
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         {d.approval && (
                           <>

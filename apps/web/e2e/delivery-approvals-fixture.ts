@@ -1,4 +1,4 @@
-import { type Deploy, deploy } from "@xdev-hive/contracts";
+import { type Deploy, type DeployCompare, deploy } from "@xdev-hive/contracts";
 // Fixture tự chứa vì fake-hub nạp các fixture này; import ngược sẽ tạo vòng phụ thuộc.
 export type DeliveryApprovalsHandler = (input: unknown) => { status: number; json: unknown };
 const ok = (value: unknown) => ({ status: 200, json: { json: value } });
@@ -9,7 +9,16 @@ const fail = (code: string, status: number, message: string, data?: unknown) => 
 
 /** Mặc định không có lần nào chờ duyệt: fake-hub nạp hàm này vào mọi spec. */
 export function deliveryApprovalsDefaults(): Record<string, DeliveryApprovalsHandler> {
-  return { "deploys/approvals/pending": () => ok([]) };
+  return {
+    "deploys/approvals/pending": () => ok([]),
+    "deploys/approvals/compare": () =>
+      ok({
+        from: null,
+        to: { commit: null, tag: null, jenkinsBuild: null, image: null, images: [], revision: null },
+        commits: [],
+        incomplete: true,
+      }),
+  };
 }
 
 const SYSTEM_ID = "7c7c7c7c-0000-4000-8000-000000000001";
@@ -62,6 +71,7 @@ function pending(id: string, projectId: string, method: Deploy["method"], approv
 export interface DeliveryApprovalsOptions {
   /** Lần duyệt kế tiếp trả lỗi này, như khi người khác vừa quyết. */
   failNext?: { code: string; status: number; message: string; data?: unknown };
+  compare?: Partial<DeployCompare>;
 }
 
 /** Hub giả cho trang Duyệt triển khai (specs/032). `state.calls` để test đọc lại thứ đã gửi. */
@@ -115,6 +125,29 @@ export function deliveryApprovalsFixture(options: DeliveryApprovalsOptions = {})
         },
       ]),
     "deploys/approvals/pending": () => ok(state.pending),
+    "deploys/get": (input) => {
+      const d = state.pending.find((d) => d.id === (input as { id: string }).id);
+      return d ? ok(d) : fail("NOT_FOUND", 404, "Không tìm thấy lần triển khai.");
+    },
+    "deploys/approvals/compare": (input) => {
+      record("deploys/approvals/compare", input);
+      const d = state.pending.find((d) => d.id === (input as { id: string }).id);
+      if (!d) return fail("NOT_FOUND", 404, "Không tìm thấy lần triển khai.");
+      return ok({
+        from: { ...d.version, commit: "a".repeat(40) },
+        to: d.version,
+        commits: [
+          {
+            sha: "3f9c2ab71d5e4c08a6b2f1e0d9c8b7a6f5e4d3c2",
+            title: "Sửa lỗi thanh toán",
+            author: "Lê Thị Lan",
+            at: at(15),
+          },
+        ],
+        incomplete: false,
+        ...options.compare,
+      });
+    },
     "deploys/approvals/approve": (input) => decide("deploys/approvals/approve", input, "queued"),
     "deploys/approvals/reject": (input) => decide("deploys/approvals/reject", input, "rejected"),
   };
