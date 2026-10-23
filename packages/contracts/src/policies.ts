@@ -264,6 +264,16 @@ export const agentPolicyInput = z.object({
 });
 export type AgentPolicyInput = z.input<typeof agentPolicyInput>;
 
+/**
+ * Đầu vào của route lưu: mục mới không có `default`, vì oRPC điền mặc định trước handler; khi đó client chưa biết mục
+ * này sẽ bật lại TOTP, bỏ yêu cầu token git hay gỡ lệnh cấm bí mật mà tổ chức đã đặt. Hub điền từ chính sách đang lưu.
+ */
+export const agentPolicyUpdateInput = agentPolicyInput.extend({
+  remote: agentRemotePolicy.optional(),
+  secretInjection: secretInjection.optional(),
+  git: agentGitPolicy.optional(),
+});
+
 export const templateSyncResult = z.object({
   at: z.iso.datetime(),
   opened: z.number().int(),
@@ -331,7 +341,7 @@ export type TemplatePreview = z.output<typeof templatePreview>;
 export const policiesContract = {
   get: orgRoute("GET", "/v1/policies", "Chính sách agent của tổ chức", "policies").output(agentPolicy),
   update: orgRoute("POST", "/v1/policies", "Lưu chính sách agent (quản trị tổ chức)", "policies")
-    .input(agentPolicyInput)
+    .input(agentPolicyUpdateInput)
     .output(agentPolicy),
   preview: orgRoute("POST", "/v1/policies/templates/preview", "Xem file hướng dẫn sinh từ mẫu", "policies")
     .input(templatePreviewInput)

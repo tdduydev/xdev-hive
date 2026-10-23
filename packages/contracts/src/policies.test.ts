@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { agentPolicyInput, DEFAULT_AGENT_POLICY, jobPolicy, secretInjection } from "./policies.ts";
+import {
+  agentPolicyInput,
+  agentPolicyUpdateInput,
+  DEFAULT_AGENT_POLICY,
+  jobPolicy,
+  secretInjection,
+} from "./policies.ts";
 import { welcome } from "./worker-protocol.ts";
 
 describe("secretInjection (specs/031 FR-050)", () => {
@@ -41,5 +47,16 @@ describe("secretInjection trong giao thức worker", () => {
       secretInjection: "approve",
     });
     expect(welcome.safeParse({ ...base, policy: { totpFallback: true, secretInjection: "x" } }).success).toBe(false);
+  });
+});
+
+describe("agentPolicyUpdateInput", () => {
+  it("không điền mặc định cho mục client cũ có thể chưa gửi, để hub giữ giá trị đang lưu", () => {
+    const { remote: _r, git: _g, secretInjection: _s, ...old } = DEFAULT_AGENT_POLICY;
+    const parsed = agentPolicyUpdateInput.parse(old);
+    expect(parsed.remote).toBeUndefined();
+    expect(parsed.git).toBeUndefined();
+    expect(parsed.secretInjection).toBeUndefined();
+    expect(agentPolicyUpdateInput.parse({ ...old, secretInjection: "deny" }).secretInjection).toBe("deny");
   });
 });

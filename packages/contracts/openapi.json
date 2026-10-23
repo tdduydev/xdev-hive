@@ -136399,10 +136399,7 @@
                     },
                     "required": [
                       "totpFallback"
-                    ],
-                    "default": {
-                      "totpFallback": true
-                    }
+                    ]
                   },
                   "secretInjection": {
                     "enum": [
@@ -136410,8 +136407,7 @@
                       "approve",
                       "deny"
                     ],
-                    "type": "string",
-                    "default": "allow"
+                    "type": "string"
                   },
                   "git": {
                     "type": "object",
@@ -136422,10 +136418,7 @@
                     },
                     "required": [
                       "requireRunGitToken"
-                    ],
-                    "default": {
-                      "requireRunGitToken": false
-                    }
+                    ]
                   }
                 },
                 "required": [
