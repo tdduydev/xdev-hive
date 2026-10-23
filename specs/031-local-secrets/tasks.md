@@ -91,7 +91,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     rút ngắn giá trị xoá khối thừa; khối thiếu trả `ErrCorrupt`.
 
   Sau T002.
-- [ ] T004 A·vừa — `worker/internal/secretstore/{catalog.go,grants.go}`:
+- [x] T004 A·vừa — `worker/internal/secretstore/{catalog.go,grants.go}`:
   - danh mục `secrets.json` (version 1, khoá file, ghi nguyên tử 0600; FR-002: "KHÔNG ĐƯỢC chứa giá trị, băm của giá trị
     hay độ dài giá trị");
   - tối đa 64 gán mỗi `localId`;
