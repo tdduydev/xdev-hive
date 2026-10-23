@@ -87,8 +87,8 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
   khoá và lý do (`environments.ts`, `deploys.db.test.ts`, `e2e/delivery-servers.spec.ts`; từ specs/020 T027, T030)
 - [x] T027 [US5] U — Tab CI/CD: "Duyệt deployment" và "Từ chối" cho deployment chờ duyệt của GitHub Actions
   (`cicd-run-detail.tsx`, `e2e/delivery-ci.spec.ts`; từ specs/020 T032)
-- [ ] T028 [US5] H+U — Trang duyệt so sánh commit giữa bản đang chạy và bản mới (`approvals.compare`, route còn trả
-  `NOT_IMPLEMENTED`)
+- [x] T028 [US5] H+U — Trang duyệt và lần triển khai so sánh commit giữa bản thành công trước và bản mới
+  (`approvals.compare`, GitHub/GitLab, tối đa 100 commit, có trạng thái chưa đủ danh sách)
 - [ ] T029 H — Rollback (`deploys.rollback`, `rollbackInfo`) — **ngoài phạm vi** (chạy lệnh; muốn về bản cũ thì triển khai
   lại bản đó qua cổng duyệt; từ specs/020 T028)
 - [ ] T030 H — Bộ lọc theo hệ thống ở kênh thông báo — **ngoài phạm vi** (người duyệt đã nhận `deploy.approval_requested`;

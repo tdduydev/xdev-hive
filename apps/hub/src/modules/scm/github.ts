@@ -1035,6 +1035,7 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       const data = await request<{
         files?: { filename: string; previous_filename?: string; status: string; sha: string }[];
         commits?: { sha: string; commit: { message: string; author?: { name?: string; date?: string } | null } }[];
+        total_commits?: number;
       }>("GET /repos/{owner}/{repo}/compare/{basehead}", {
         owner: ref.owner,
         repo: ref.name,
@@ -1059,7 +1060,13 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         author: c.commit.author?.name ?? null,
         authoredAt: ciTime(c.commit.author?.date),
       }));
-      return { files, commits, incomplete: files.length >= 300 };
+      return {
+        files,
+        commits,
+        incomplete:
+          files.length >= 300 ||
+          (data.total_commits === undefined ? commits.length >= 100 : data.total_commits > commits.length),
+      };
     },
     async archive(ref, sha, path) {
       const o = await octokit();
