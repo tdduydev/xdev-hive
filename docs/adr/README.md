@@ -33,6 +33,7 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0025](0025-agent-skill-learning.md) | Let agents propose skills after hard tasks, in cheap daily batches that a team admin approves | Proposed |
 | [0027](0027-vscode-extension.md) | Extension VS Code | Withdrawn |
 | [0028](0028-docs-repo-sync.md) | Keep documents in the hub and synchronize them with repository folders | Accepted |
+| [0029](0029-pandoc-for-word-import.md) | Use pandoc and LibreOffice for Word import | Accepted |
 | [0030](0030-hub-deploys-over-ssh.md) | Run deploy steps from the hub over SSH with `ssh2`, one encrypted key per server and a pinned host key | Proposed |
 | [0031](0031-external-ci-and-deploy-sources.md) | Read and drive Jenkins, GitLab, Argo CD and Kubernetes from the hub with per-person Jenkins tokens, and do not store CI logs | Proposed |
 | [0032](0032-client-events-and-outbox.md) | Give every client write an idempotency key, and queue machine writes in the worker outbox | Accepted |
