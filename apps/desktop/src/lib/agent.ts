@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { checkProposal, type OutboxSubmission } from "@/lib/outbox.ts";
 import { invoke } from "@/lib/tauri.ts";
 import type { Engine } from "@/lib/usage.ts";
 
@@ -445,7 +446,7 @@ export const writeLocalFile = (folder: string, path: string, content: string) =>
   invoke<number>("write_local_file", { folder, path, content });
 
 export const proposeDoc = (input: { key: string; baseVersion: number; content: string; note: string }) =>
-  invoke<{ proposalId: string; status: string; key: string; baseVersion: number }>("propose_doc", input);
+  invoke<OutboxSubmission>("propose_doc", input).then(checkProposal);
 
 /** Tài khoản CLI worker chọn cho run trên máy này (`hive-worker accounts`, spec 008 US13). Không có token. */
 export interface CliProfile {

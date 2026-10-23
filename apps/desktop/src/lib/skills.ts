@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { hub } from "@/lib/hub-rpc.ts";
+import { checkProposal, type OutboxSubmission } from "@/lib/outbox.ts";
 import { invoke } from "@/lib/tauri.ts";
 
 /** Nơi cài skill, khớp `Target` trong src-tauri/src/skills.rs. */
@@ -79,7 +80,7 @@ export const proposeSkill = (input: {
   baseVersion: number;
   text: string;
   note: string;
-}) => invoke<{ proposalId: string }>("propose_skill", input);
+}) => invoke<OutboxSubmission>("propose_skill", input).then(checkProposal);
 
 /** Giống renderSkillFile của hub (knowledge/skill-repo.ts): file cài trên máy trùng file trong kho skill Git. */
 export function renderSkillFile(name: string, description: string, content: string): string {

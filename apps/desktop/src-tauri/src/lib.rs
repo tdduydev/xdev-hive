@@ -410,13 +410,17 @@ fn open_hub_url(app: &AppHandle, url: &str) -> Result<(), String> {
 }
 
 fn show_app(app: &AppHandle) {
+    show_app_at(app, "index.html");
+}
+
+fn show_app_at(app: &AppHandle, path: &str) {
     if let Some(window) = app.get_webview_window(APP) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
         return;
     }
-    let built = WebviewWindowBuilder::new(app, APP, WebviewUrl::App("index.html".into()))
+    let built = WebviewWindowBuilder::new(app, APP, WebviewUrl::App(path.into()))
         .title("xDev Hive")
         .inner_size(1100.0, 720.0)
         .min_inner_size(640.0, 480.0)
@@ -705,7 +709,7 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
     let args = register::validate(&hub, token, Some(&ex.machine))?;
     let machine_id = register_and_start(&app, args).await?;
     // Máy đã đăng ký và worker đã chạy; token cá nhân lỗi thì người dùng vẫn liên kết tay được ở màn Tài khoản.
-    if let Err(e) = account::save_checked(&hub, &ex.personal_token).await {
+    if let Err(e) = account::save_checked(&app, &hub, &ex.personal_token).await {
         eprintln!("Không liên kết được tài khoản sau khi đăng nhập: {e}");
     }
     Ok(machine_id)
@@ -717,7 +721,7 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
 async fn account_browser_login(app: AppHandle) -> Result<account::AccountStatus, String> {
     let hub = hub_of(&app).ok_or("Máy chưa đăng ký với hub nào. Đăng ký máy trước.")?;
     let ex = browser_exchange(&app, &hub, browser_login::Purpose::SignIn).await?;
-    account::save_checked(&hub, &ex.personal_token).await?;
+    account::save_checked(&app, &hub, &ex.personal_token).await?;
     let _ = app.emit(account::CHANGED_EVENT, ());
     Ok(account::status_for(Some(hub)).await)
 }
@@ -801,7 +805,7 @@ async fn hub_change(app: AppHandle, hub: String) -> Result<HubChange, String> {
     if let Ok(mut slot) = app.state::<State>().hub.lock() {
         *slot = Some(hub.clone());
     }
-    account::carry_over(&current, &hub).await;
+    account::carry_over(&app, &current, &hub).await;
     if wanted {
         dispatch(&app, Event::Start);
     } else {
@@ -933,32 +937,15 @@ fn switch_claude_from_tray(app: &AppHandle, plan: String) {
     });
 }
 
-/// Khay không có cửa sổ để hỏi lại, nên hỏi bằng hộp thoại của hệ điều hành: đăng xuất nhầm thì mất token, phải tạo lại.
+/// Dùng chung hộp thoại để khay cũng hỏi về hộp thư đi và gán bí mật trước khi gỡ token.
 fn sign_out_from_tray(app: &AppHandle) {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-    let en = lang_of(app) == "en";
-    let (title, body, ok, cancel) = account::sign_out_prompt(en);
-    let app = app.clone();
-    app.dialog()
-        .message(body)
-        .title(title)
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(ok.into(), cancel.into()))
-        .show({
-            let app = app.clone();
-            move |confirmed| {
-                if !confirmed {
-                    return;
-                }
-                let text = match (account::sign_out(&app), en) {
-                    (true, false) => "Đã đăng xuất khỏi Hive. Worker vẫn chạy với đăng ký của máy.",
-                    (true, true) => "Signed out of Hive. The worker keeps running with this machine's registration.",
-                    (false, false) => "Máy này chưa đăng nhập tài khoản Hive.",
-                    (false, true) => "This machine isn't signed in to a Hive account.",
-                };
-                notify(&app, text);
-            }
-        });
+    if app.get_webview_window(APP).is_none() {
+        // Cửa sổ mới chưa nghe sự kiện: mang yêu cầu trong URL để không mất thao tác của khay.
+        show_app_at(app, "index.html?signOut=1");
+        return;
+    }
+    show_app(app);
+    let _ = app.emit("account-sign-out", ());
 }
 
 fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
@@ -1198,9 +1185,11 @@ pub fn run() {
             optimize_all::optimize_all_undo,
             optimize_all::optimize_all_last,
             outbox::outbox_status,
-            outbox::outbox_submit,
             outbox::outbox_flush,
+            outbox::outbox_submit,
             outbox::outbox_drop,
+            outbox::outbox_retry,
+            outbox::outbox_export,
             local_projects::local_projects,
             local_projects::local_projects_import,
             local_projects::local_project_bind,
@@ -1317,7 +1306,6 @@ pub fn run() {
             git_groups::start_auto_fetch(app.handle().clone());
             remote::start(app.handle());
             token_score::start_daily(app.handle().clone());
-            outbox::start_flush(app.handle().clone());
             let tray = build_tray(app)?;
             app.manage(tray);
             notices::register_actions(app.handle(), false);

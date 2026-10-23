@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { OutboxPanel } from "@/components/outbox-panel.tsx";
 import type { ScreenId } from "@/lib/nav.ts";
 import { AgentsScreen } from "@/screens/agents-screen.tsx";
 import { DelegationTreeScreen } from "@/screens/delegation-tree-screen.tsx";
@@ -19,6 +20,7 @@ import { WordImportScreen } from "@/screens/word-import-screen.tsx";
 
 /** Màn của cửa sổ app theo mục AppNav; đủ mọi mục nên không còn trang "Sắp có". */
 export const SCREENS: Record<ScreenId, ComponentType> = {
+  outbox: OutboxPanel,
   agents: AgentsScreen,
   docs: DocsScreen,
   home: HomeScreen,

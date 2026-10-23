@@ -21,7 +21,8 @@ function fakeTauri(handlers: Record<string, (args?: Record<string, unknown>) => 
     core: {
       invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
         calls.push({ command, args });
-        const handler = handlers[command];
+        const handler =
+          command === "outbox_status" ? () => ({ hub: "up", pending: 0, held: 0, items: [] }) : handlers[command];
         if (!handler) throw new Error(`lệnh chưa giả: ${command}`);
         return (await handler(args)) as T;
       },
@@ -161,6 +162,32 @@ describe("liên kết tài khoản", () => {
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
     expect(within(nav).getByRole("link", { name: "Gói agent" }).hasAttribute("data-offline")).toBe(false);
     expect(within(nav).getByRole("link", { name: "Lượt chạy" }).hasAttribute("data-offline")).toBe(true);
+  });
+
+  it("khay mở cùng hộp đăng xuất qua sự kiện", async () => {
+    fakeTauri({ account_status: () => linked(ACCOUNT) });
+    let request: (() => void) | undefined;
+    const tauri = window.__TAURI__;
+    if (!tauri) throw new Error("Thiếu Tauri giả.");
+    tauri.event = {
+      listen: async (event, handler) => {
+        if (event === "account-sign-out") request = () => handler({ payload: undefined as never });
+        return () => {};
+      },
+    };
+    render(<AppShell />);
+    await waitFor(() => expect(request).toBeDefined());
+    await act(async () => request?.());
+    const dialog = await screen.findByRole("dialog", { name: "Đăng xuất khỏi Hive?" });
+    expect(dialog.textContent).toContain("Máy vẫn đăng ký với hub");
+  });
+
+  it("khay tạo cửa sổ mới mang yêu cầu đăng xuất trong URL và chỉ dùng một lần", async () => {
+    fakeTauri({ account_status: () => linked(ACCOUNT) });
+    history.replaceState(null, "", "?signOut=1#/home");
+    render(<AppShell />);
+    expect(await screen.findByRole("dialog", { name: "Đăng xuất khỏi Hive?" })).toBeTruthy();
+    expect(new URLSearchParams(location.search).has("signOut")).toBe(false);
   });
 
   it("huỷ ở hộp hỏi lại thì không gỡ token", async () => {
