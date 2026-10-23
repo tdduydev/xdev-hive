@@ -150,6 +150,7 @@ jobs:
       - name: Gom file cài, đặt tên cố định
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         # Tên không có số phiên bản để link /releases/latest/download/<tên> luôn trỏ tới bản mới nhất, như worker.
         run: |
           bundle=apps/desktop/src-tauri/target/release/bundle
@@ -172,7 +173,15 @@ jobs:
             case "${{ matrix.platform }}" in
               macos) take "$bundle/macos/*.app.tar.gz" .app.tar.gz; take "$bundle/macos/*.app.tar.gz.sig" .app.tar.gz.sig ;;
               windows) take "$bundle/nsis/*-setup.exe.sig" -setup.exe.sig ;;
-              linux) take "$bundle/appimage/*.AppImage.sig" .AppImage.sig ;;
+              linux)
+                take "$bundle/appimage/*.AppImage.sig" .AppImage.sig
+                # App cài từ .deb/.rpm chỉ nhận cập nhật đúng loại gói đó, nên hai gói này cũng cần chữ ký. Bundler không
+                # ký thì tự ký bằng cùng khoá.
+                for ext in deb rpm; do
+                  f="$out/$name.$ext"
+                  if [ ! -f "$f.sig" ]; then (cd apps/desktop && pnpm tauri signer sign "$f"); fi
+                  [ -f "$f.sig" ] || { echo "::error::Không ký được $f"; exit 1; }
+                done ;;
             esac
           fi
           (cd "$out" && for f in *; do
