@@ -15,6 +15,7 @@ import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/t
 import { ListIcon, LockIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { SecretFormDialog } from "@/components/secret-form-dialog.tsx";
+import { SecretValueActions } from "@/components/secret-value-actions.tsx";
 import { SecretsLog } from "@/components/secrets-log.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { type LocalProject, localProjects } from "@/lib/local-projects.ts";
@@ -401,26 +402,34 @@ export function SecretsScreen() {
                           {formatWhen(s.valueChangedAt, lang)}
                         </Td>
                         <Td>
-                          <div className="flex flex-wrap justify-end gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              aria-label={t.edit(s.name)}
-                              onClick={() => setForm({ secret: s })}
-                            >
-                              <PencilIcon aria-hidden="true" />
-                              {t.editLabel}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive"
-                              aria-label={t.remove(s.name)}
-                              onClick={() => setDeleting(s)}
-                            >
-                              <Trash2Icon aria-hidden="true" />
-                              {t.removeLabel}
-                            </Button>
+                          <div className="flex flex-col items-end gap-1">
+                            {/* key theo lúc đổi giá trị: sửa giá trị thì giá trị đang hiện của dòng bị bỏ. */}
+                            <SecretValueActions
+                              key={`${s.name}:${s.valueChangedAt}`}
+                              name={s.name}
+                              disabled={!storeUsable(status) || isMissingValue(s)}
+                            />
+                            <div className="flex flex-wrap justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                aria-label={t.edit(s.name)}
+                                onClick={() => setForm({ secret: s })}
+                              >
+                                <PencilIcon aria-hidden="true" />
+                                {t.editLabel}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive"
+                                aria-label={t.remove(s.name)}
+                                onClick={() => setDeleting(s)}
+                              >
+                                <Trash2Icon aria-hidden="true" />
+                                {t.removeLabel}
+                              </Button>
+                            </div>
                           </div>
                         </Td>
                       </TableRow>

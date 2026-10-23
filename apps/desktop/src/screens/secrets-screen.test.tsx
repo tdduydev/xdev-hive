@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
 import type { LocalProjects } from "@/lib/local-projects.ts";
 import type { GrantEntry, SecretItem, SecretsList, StoreStatus } from "@/lib/secrets.ts";
@@ -475,5 +475,137 @@ describe("màn Bí mật: trạng thái kho", () => {
     await user.type(within(dialog).getByLabelText("Giá trị"), "gia-tri-moi-12345678");
     await user.click(within(dialog).getByRole("button", { name: "Lưu" }));
     await waitFor(() => expect(calls.some((c) => c.command === "secret_save")).toBe(true));
+  });
+});
+
+describe("màn Bí mật: Hiện và Sao chép", () => {
+  const VALUE = "gia-tri-gia-0123456789";
+  const reveal = () => ({ secret_reveal: () => VALUE, secret_copy: () => null });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("Hiện hỏi xác nhận trước, nút Huỷ được focus; Huỷ thì không lấy giá trị", async () => {
+    const { calls } = fakeApp({ secrets: [STRIPE], override: reveal() });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    expect(document.body.textContent).not.toContain(VALUE);
+
+    await user.click(screen.getByRole("button", { name: "Hiện giá trị của STRIPE_TEST_KEY" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Hiện giá trị của STRIPE_TEST_KEY?")).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Huỷ" })));
+    expect(calls.some((c) => c.command === "secret_reveal")).toBe(false);
+
+    await user.click(within(dialog).getByRole("button", { name: "Huỷ" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.some((c) => c.command === "secret_reveal")).toBe(false);
+    expect(document.body.textContent).not.toContain(VALUE);
+  });
+
+  it("xác nhận thì giá trị hiện ở dòng đó, chỉ ở dòng đó, và Ẩn xoá ngay", async () => {
+    const { calls } = fakeApp({ secrets: [DATABASE, STRIPE], override: reveal() });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    await user.click(screen.getByRole("button", { name: "Hiện giá trị của STRIPE_TEST_KEY" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Hiện giá trị" }));
+
+    expect(await within(row("STRIPE_TEST_KEY")).findByText(VALUE)).toBeTruthy();
+    expect(within(row("DATABASE_URL")).queryByText(VALUE)).toBeNull();
+    expect(calls.filter((c) => c.command === "secret_reveal").map((c) => c.args)).toEqual([
+      { name: "STRIPE_TEST_KEY" },
+    ]);
+    // Chỉ hiện ra khi người dùng bấm: không lưu chỗ nào ngoài state của dòng.
+    expect(JSON.stringify({ ...localStorage })).not.toContain(VALUE);
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain(VALUE);
+
+    await user.click(screen.getByRole("button", { name: "Ẩn giá trị của STRIPE_TEST_KEY" }));
+    expect(document.body.textContent).not.toContain(VALUE);
+    expect(screen.getByRole("button", { name: "Hiện giá trị của STRIPE_TEST_KEY" })).toBeTruthy();
+  });
+
+  it("tự ẩn sau 10 giây", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fakeApp({ secrets: [STRIPE], override: reveal() });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    await user.click(screen.getByRole("button", { name: "Hiện giá trị của STRIPE_TEST_KEY" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Hiện giá trị" }));
+    expect(await screen.findByText(VALUE)).toBeTruthy();
+
+    vi.advanceTimersByTime(9_000);
+    expect(screen.queryByText(VALUE)).not.toBeNull();
+    vi.advanceTimersByTime(1_500);
+    await waitFor(() => expect(screen.queryByText(VALUE)).toBeNull());
+  });
+
+  it("rời màn thì giá trị mất; vào lại không thấy", async () => {
+    const { calls } = fakeApp({ secrets: [STRIPE], override: reveal() });
+    const user = userEvent.setup();
+    const first = render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    await user.click(screen.getByRole("button", { name: "Hiện giá trị của STRIPE_TEST_KEY" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Hiện giá trị" }));
+    await screen.findByText(VALUE);
+
+    first.unmount();
+    expect(document.body.textContent).not.toContain(VALUE);
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    expect(document.body.textContent).not.toContain(VALUE);
+    expect(calls.filter((c) => c.command === "secret_reveal")).toHaveLength(1);
+  });
+
+  it("Sao chép hỏi xác nhận, chỉ gửi tên và không hiện giá trị", async () => {
+    const { calls } = fakeApp({ secrets: [STRIPE], override: reveal() });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    await user.click(screen.getByRole("button", { name: "Sao chép giá trị của STRIPE_TEST_KEY" }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Huỷ" })));
+    expect(calls.some((c) => c.command === "secret_copy")).toBe(false);
+
+    await user.click(within(dialog).getByRole("button", { name: "Sao chép giá trị" }));
+    expect(await screen.findByText("Đã sao chép. Clipboard tự xoá sau 30 giây.")).toBeTruthy();
+    expect(calls.filter((c) => c.command === "secret_copy").map((c) => c.args)).toEqual([{ name: "STRIPE_TEST_KEY" }]);
+    expect(calls.some((c) => c.command === "secret_reveal")).toBe(false);
+    expect(document.body.textContent).not.toContain(VALUE);
+  });
+
+  it("worker từ chối: lỗi nằm trong hộp xác nhận và không có giá trị nào hiện", async () => {
+    fakeApp({
+      secrets: [STRIPE],
+      override: {
+        secret_reveal: () => {
+          throw new Error("Kho bí mật đang khoá.");
+        },
+      },
+    });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    await user.click(screen.getByRole("button", { name: "Hiện giá trị của STRIPE_TEST_KEY" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Hiện giá trị" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("Kho bí mật đang khoá.");
+    expect(screen.queryByRole("region", { name: "Giá trị", hidden: true })).toBeNull();
+  });
+
+  it("kho không dùng được hay dòng thiếu giá trị: khoá Hiện và Sao chép", async () => {
+    fakeApp({
+      secrets: [secret("LOST_KEY", { missingInStore: true }), STRIPE],
+      override: reveal(),
+    });
+    render(<SecretsScreen />);
+    await screen.findByText("LOST_KEY");
+    for (const verb of ["Hiện giá trị của", "Sao chép giá trị của"]) {
+      expect((screen.getByRole("button", { name: `${verb} LOST_KEY` }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole("button", { name: `${verb} STRIPE_TEST_KEY` }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    }
   });
 });

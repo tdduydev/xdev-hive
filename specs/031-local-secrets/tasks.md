@@ -462,7 +462,7 @@ không chứa giá trị.
 
   Thêm `tauri-plugin-clipboard-manager` vào `apps/desktop/src-tauri/Cargo.toml`, quyền vào `capabilities/app.json`,
   đăng ký ở `lib.rs`. Kèm test. Sau T031.
-- [ ] T038 [US8] C·vừa — UI.
+- [x] T038 [US8] C·vừa — UI.
   - `apps/desktop/src/screens/secrets-screen.tsx`:
     - nút Hiện và Sao chép có hộp xác nhận, nút mặc định là Huỷ;
     - giá trị chỉ ở state của dòng, tự ẩn sau 10 giây hoặc khi rời màn (FR-052);

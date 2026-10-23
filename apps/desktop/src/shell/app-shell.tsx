@@ -103,7 +103,12 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           onChanged={setStatus}
           onSignOut={askSignOut}
         />
-        <SignOutDialog open={signOutOpen} onOpenChange={setSignOutOpen} onSignedOut={setStatus} />
+        <SignOutDialog
+          open={signOutOpen}
+          onOpenChange={setSignOutOpen}
+          onSignedOut={setStatus}
+          orgName={account?.orgName}
+        />
         {/* Ở vỏ app chứ không ở màn Bí mật: run xin duyệt khi người dùng đang ở màn nào cũng phải thấy. */}
         <SecretApprovalDialog />
         <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>

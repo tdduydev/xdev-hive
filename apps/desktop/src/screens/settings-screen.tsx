@@ -1,6 +1,7 @@
 import { Button } from "@xdev-hive/ui/button";
-import { DownloadIcon, LogOutIcon, RefreshCwIcon } from "lucide-react";
+import { DownloadIcon, KeyRoundIcon, LogOutIcon, RefreshCwIcon } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
+import { SecretsCleanupDialog } from "@/components/secrets-cleanup-dialog.tsx";
 import { Toggle } from "@/components/toggle.tsx";
 import { UpdateNotes, useRestart } from "@/components/update-banner.tsx";
 import { type Account, initials, useConnect, useLinkedAccount, useSignOut } from "@/lib/account.ts";
@@ -49,6 +50,9 @@ const text: Dict<{
   notRegistered: string;
   worker: Row[];
   notify: string;
+  secrets: string;
+  secretsHint: string;
+  secretsClean: string;
   notifyRows: Row[];
   settingsFailed: string;
   saveFailed: string;
@@ -94,6 +98,10 @@ const text: Dict<{
       },
     ],
     notify: "Thông báo Windows",
+    secrets: "Bí mật trên máy",
+    secretsHint:
+      "Giá trị bí mật nằm trong kho của hệ điều hành, không nằm trong file của app. Trước khi xoá dữ liệu app hay gỡ cài app, hãy xoá chúng khỏi kho hoặc ghi lại mục nào còn lại.",
+    secretsClean: "Dọn bí mật trước khi gỡ app…",
     notifyRows: [
       { key: "notifyRuns", label: "Run trên máy xong hoặc lỗi", hint: "Bấm vào mở Lượt chạy trong app." },
       {
@@ -153,6 +161,10 @@ const text: Dict<{
       },
     ],
     notify: "Windows notifications",
+    secrets: "Secrets on this machine",
+    secretsHint:
+      "Secret values live in the OS store, not in the app's files. Before clearing the app's data or uninstalling it, delete them from the store or note which entries remain.",
+    secretsClean: "Clean up secrets before removing the app…",
     notifyRows: [
       { key: "notifyRuns", label: "A run on this machine finishes or fails", hint: "Click to open Runs in the app." },
       {
@@ -326,6 +338,22 @@ function UpdateCard() {
   );
 }
 
+/** FR-064: app chưa có thao tác "xoá dữ liệu" riêng, nên nút này mở hộp đề nghị xoá bí mật trước khi người dùng gỡ app. */
+function SecretsCard() {
+  const t = useT(text);
+  const [open, setOpen] = useState(false);
+  return (
+    <Card title={t.secrets}>
+      <p className="text-sm text-muted-foreground">{t.secretsHint}</p>
+      <Button size="sm" variant="outline" className="self-start" onClick={() => setOpen(true)}>
+        <KeyRoundIcon aria-hidden="true" />
+        {t.secretsClean}
+      </Button>
+      <SecretsCleanupDialog open={open} onClose={() => setOpen(false)} />
+    </Card>
+  );
+}
+
 function AccountCard({ hub }: { hub: string | null }) {
   const t = useT(text);
   const account = useLinkedAccount();
@@ -475,6 +503,7 @@ export function SettingsScreen() {
             </dl>
             <SettingRows rows={t.worker} settings={settings} busy={busy} onChange={(k, v) => void change(k, v)} />
           </Card>
+          <SecretsCard />
           <Card title={t.notify}>
             <SettingRows rows={t.notifyRows} settings={settings} busy={busy} onChange={(k, v) => void change(k, v)} />
           </Card>
