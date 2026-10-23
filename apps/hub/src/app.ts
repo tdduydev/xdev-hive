@@ -49,7 +49,7 @@ import {
   handleWordUpload,
   wordImportHealth,
 } from "./modules/docsync/index.ts";
-import { clientMachineOf, fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
+import { clientMachineOf, fleetRouter, type MachineAuth, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
@@ -130,6 +130,8 @@ export interface AppDeps {
   resolveTxt?: TxtResolver | undefined;
   /** Thay API Telegram/Slack thật bằng máy chủ giả khi test. */
   chatApis?: ChatApiDeps | undefined;
+  /** Đổi chữ ký khoá máy lấy access token; dùng chung với cổng WSS. Không có thì máy chỉ dùng được machine token. */
+  machineAuth?: MachineAuth | undefined;
 }
 
 export function createApp({
@@ -144,6 +146,7 @@ export function createApp({
   runNotifier,
   resolveTxt,
   chatApis,
+  machineAuth,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -274,6 +277,7 @@ export function createApp({
       auth,
       pool,
       publicUrl,
+      machineAuth,
       workerReleases: new WorkerReleaseCache(config.workerReleases),
       issuePersonalToken: (tx, userId, purpose) => issueDesktopToken(tx, userId, registry, purpose),
     }),

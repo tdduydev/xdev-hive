@@ -35,6 +35,7 @@ import {
 } from "./modules/docsync/index.ts";
 import {
   attachWorkerGateway,
+  createMachineAuth,
   fleetOfflineQueue,
   provideSdlcFleetRuns,
   registerFleetOfflineWorker,
@@ -223,6 +224,15 @@ const runs =
     : undefined;
 if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");
 if (runs) registerRunHandlers(runs.handlers);
+// Một instance cho cả route HTTP và cổng WSS: nonce đã dùng và giới hạn tần suất nằm trong bộ nhớ của nó.
+const machineAuth =
+  pool && config.authSecret
+    ? createMachineAuth({
+        pool,
+        authSecret: config.authSecret,
+        publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+      })
+    : undefined;
 
 // Deps AI SDLC của engine có cổng tạo run bước và run đợt; không có engine thì hạng mục vẫn đi qua cổng duyệt, chỉ không
 // tạo được run. Hook của knowledge cài ở mọi vai trò: phiên duyệt chạy cả trong route (api) lẫn job (jobs).
@@ -376,7 +386,7 @@ const telegramPolling =
 
 if (roles.includes("api")) {
   const server = serve(
-    { fetch: createApp({ config, auth, pool, jobs, runs, embedder }).fetch, port: config.port },
+    { fetch: createApp({ config, auth, pool, jobs, runs, embedder, machineAuth }).fetch, port: config.port },
     (info) => {
       console.log(`xDev Hive hub ${config.version} lắng nghe ở :${info.port}`);
     },
@@ -388,6 +398,7 @@ if (roles.includes("api")) {
       jobs,
       publicUrl: config.publicUrl,
       offlineNotifySec: config.machineOfflineNotifySec,
+      machineAuth,
     });
     // Terminal Leader chạy cùng tiến trình với cổng worker: gói term_* chỉ đi được qua kết nối WSS tiến trình này giữ.
     registerTerminalHandlers(

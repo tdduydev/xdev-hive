@@ -20,6 +20,7 @@ import {
 } from "./desktop-connect.ts";
 import { FleetError } from "./errors.ts";
 import { CLOSE } from "./gateway.ts";
+import type { MachineAuth } from "./machine-auth.ts";
 import {
   authenticateMachine,
   findMachine,
@@ -50,7 +51,18 @@ export interface FleetDeps {
   workerReleases?: WorkerReleaseCache | undefined;
   /** Token cá nhân cho app desktop đăng nhập bằng trình duyệt; không có thì app phải dán token tay. */
   issuePersonalToken?: IssuePersonalToken | undefined;
+  /** Access token máy (ADR 0033). Không có (thiếu HIVE_AUTH_SECRET) thì máy chỉ dùng được machine token. */
+  machineAuth?: MachineAuth | undefined;
 }
+
+const bearer = (headers: Headers) => /^Bearer\s+(\S+)$/i.exec(headers.get("authorization") ?? "")?.[1];
+
+/**
+ * IP để giới hạn số lần xin token theo IP. Hub đứng sau reverse proxy nên lấy địa chỉ đầu của x-forwarded-for; giả
+ * được header này chỉ né được giới hạn theo IP, giới hạn theo máy vẫn còn.
+ */
+const clientIp = (headers: Headers) =>
+  headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip") || undefined;
 
 /** Cùng header chọn tổ chức với API tổ chức, đội (M1c). */
 export const ORG_HEADER = "x-hive-org";
@@ -61,7 +73,16 @@ function toORPC(error: unknown): never {
   if (error instanceof ForbiddenError)
     throw new ORPCError("FORBIDDEN", { message: error.message, data: { code: error.code } });
   if (error instanceof FleetError) {
-    const code = { unauthorized: "UNAUTHORIZED", not_found: "NOT_FOUND", conflict: "CONFLICT" }[error.kind];
+    // Hai lỗi có mã riêng trong hợp đồng worker (ADR 0033) để worker phân biệt mà không đọc message.
+    if (error.code === "MACHINE_AUTH_FAILED" || error.code === "MACHINE_KEY_EXISTS")
+      throw new ORPCError(error.code, { message: error.message });
+    const code = {
+      bad_request: "BAD_REQUEST",
+      unauthorized: "UNAUTHORIZED",
+      not_found: "NOT_FOUND",
+      conflict: "CONFLICT",
+      rate_limited: "TOO_MANY_REQUESTS",
+    }[error.kind];
     throw new ORPCError(code, { message: error.message, data: { code: error.code } });
   }
   throw error;
@@ -102,6 +123,12 @@ export function fleetRouter(deps: FleetDeps) {
     } catch (error) {
       return toORPC(error);
     }
+  };
+
+  const requireMachineAuth = () => {
+    if (!deps.machineAuth)
+      throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Hub chưa cấu hình HIVE_AUTH_SECRET cho token máy." });
+    return deps.machineAuth;
   };
 
   const machinesOs = implement(fleetContract.machines).$context<RequestContext>();
@@ -224,11 +251,29 @@ export function fleetRouter(deps: FleetDeps) {
     },
     worker: {
       register: workerOs.register.handler(({ input }) => registerMachine(requirePool(), input).catch(toORPC)),
-      // Sự kiện máy (ADR 0036): danh tính là máy của token, không lấy từ body. ADR 0033 sẽ đổi sang access token ngắn hạn.
+      registerKey: workerOs.registerKey.handler(({ context, input }) =>
+        requireMachineAuth().registerKey(bearer(context.headers), input).catch(toORPC),
+      ),
+      challenge: workerOs.challenge.handler(({ context, input }) => {
+        try {
+          return requireMachineAuth().challenge(input.machine, clientIp(context.headers));
+        } catch (error) {
+          return toORPC(error);
+        }
+      }),
+      token: workerOs.token.handler(({ context, input }) =>
+        requireMachineAuth().exchange(input, clientIp(context.headers)).catch(toORPC),
+      ),
+      // Sự kiện máy (ADR 0036): danh tính là máy của token, không lấy từ body. Nhận access token máy (ADR 0033), và
+      // machine token khi máy chưa có khoá.
       clientEvent: workerOs.clientEvent.handler(async ({ context, input }) => {
         const pool = requirePool();
-        const token = /^Bearer\s+(\S+)$/i.exec(context.headers.get("authorization") ?? "")?.[1];
-        const machine = token ? await authenticateMachine(pool, token) : null;
+        const token = bearer(context.headers);
+        const machine = !token
+          ? null
+          : deps.machineAuth
+            ? ((await deps.machineAuth.authenticate(token))?.machine ?? null)
+            : await authenticateMachine(pool, token);
         if (!machine)
           throw new ORPCError("UNAUTHORIZED", { message: "Machine token không hợp lệ hoặc máy đã bị thu hồi." });
         return receiveMachineEvent(pool, machine, input);

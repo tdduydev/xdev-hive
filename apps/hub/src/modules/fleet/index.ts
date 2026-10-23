@@ -13,6 +13,7 @@ export {
   type TerminalMessage,
   WORKER_WS_PATH,
 } from "./gateway.ts";
+export { createMachineAuth, type MachineAuth, machineAudience } from "./machine-auth.ts";
 export {
   type AuthedMachine,
   checkMachineOffline,

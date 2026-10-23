@@ -236,7 +236,8 @@ export async function authenticateMachine(pool: pg.Pool, token: string): Promise
     tx
       .select({ machineId: machineTokens.machineId, orgId: machineTokens.orgId })
       .from(machineTokens)
-      .where(eq(machineTokens.tokenHash, hash)),
+      // Máy đã đăng ký khoá thì chỉ còn access token ngắn hạn mở được kết nối (ADR 0033).
+      .where(and(eq(machineTokens.tokenHash, hash), isNull(machineTokens.supersededAt))),
   );
   if (!found) return null;
   const [row] = await withTenant(pool, { orgId: found.orgId }, (tx) =>
