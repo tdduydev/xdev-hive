@@ -3,11 +3,20 @@ import { MEMORY_MAX_CHARS } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Markdown } from "@xdev-hive/ui/markdown";
-import { UploadIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { UploadIcon, XIcon } from "lucide-react";
+import { type ReactNode, useEffect } from "react";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
+import {
+  type OutboxItem,
+  outboxDrop,
+  outboxFlush,
+  outboxStatus,
+  rejectedItems,
+  submitMemory,
+  waitingItems,
+} from "@/lib/outbox.ts";
 import { errorText } from "@/lib/tauri.ts";
 
 /** Một đoạn memory trên máy mà người dùng có thể gửi lên hub. */
@@ -30,8 +39,17 @@ const text: Dict<{
   noProject: string;
   local: string;
   send: string;
+  queued: string;
   sent: string;
+  rejected: (reason: string) => string;
+  expired: string;
   tooLong: (max: number) => string;
+  waitingTitle: string;
+  waiting: (n: number) => string;
+  failedTitle: string;
+  drop: string;
+  noReason: string;
+  outboxKinds: Record<string, string>;
   kinds: Record<"decision" | "convention" | "gotcha" | "note", string>;
 }> = {
   vi: {
@@ -45,8 +63,21 @@ const text: Dict<{
     noProject: "Dự án này chưa có trên hub, nên chưa gửi được.",
     local: "Memory trên máy",
     send: "Gửi lên hub",
+    queued: "Đã xếp hàng, sẽ gửi khi có mạng.",
     sent: "Đã gửi, đang chờ người trong đội duyệt.",
+    rejected: (reason) => `Hub không nhận: ${reason}`,
+    expired: "Quá hạn chưa gửi được, hãy gửi lại.",
     tooLong: (max) => `Dài quá ${max} ký tự, hãy chia nhỏ hoặc nén trước khi gửi.`,
+    waitingTitle: "Đang chờ gửi",
+    waiting: (n) => `${n} việc đang chờ gửi lên hub, sẽ gửi khi có mạng.`,
+    failedTitle: "Hub không nhận",
+    drop: "Bỏ",
+    noReason: "Hub không nêu lý do.",
+    outboxKinds: {
+      "memory.propose": "Đề xuất memory",
+      "project.token_usage": "Số liệu token của dự án",
+      "machine.token_score": "Điểm token của máy",
+    },
     kinds: { decision: "Quyết định", convention: "Quy ước", gotcha: "Lưu ý", note: "Ghi chú" },
   },
   en: {
@@ -60,15 +91,30 @@ const text: Dict<{
     noProject: "This project is not on the hub, so nothing can be sent.",
     local: "Memory on this machine",
     send: "Send to hub",
+    queued: "Queued, will be sent when the network is back.",
     sent: "Sent, waiting for a teammate to approve.",
+    rejected: (reason) => `The hub did not accept it: ${reason}`,
+    expired: "Expired before it could be sent, send it again.",
     tooLong: (max) => `Over ${max} characters: split or compress it before sending.`,
+    waitingTitle: "Waiting to send",
+    waiting: (n) =>
+      `${n} ${n === 1 ? "item is" : "items are"} waiting to go to the hub, will be sent when the network is back.`,
+    failedTitle: "Not accepted by the hub",
+    drop: "Dismiss",
+    noReason: "The hub gave no reason.",
+    outboxKinds: {
+      "memory.propose": "Memory proposal",
+      "project.token_usage": "Project token usage",
+      "machine.token_score": "Machine token score",
+    },
     kinds: { decision: "Decision", convention: "Convention", gotcha: "Gotcha", note: "Note" },
   },
 };
 
 /**
  * Mục "Hub" của màn Memory (specs/015 US6). Chưa liên kết tài khoản thì không vẽ gì: app vẫn dùng đủ trên máy, mục
- * này chỉ thêm đường sang hub. Gửi lên là `memory.write` với `source: "machine"`, hub luôn đặt chờ duyệt.
+ * này chỉ thêm đường sang hub. Gửi lên đi qua hộp thư đi của worker (`memory.propose`, spec 029 T024): mất mạng thì
+ * việc nằm lại trên máy và tự gửi sau; hub luôn đặt chờ duyệt.
  */
 /**
  * Đọc brief, memory của dự án trên hub và gửi memory máy lên hub. Màn Bộ nhớ chỉ biết id dự án đã gắn với thư mục
@@ -115,6 +161,13 @@ function HubSection({
     enabled: projectKey !== "",
   });
   const error = brief.error ?? memories.error ?? projects.error;
+  const qc = useQueryClient();
+  // Mở màn là thử gửi phần còn đọng từ lần trước; lỗi mạng không đáng báo vì việc vẫn nằm trong hàng đợi.
+  useEffect(() => {
+    outboxFlush()
+      .catch(() => null)
+      .then(() => qc.invalidateQueries({ queryKey: OUTBOX_KEY }));
+  }, [qc]);
 
   return (
     <section aria-label={t.title} className="flex flex-col gap-4">
@@ -123,6 +176,7 @@ function HubSection({
         <p className="text-sm text-muted-foreground">{t.lead}</p>
       </div>
       {error && <Alert variant="destructive">{errorText(error)}</Alert>}
+      <OutboxBlocks />
       <Block title={t.brief}>
         {brief.isPending ? (
           <p className="text-sm text-muted-foreground">{t.loading}</p>
@@ -176,16 +230,16 @@ function SendRow({
   const content = item.content.trim();
   const tooLong = content.length > MEMORY_MAX_CHARS;
   const send = useMutation({
-    mutationFn: () =>
-      api.memory.write.call({
-        scope: { level: "project", projectId: projectId ?? "" },
-        kind: "note",
-        content,
-        source: "machine",
-      }),
-    // Đề xuất vừa gửi nằm ở hàng chờ, không ở danh sách đã duyệt; làm mới để người dùng thấy hub vẫn không đổi.
-    onSuccess: () => qc.invalidateQueries({ queryKey: api.memory.list.key({ input: { project: projectKey } }) }),
+    mutationFn: () => submitMemory({ projectId: projectId ?? "", kind: "note", content }),
+    // Đề xuất vừa gửi nằm ở hàng chờ duyệt, không ở danh sách đã duyệt; làm mới hàng đợi của máy và danh sách để thấy đúng.
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: OUTBOX_KEY }),
+        qc.invalidateQueries({ queryKey: api.memory.list.key({ input: { project: projectKey } }) }),
+      ]),
   });
+  const outcome = send.data?.outcome;
+  const state = outcome?.state;
 
   return (
     <li className="flex flex-col gap-1 py-2 text-sm">
@@ -202,9 +256,81 @@ function SendRow({
         </Button>
       </div>
       {tooLong && <p className="text-xs text-muted-foreground">{t.tooLong(MEMORY_MAX_CHARS)}</p>}
-      {send.isSuccess && <p className="text-xs text-muted-foreground">{t.sent}</p>}
+      {send.isSuccess && (
+        <p className="text-xs text-muted-foreground">
+          {state === "accepted" || state === "duplicate"
+            ? t.sent
+            : state === "rejected"
+              ? t.rejected(outcome?.reason || t.noReason)
+              : state === "expired"
+                ? t.expired
+                : t.queued}
+        </p>
+      )}
       {send.error && <Alert variant="destructive">{errorText(send.error)}</Alert>}
     </li>
+  );
+}
+
+const OUTBOX_KEY = ["outbox"] as const;
+/** Worker tự gửi mỗi 15 giây khi chạy; hỏi lại cùng nhịp để thẻ phản ánh việc đã đi. */
+const OUTBOX_REFRESH_MS = 15_000;
+
+/**
+ * "Đang chờ gửi" và việc hub không nhận, đọc từ hàng đợi của worker. Không có việc nào thì không vẽ gì. Lỗi đọc hàng
+ * đợi (ví dụ máy chưa đăng ký) cũng im: đây là thông tin phụ, không chặn việc đọc brief và memory.
+ */
+function OutboxBlocks() {
+  const t = useT(text);
+  const qc = useQueryClient();
+  const status = useQuery({ queryKey: OUTBOX_KEY, queryFn: outboxStatus, refetchInterval: OUTBOX_REFRESH_MS });
+  const drop = useMutation({
+    mutationFn: outboxDrop,
+    onSuccess: () => qc.invalidateQueries({ queryKey: OUTBOX_KEY }),
+  });
+  if (!status.data) return null;
+  const waiting = waitingItems(status.data);
+  const failed = rejectedItems(status.data);
+  const label = (item: OutboxItem) => t.outboxKinds[item.kind] ?? item.kind;
+  return (
+    <>
+      {waiting.length > 0 && (
+        <Block title={t.waitingTitle}>
+          <p role="status" className="text-sm">
+            {t.waiting(waiting.length)}
+          </p>
+          <ul className="m-0 flex list-none flex-col p-0 text-xs text-muted-foreground">
+            {waiting.map((item) => (
+              <li key={item.key}>{label(item)}</li>
+            ))}
+          </ul>
+        </Block>
+      )}
+      {failed.length > 0 && (
+        <Block title={t.failedTitle}>
+          <ul className="m-0 flex list-none flex-col divide-y p-0">
+            {failed.map((item) => (
+              <li key={item.key} className="flex items-start justify-between gap-2 py-2 text-sm">
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-muted-foreground">{label(item)}</span>
+                  <span>{item.state === "expired" ? t.expired : item.reason || t.noReason}</span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={drop.isPending}
+                  aria-label={`${t.drop}: ${label(item)}`}
+                  onClick={() => drop.mutate(item.key)}
+                >
+                  <XIcon aria-hidden="true" />
+                  {t.drop}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Block>
+      )}
+    </>
   );
 }
 

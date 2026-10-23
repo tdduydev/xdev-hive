@@ -572,10 +572,17 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 7: User Story 6 — `hive attach` (P2)
 
-- [ ] T060 [US6] CLI `hive attach`
+- [x] T060 [US6] CLI `hive attach`
   - Run: SSE `/api/v1/runs/:id/stream` với token cá nhân, nối lại theo `Last-Event-ID`, dòng nhập → `runs.steer`, in
     `steer_result`; phiên trên máy này: socket nội bộ; phiên máy khác: vé `view` + `/ws/terminal`, chỉ xem.
   - **Scope**: `worker/cmd/hive/{attach.go,attach_test.go,sse.go,hubws.go}`
+  - Đã làm (CLI010B): mã hex của worker gắn qua socket như cũ; mã UUID của hub thử `session.list` của worker trước
+    (`hubId` khớp thì gắn qua socket, gõ được), rồi `runs.get`, rồi `remote.get`. 403 và 404 cùng báo "Không tìm thấy run
+    hoặc phiên." Run: SSE với client không timeout, nối lại bằng `Last-Event-ID` (chờ 1–10 s), mỗi dòng stdin là một
+    `runs.steer` (`--view` không gửi), in `steer_result` kèm nội dung chỉ dẫn, `end` → in trạng thái cuối, mã 0. Phiên máy
+    khác: vé `remote.ticket` (không xin quyền điều khiển), WS với `Origin` của hub, `resume` từ `seq` cuối khi nối lại, `sync`
+    xoá màn hình, phím bị bỏ kèm "Chỉ xem: phiên ở máy khác" (tối đa một lần mỗi 3 s), Ctrl-] d hoặc Ctrl-C thôi xem, cảnh
+    báo hub HTTP.
   - **Phụ thuộc**: T024 (cùng làn), T030 · **Mức**: vừa
 
 ---
@@ -583,6 +590,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 ## Phase 8: User Story 7 — PWA và thông báo đẩy (P2)
 
 - [ ] T070 [US7] Web: PWA
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Một phần (SPEC10NEXT): vite-plugin-pwa `injectManifest`, `sw.ts` chỉ đệm vỏ, manifest `manifest.json`, icon, nút
     cài + hướng dẫn iOS, thanh phím + ô soạn ở trang terminal Leader (phần của T032), e2e `pwa.spec.ts`,
     `leader-terminal-mobile.spec.ts`. `start_url` đang là `/` (chưa có `/remote`). **Còn**: `push.ts`, `push`/
@@ -596,6 +604,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Phụ thuộc**: T028 (cùng làn) · **Mức**: vừa
 
 - [ ] T071 [US7] Hub: Web Push
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - `push.ts`: khoá VAPID sinh lần đầu, mã hoá bằng khoá chủ; route `pushKey|pushSubscribe|pushUnsubscribe`; gửi khi
     `term_event{attention|idle}`, `term_exit`, phiên mở từ xa; xoá subscription hết hạn (404/410); nội dung không có
     output.
@@ -604,6 +613,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Phụ thuộc**: T051 (cùng làn) · **Mức**: vừa
 
 - [ ] T072 [US7] Worker: tín hiệu "agent cần bạn"
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Claude tương tác: file settings tạm với hook `Notification` (+ `Stop`) gọi `hive __hook attention`, ghép với hook
     quản lý của tổ chức như `runner/hooks.go`; CLI khác: im 60 s sau output → `idle`; gửi `term_event`.
   - Lệnh `hive __hook` (chuyển từ T012): gửi tín hiệu tới worker qua socket nội bộ.
@@ -615,12 +625,14 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 ## Phase 9: User Story 8 — Xem cùng (P3)
 
 - [ ] T080 [US8] Hub: chế độ xem `team`
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Quyền xem cho thành viên đội / người xem run của dự án; đóng người xem khác khi tắt; giới hạn số người xem; danh sách
     người đang xem cho chủ.
   - **Scope**: `apps/hub/src/modules/terminal/{queries.ts,live.ts,visibility.db.test.ts}`
   - **Phụ thuộc**: T071 (cùng làn) · **Mức**: vừa
 
 - [ ] T081 [US8] Web: nút "Cho đội xem" và danh sách người xem
+  - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - **Scope**: `apps/web/src/pages/remote/session-page.tsx`, `apps/web/e2e/{remote-share.spec.ts,fake-hub.ts}`
   - **Phụ thuộc**: T070 (cùng làn), T080 · **Mức**: nhẹ
 
@@ -628,13 +640,32 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 10: Kiểm và tài liệu
 
-- [ ] T090 e2e và hiệu năng
+- [x] T090 e2e và hiệu năng
+  - Đã làm (CLI010B): `apps/hub/src/terminal-perf.db.test.ts` (project `db-isolated`): 10 máy × 5 phiên × 3 người xem,
+    mỗi phiên 50 chunk 4 KiB cách 200 ms qua `/ws/terminal`. Test kiểm mọi người xem nhận đủ `seq` 0..49, không `sync`,
+    không lỗi, DB đủ 2.500 chunk. CPU đo bằng `process.threadCpuUsage()` của luồng hub; ELU nhiễu khi máy bận nên chỉ ghi
+    kèm. Hai lần chạy trên máy dev Windows: CPU luồng hub 43,9–48,6% một nhân khi phát (nghỉ 0%), trễ p50 6–10 ms, p95
+    16–18 ms, max 50–66 ms. **SC-008 CPU chưa đạt** nếu hiểu "tăng ≤ 15%" là 15% một nhân; spec chưa nói rõ một nhân hay
+    cả máy. Test chỉ chặn hồi quy ở 80%. Điểm nóng theo cpuprofile: `writev` 750 khung/s tới người xem, mỗi chunk một
+    transaction (drizzle + pg). Việc tiếp: gom ghi `term_output` theo lô, gộp khung gửi người xem.
+    `scripts/e2e-remote.ts` (`pnpm e2e:remote`, chỉ macOS/Linux): hub, worker và `hive` thật, CLI giả, Chromium có
+    virtual authenticator, proxy TCP trễ 50 ms mỗi chiều. Script đo SC-002 (gõ phím), SC-003 (mở phiên), SC-004 (mất mạng
+    30 s: không mất `seq`, không ký passkey lại), SC-005 (tắt qua API hub và qua `hive remote off`). **Chưa chạy** vì máy
+    làm là Windows; mới qua `tsc -p scripts` và biome. Chưa thêm job CI.
   - `scripts/e2e-remote.ts`: hub thật + worker thật + CLI giả + Chromium (virtual authenticator, mạng trễ 50 ms mỗi
     chặng); đo SC-002, SC-003, SC-004, SC-005; test hiệu năng SC-008 (50 phiên × 3 người xem).
   - **Scope**: `scripts/e2e-remote.ts`, `apps/hub/src/terminal-perf.db.test.ts`, `.github/workflows/ci.yml` (job tuỳ chọn)
   - **Phụ thuộc**: T041, T032, T040 · **Mức**: nặng
 
-- [ ] T091 Bộ test tấn công (SC-001) và review bảo mật
+- [x] T091 Bộ test tấn công (SC-001) và review bảo mật
+  - Đã làm (CLI010B): `attack_test.go` (Unix: passkey giả/phát lại/lệch giờ/sai origin, rpId, UV/khoá lạ/counter lùi,
+    `connId` bị đổi; hub không khoá phiên gõ thay, dùng `resumeToken`; TOTP sai/dùng lại/khoá gấp đôi/khởi động lại/HTTPS/
+    chính sách tắt/thiếu `auth`; `term_start` khi tắt, `subdir` thoát qua symlink; hub tự nhận chủ mới). Tag ghép sai,
+    `seq` lùi, gói bật từ hub đã có ở `pairing_test.go`, `control_test.go`, `remote_test.go`.
+    `terminal-attack.db.test.ts` (11 ca: tổ chức khác, người cùng đội, quản trị đội không phải chủ máy, máy dùng chung,
+    vé dùng lại/hết hạn/đoán, vé Leader, Origin lạ/thiếu/`null` đốt vé, gõ khi chưa có quyền, gói giả của máy khác,
+    TOTP khi chính sách tắt, mã không vào DB/log). Không thấy lỗ hổng cần sửa; rủi ro còn lại và việc tiếp ở
+    `security-review.md`. Không mở PR nên kết quả ghi trong file đó.
   - Worker: assertion giả/phát lại/lệch giờ/sai origin/thiếu UV/khoá lạ, tag ghép sai, gói nhập không HMAC hoặc `seq`
     lùi, `term_start` khi tắt, `subdir` thoát, gói bật/ghép giả từ hub; TOTP: mã sai, dùng lại, khoá và gấp đôi, khởi động
     lại không đặt lại, hub HTTPS, chính sách tắt, `term_start`/`term_control` không mã (SC-011, SC-012). Hub: người khác, máy
@@ -643,16 +674,29 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Phụ thuộc**: T040, T041, T027 cho MVP; thêm các ca `term_start` khi T050, T051 xong (cùng agent hoặc lượt hai) ·
     **Mức**: nặng
 
-- [ ] T092 [P] Tài liệu
+- [x] T092 [P] Tài liệu
+  - Đã làm (CLI010B): `architecture.md` dòng module `terminal`, mục 5.4 mới (gói `term_*`, khung WS trình duyệt, vé,
+    ghi phiên, xem trực tiếp, xác thực ở máy, tắt khẩn cấp, SC-008), token và rủi ro; `add.md` 5.1–5.3, 6.8, 8.2, 10, 11;
+    `sdd.md` 3.2, 4.1, 4.2, 4.4, 7, 8; `srs.md` RMT-01…13, IF-07, NFR-17; `hive-cli.md` mới (gồm rủi ro B của
+    `security-review.md`). Các mục ngoài phạm vi (T070–T072, T080–T081) ghi là chưa có.
   - `docs/architecture.md` (module `terminal`, bảng gói ở mục 5, token, rủi ro), `docs/add.md`, `docs/sdd.md`, trạng thái
     RMT-xx/IF-07/NFR-17 trong `docs/srs.md`; hướng dẫn người dùng `docs/hive-cli.md` (cài, đăng nhập, chat, attach, bật
     từ xa, ghép, tắt khẩn cấp, bật mã Authenticator cho hub HTTP và rủi ro của nó).
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md,hive-cli.md}`
   - **Phụ thuộc**: T090 · **Mức**: nhẹ
 
-- [ ] T093 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp màn mới (sáng, tối, 360 px).
+- [x] T093 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp màn mới (sáng, tối, 360 px).
+  - Đã làm (CLI010B): chạy `/speckit-analyze`, sửa cho khớp code: `term_output {seq, data}`, `term_ack` theo `seq`,
+    `term_input`/`term_resize` với `connId`/`seq`/`mac` tuỳ chọn, `terminal_chunks (session_id, seq)`, nối lại
+    `{after}`, vé `remote.ticket` và route `/v1/remote/…`, migration `0065`/`0071`, `creack/pty` + ConPTY, thao tác
+    socket `remote.start.decide`/`remote.totp.*`, lệnh `hive remote totp`, TOTP trên HTTPS do worker kiểm, chờ xác nhận
+    tại máy khoảng 50 giây (sửa cả `docs/hive-cli.md`), đuôi đồng bộ lại 128 KiB, giới hạn 2 giờ/12 giờ chỉ cho phiên
+    mở từ xa, gộp chunk 64 KiB/1 s chưa làm, US7/US8 ngoài phạm vi. **Chưa chụp màn** (bỏ qua theo phân công).
+  - Còn lại: web chưa có nút "Tắt từ xa cho máy này" (US5-2, chỉ có route hub); SC-008 chưa rõ "15%" (đo được
+    43.9–48.6% một lõi); `scripts/e2e-remote.ts` chưa chạy; spec viết tiếng Việt trong khi hiến chương VI ghi spec tiếng
+    Anh (theo cách cả repo đang làm, không dịch).
   - **Scope**: `specs/010-hive-cli-remote/*`, `apps/web/e2e/screenshots/**`
-  - **Phụ thuộc**: T081, T023, T028 · **Mức**: nhẹ
+  - **Phụ thuộc**: T081, T023, T028 (T081 ngoài phạm vi từ 2026-10-23, nên chạy không chờ T081) · **Mức**: nhẹ
 
 ---
 
@@ -672,7 +716,7 @@ task passkey/TOTP/`hive`/PWA ở trên: những task đó vẫn mở cho máy c�
   40 ms/32 KiB, 256 KiB/s, che bí mật kể cả bị cắt giữa hai lần đọc, 4 phiên/máy, đóng sau 30 phút không hoạt động,
   `CloseAll` khi mất hub); gói `accounts.Pool.AcquireInteractive` (D10); kênh khai `terminal`, chỉ nhận `term_open` trên
   máy dùng chung. Test với `/bin/sh` (một phần của T010, T011).
-- [x] T103 Hub: module `terminal` (bảng `terminal_sessions`, `terminal_chunks`, RLS ép, migration `0063`), mở phiên (cờ
+- [x] T103 Hub: module `terminal` (bảng `terminal_sessions`, `terminal_chunks`, RLS ép, migration `0065`), mở phiên (cờ
   `HIVE_REMOTE_TERMINAL`, quyền, máy dùng chung, giới hạn số phiên, cuộc trò chuyện chứa đề xuất), chuyển gói worker, che
   bí mật trước khi lưu, đóng khi máy mất kết nối (một phần T013, T041).
 - [x] T104 Hub: `/ws/terminal` (vé một lần, Origin, vòng đệm, nối lại theo seq, người xem chỉ xem, giới hạn nhập) (phần
@@ -742,7 +786,7 @@ T040, T041, T027 ─ T091 (lượt hai sau T050, T051)
 | security | T091 | `attack_test.go`, `terminal-attack.db.test.ts` (file mới, không chung với làn khác) |
 | docs | T092 → T093 | `docs/**`, `specs/010-hive-cli-remote/*` |
 
-`go.mod`/`go.sum` bị T003, T012, T024 sửa (thêm thư viện): T003 thêm `go-pty`; T012 thêm `go-keyring`, `x/term`; T024
+`go.mod`/`go.sum` bị T003, T012, T024 sửa (thêm thư viện): T003 thêm `creack/pty` (thay `go-pty`, xem plan); T012 thêm `go-keyring`, `x/term`; T024
 thêm thư viện QR. Ba task ở ba đợt khác nhau; nếu chạy chồng thì người điều phối gộp `go.mod` lúc merge (xung đột chỉ ở
 khối `require`).
 

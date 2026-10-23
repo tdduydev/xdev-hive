@@ -13,6 +13,7 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/redact"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
 )
 
 // CheckCommand là một lệnh kiểm của quy tắc `command` (spec 009, FR-017): hub gửi trong spec.checks.commands, worker
@@ -101,6 +102,7 @@ const redacted = redact.Mask
 // redactSecrets che chuỗi giống bí mật và giá trị chính xác của env nhạy cảm của run (token chạy run không mang
 // dạng đặc trưng nào để regex bắt).
 func redactSecrets(s string, exact []string) string {
+	s, _ = secretmask.New(exact).String(s)
 	return redact.Text(s, exact)
 }
 
@@ -176,8 +178,8 @@ func (r Runner) runChecks(ctx context.Context, job Job, work string, log io.Writ
 	if len(checks) > maxChecks {
 		checks = checks[:maxChecks]
 	}
-	env := checkEnv(os.Environ(), job.Env)
-	exact := secretValues(job.Env)
+	env := mergeSecretEnv(checkEnv(os.Environ(), job.Env), job.grantedEnv)
+	exact := append(secretValues(job.Env), job.grantedValues...)
 	results := make([]CommandResult, 0, len(checks))
 	for i, c := range checks {
 		if strings.TrimSpace(c.Run) == "" {
@@ -220,7 +222,8 @@ func (r Runner) runCheck(ctx context.Context, job Job, work, name string, c Chec
 		cmd.Env = mergeEnv(nil, env)
 	}
 	tail := &tailBuffer{}
-	cmd.Stdout, cmd.Stderr = tail, tail
+	maskedTail := secretmask.New(exact).Writer(tail)
+	cmd.Stdout, cmd.Stderr = maskedTail, maskedTail
 	// Process con giữ pipe sau khi lệnh thoát không được làm kẹt worker.
 	cmd.WaitDelay = r.grace()
 	start := time.Now()
@@ -228,6 +231,20 @@ func (r Runner) runCheck(ctx context.Context, job Job, work, name string, c Chec
 	err := startProcess(cmd)
 	if err == nil {
 		err = waitProcess(cctx, cmd, r.grace)
+	}
+	_ = maskedTail.Flush()
+	if secure := job.secretSink; secure != nil {
+		var hits []int
+		for _, i := range maskedTail.Found() {
+			for j, value := range secure.grant.Values {
+				if exact[i] == value {
+					hits = append(hits, j)
+				}
+			}
+		}
+		secure.mu.Lock()
+		secure.mark(hits)
+		secure.mu.Unlock()
 	}
 	res.DurationMs = time.Since(start).Milliseconds()
 	timedOut := errors.Is(cctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil

@@ -370,6 +370,31 @@ service: content lives in PostgreSQL, so the database backup covers it. Set thes
   artifacts that nobody can see yet, an administrator can switch them off first in *Admin → MCP* (MCP-04) and turn them
   on after the web screens are deployed.
 
+## Word import
+
+The hub converts `.docx` and `.odt` files to Markdown with pandoc ([ADR 0029](adr/0029-pandoc-for-word-import.md)). The
+official `Dockerfile` installs pandoc 3.12 (pinned, SHA-256 checked) into the image, so a normal deploy needs nothing
+extra, but the image build must reach `github.com`. If the server cannot, download
+`pandoc-3.12-linux-<amd64|arm64>.tar.gz` from the pandoc release page into `deploy/vendor/` (ignored by Git) before
+building; the checksum is still verified. Alternatively set `HIVE_PANDOC_PATH` to an installed pandoc. A hub without a
+usable pandoc (missing, or older than 3.12) turns Word import off: `/api/v1/health` shows `wordImport: false` and the web
+app hides the button.
+
+The hub does not accept `.doc` (old binary format) and does not need LibreOffice: it rejects those files and reports
+`wordImportDoc: false`. Save them as `.docx` first.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HIVE_PANDOC_PATH` | `pandoc` | Path of the pandoc binary |
+| `HIVE_DOC_WORD_MAX_BYTES` | `52428800` (50 MiB) | Largest Word file; must not exceed the batch limit |
+| `HIVE_DOC_WORD_BATCH_FILES` | `100` | Files per import |
+| `HIVE_DOC_WORD_BATCH_BYTES` | `524288000` (500 MiB) | Bytes per import |
+| `HIVE_DOC_WORD_TIMEOUT_MS` | `120000` | Longest pandoc run per file |
+| `HIVE_DOC_WORD_STAGING_DAYS` | `30` | Days a proposal's staged files are kept |
+
+The defaults suit most servers. `deploy/compose.yaml` does not forward these variables yet, so to change one on a
+Compose deploy, also add it to the hub's `environment` there.
+
 ## CI/CD console and deploys from the hub (planned)
 
 Spec [020](../specs/020-cicd-console/spec.md) adds a console for Jenkins, GitLab CI, Argo CD and Kubernetes and a

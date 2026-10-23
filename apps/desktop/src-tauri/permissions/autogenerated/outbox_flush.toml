@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-outbox-flush"
+description = "Enables the outbox_flush command without any pre-configured scope."
+commands.allow = ["outbox_flush"]
+
+[[permission]]
+identifier = "deny-outbox-flush"
+description = "Denies the outbox_flush command without any pre-configured scope."
+commands.deny = ["outbox_flush"]

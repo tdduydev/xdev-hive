@@ -23,6 +23,7 @@ mod no_window;
 mod notices;
 mod optimize_all;
 mod optimizer;
+mod outbox;
 mod profiles;
 mod register;
 mod remote;
@@ -1195,6 +1196,10 @@ pub fn run() {
             optimize_all::optimize_all_apply,
             optimize_all::optimize_all_undo,
             optimize_all::optimize_all_last,
+            outbox::outbox_status,
+            outbox::outbox_submit,
+            outbox::outbox_flush,
+            outbox::outbox_drop,
             local_projects::local_projects,
             run_logs::read_run_log,
             local_projects::local_projects_import,
@@ -1299,6 +1304,7 @@ pub fn run() {
             git_groups::start_auto_fetch(app.handle().clone());
             remote::start(app.handle());
             token_score::start_daily(app.handle().clone());
+            outbox::start_flush(app.handle().clone());
             let tray = build_tray(app)?;
             app.manage(tray);
             notices::register_actions(app.handle(), false);

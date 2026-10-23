@@ -151,8 +151,8 @@ type WelcomeOwner struct {
 
 // WelcomePolicy chỉ dùng để tắt: TOTPFallback false thì worker từ chối TOTP dù chủ máy đã bật.
 type WelcomePolicy struct {
-	TOTPFallback    bool   `json:"totpFallback"`
 	SecretInjection string `json:"secretInjection,omitempty"`
+	TOTPFallback    bool   `json:"totpFallback"`
 }
 
 type UpgradeRequired struct {

@@ -25,7 +25,8 @@ type Hook struct {
 
 // JobPolicy là phần chính sách hub gửi kèm job_offer.
 type JobPolicy struct {
-	Hooks []Hook `json:"hooks"`
+	SecretInjection string `json:"secretInjection,omitempty"`
+	Hooks           []Hook `json:"hooks"`
 	// ManagedHooksOnly: CLI không nạp hook và cấu hình trong repo, chỉ chạy hook của tổ chức.
 	ManagedHooksOnly bool `json:"managedHooksOnly"`
 }
