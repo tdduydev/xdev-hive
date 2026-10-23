@@ -5,6 +5,7 @@ import {
   CpuIcon,
   DatabaseIcon,
   FileTextIcon,
+  FileUpIcon,
   FolderGitIcon,
   GlobeIcon,
   type LucideIcon,
@@ -70,6 +71,7 @@ export type ScreenId =
   | "setup"
   | "ssh"
   | "docs"
+  | "word-import"
   | "settings";
 
 export interface NavItem {
@@ -193,6 +195,15 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: FileTextIcon,
         needs: "docs.read",
         writes: "docs.write",
+      },
+      {
+        // Chọn file Word trên máy, hub chuyển thành Markdown (specs/019-word-import). Người xem đội không tạo hay đề
+        // xuất tài liệu nên không thấy mục này; hub kiểm lại quyền theo nhà tài liệu.
+        id: "word-import",
+        label: { vi: "Nhập Word", en: "Import Word" },
+        icon: FileUpIcon,
+        needs: "docs.propose",
+        hub: true,
       },
     ],
   },

@@ -461,6 +461,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/word/fixtures/**` (thêm `.doc`), `word/test-bin/**`
     - `Dockerfile`, `.github/workflows/ci.yml`
   - **Kiểm**: hub test (cần LibreOffice), typecheck, `docker build .`.
+  - **Ngoài phạm vi** (quyết định 2026-10-23: chạy LibreOffice trên hub là việc thực thi; nếu cần `.doc` thì đổi định dạng trên desktop hoặc worker trong spec khác). Không làm trong spec này; giữ task để ghi lại.
   - **Bàn giao**: dung lượng image tăng thêm (cho ADR 0029 ở T022).
 
 - [x] **T015 [P] [US3] [nặng] · 2 ngày — Cập nhật từ Word: hợp ba bên, xung đột nguồn Word**
@@ -559,7 +560,7 @@ description: "Task list: nhập Word thành tài liệu hub"
 
 ## Đợt 4: desktop, lịch sử nhập, tài liệu (song song, sau Đợt 3)
 
-- [ ] **T019 [P] [US7] [vừa] · 1,5 ngày — Desktop: màn "Nhập Word", ảnh trong màn soạn tài liệu**
+- [x] **T019 [P] [US7] [vừa] · 1,5 ngày — Desktop: màn "Nhập Word", ảnh trong màn soạn tài liệu**
   - **Phụ thuộc**: T017.
   - **Goal**: giai đoạn 2b. FR-029, FR-031 (dùng ở màn soạn), FR-032, US7, plan.md mục 11b.
     - `word-import-screen.tsx` trong nhóm Tài liệu của sidebar:
@@ -578,6 +579,13 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Kiểm**: desktop typecheck, test. Chạy app (`app:dev`) với thư mục mẫu 5 `.docx`, 1 `.doc`, 1 file có mật khẩu
     (US7 Independent Test): token không lộ ra giao diện, kết quả trùng lượt nhập qua web. Chờ các nhánh desktop đang mở
     merge nếu đụng `docs-screen.tsx`.
+  - **Đã làm (DOCS018B)**:
+    - Màn "Nhập Word" ở nhóm Dự án của sidebar (cần quyền `docs.propose`, cần đăng nhập hub). Ảnh trong màn soạn tài liệu
+      đã có từ 018 T024 (`resolveLink` qua `hub_fetch_bytes`, ra `data:` URL vì CSP của app chỉ cho `data:`).
+    - Màn chỉ tạo tài liệu mới (`mode = create`); lượt cập nhật hoặc gắn tài liệu có sẵn báo "xử lý trên web".
+      Ảnh xem trước hiện ở mục "Ảnh trong file" riêng, không nhúng vào Markdown (viewer chỉ tải ảnh `http(s)`).
+    - Giao diện không dò được hub có LibreOffice hay không: file `.doc` hub từ chối thì hiện câu lỗi của hợp đồng.
+    - Chưa làm: chạy `app:dev` với thư mục mẫu và hub thật (việc của người). Chưa kiểm phía Rust (máy không có cargo).
 
 - [x] **T020 [P] [US5] [vừa] · 0,5 ngày — Hub: lần nhập của tài liệu, danh sách lượt, tải file gốc**
   - **Phụ thuộc**: T009, T010.
