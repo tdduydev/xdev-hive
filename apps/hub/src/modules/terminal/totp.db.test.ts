@@ -398,7 +398,7 @@ describe("audit TOTP (SC-013)", () => {
 
 describe("welcome.policy", () => {
   it("máy cá nhân nhận chính sách khi nối; đổi chính sách thì máy được nối lại và nhận bản mới", async () => {
-    expect(worker.welcomed?.policy).toEqual({ totpFallback: true });
+    expect(worker.welcomed?.policy).toEqual({ totpFallback: true, secretInjection: "allow" });
     await setTotpFallback(false);
     const machines = await as("owner", (tx) => remotePolicyHook.machines(tx));
     expect(machines).toEqual([machineId]);
@@ -406,7 +406,7 @@ describe("welcome.policy", () => {
     expect(await worker.closed).toBe(1012);
 
     worker = await Worker.connect(machineToken, `mac-${tag}`);
-    expect(worker.welcomed?.policy).toEqual({ totpFallback: false });
+    expect(worker.welcomed?.policy).toEqual({ totpFallback: false, secretInjection: "allow" });
   });
 
   it("lưu qua route Chính sách: chỉ báo máy khi phần từ xa đổi, sau khi lưu xong", async () => {
@@ -426,6 +426,9 @@ describe("welcome.policy", () => {
     expect(refreshed).toEqual([]);
     await save({ ...DEFAULT_AGENT_POLICY, remote: { totpFallback: false } });
     expect(refreshed).toEqual([[machineId]]);
+    // Máy cá nhân nhận secretInjection trong cùng welcome.policy, nên đổi nó cũng phải cho máy nối lại.
+    await save({ ...DEFAULT_AGENT_POLICY, remote: { totpFallback: false }, secretInjection: "approve" });
+    expect(refreshed).toEqual([[machineId], [machineId]]);
   });
 
   it("đổi mục khác của chính sách thì không báo đổi phần từ xa", async () => {

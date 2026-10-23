@@ -184,5 +184,9 @@ export async function welcomeFor(
   const owner = { userId: online.registeredBy, shared: online.shared };
   if (online.shared || !online.capabilities.includes(TERMINAL_CAPABILITY)) return { owner };
   const policy = await withTenant(pool, { orgId: machine.orgId }, (tx) => loadPolicy(tx));
-  return { features: ["terminal"], owner, policy: { totpFallback: policy.remote.totpFallback } };
+  return {
+    features: ["terminal"],
+    owner,
+    policy: { totpFallback: policy.remote.totpFallback, secretInjection: policy.secretInjection },
+  };
 }

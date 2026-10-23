@@ -97449,6 +97449,11 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "secretsInjected": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 64
                                 }
                               },
                               "required": [
@@ -98896,6 +98901,11 @@
                                   "items": {
                                     "type": "string"
                                   }
+                                },
+                                "secretsInjected": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 64
                                 }
                               },
                               "required": [
@@ -100074,6 +100084,11 @@
                               "items": {
                                 "type": "string"
                               }
+                            },
+                            "secretsInjected": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 64
                             }
                           },
                           "required": [
@@ -101292,6 +101307,11 @@
                                 "items": {
                                   "type": "string"
                                 }
+                              },
+                              "secretsInjected": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 64
                               }
                             },
                             "required": [
@@ -102426,6 +102446,11 @@
                                 "items": {
                                   "type": "string"
                                 }
+                              },
+                              "secretsInjected": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 64
                               }
                             },
                             "required": [
@@ -103647,6 +103672,11 @@
                                     "items": {
                                       "type": "string"
                                     }
+                                  },
+                                  "secretsInjected": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 64
                                   }
                                 },
                                 "required": [
@@ -104824,6 +104854,11 @@
                               "items": {
                                 "type": "string"
                               }
+                            },
+                            "secretsInjected": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 64
                             }
                           },
                           "required": [
@@ -105955,6 +105990,11 @@
                               "items": {
                                 "type": "string"
                               }
+                            },
+                            "secretsInjected": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 64
                             }
                           },
                           "required": [
@@ -135439,6 +135479,15 @@
                         "totpFallback": true
                       }
                     },
+                    "secretInjection": {
+                      "enum": [
+                        "allow",
+                        "approve",
+                        "deny"
+                      ],
+                      "type": "string",
+                      "default": "allow"
+                    },
                     "git": {
                       "type": "object",
                       "properties": {
@@ -136353,10 +136402,15 @@
                     },
                     "required": [
                       "totpFallback"
+                    ]
+                  },
+                  "secretInjection": {
+                    "enum": [
+                      "allow",
+                      "approve",
+                      "deny"
                     ],
-                    "default": {
-                      "totpFallback": true
-                    }
+                    "type": "string"
                   },
                   "git": {
                     "type": "object",
@@ -136367,10 +136421,7 @@
                     },
                     "required": [
                       "requireRunGitToken"
-                    ],
-                    "default": {
-                      "requireRunGitToken": false
-                    }
+                    ]
                   }
                 },
                 "required": [
@@ -136844,6 +136895,15 @@
                       "default": {
                         "totpFallback": true
                       }
+                    },
+                    "secretInjection": {
+                      "enum": [
+                        "allow",
+                        "approve",
+                        "deny"
+                      ],
+                      "type": "string",
+                      "default": "allow"
                     },
                     "git": {
                       "type": "object",
