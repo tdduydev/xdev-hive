@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id, orgErrors, orgRoute } from "./common.ts";
+import { credentialRef, deliveryMethod } from "./delivery-worker.ts";
 import { teamRole } from "./tenancy.ts";
 
 // Bảng điều khiển CI/CD và triển khai (specs/020). Hub cài ở module `delivery`; mọi khoá riêng, token chỉ ghi, không
@@ -693,6 +694,23 @@ export type EnvironmentPolicy = z.output<typeof environmentPolicy>;
 
 export const environmentLock = z.object({ by: deliveryPerson.nullable(), at, reason: z.string() });
 
+/**
+ * Ai chạy lần triển khai của môi trường (specs/032). `worker`: máy trong mạng nội bộ bấm Jenkins hoặc sync Argo CD;
+ * `legacy`: hub tự gọi như trước, chỉ chạy khi hub bật HIVE_DELIVERY_OUTBOUND.
+ */
+export const ENVIRONMENT_RUNNER_MODES = ["worker", "legacy"] as const;
+export const environmentRunner = z.object({
+  mode: z.enum(ENVIRONMENT_RUNNER_MODES),
+  /** Máy chạy deploy theo thứ tự ưu tiên; rỗng là máy nào của đội đủ điều kiện (FR-013). */
+  machines: z
+    .array(id)
+    .max(20)
+    .refine((list) => new Set(list).size === list.length, "Danh sách máy bị trùng."),
+  /** Chỉ máy có nhãn `deploy-runner` (FR-012). */
+  requireLabel: z.boolean(),
+});
+export type EnvironmentRunner = z.output<typeof environmentRunner>;
+
 export const deployEnvironment = z.object({
   id,
   systemId: id,
@@ -701,10 +719,26 @@ export const deployEnvironment = z.object({
   position: z.number().int(),
   policy: environmentPolicy,
   lock: environmentLock.nullable(),
+  runner: environmentRunner,
   createdAt: at,
   updatedAt: at,
 });
 export type DeployEnvironment = z.output<typeof deployEnvironment>;
+
+/** Máy có thể chạy deploy của môi trường: máy trực tuyến của đội và máy đã chọn (kể cả đang tắt). */
+export const runnerCandidate = z.object({
+  machineId: id,
+  name: z.string(),
+  online: z.boolean(),
+  /** Có nhãn `deploy-runner`; chỉ biết với máy đang trực tuyến. */
+  labeled: z.boolean(),
+  /** Khả năng máy báo gần nhất; rỗng khi máy chưa báo (worker cũ hoặc Linux không có kho bí mật). */
+  methods: z.array(deliveryMethod),
+  /** Tên credential trong kho của máy, không có giá trị. */
+  credentials: z.array(z.string()),
+  reportedAt: at.nullable(),
+});
+export type RunnerCandidate = z.output<typeof runnerCandidate>;
 
 export const environmentsContract = {
   list: route("GET", "/v1/systems/{systemId}/environments", "Môi trường của hệ thống theo thứ tự (ci.view)")
@@ -735,6 +769,16 @@ export const environmentsContract = {
   unlock: route("POST", "/v1/environments/{id}/unlock", "Mở khoá môi trường (servers.manage)")
     .input(z.object({ id }))
     .output(deployEnvironment),
+  setRunner: route("PATCH", "/v1/environments/{id}/runner", "Chọn máy chạy deploy của môi trường (servers.manage)")
+    .input(z.object({ id, runner: environmentRunner }))
+    .output(deployEnvironment),
+  runnerCandidates: route(
+    "GET",
+    "/v1/environments/{id}/runner-candidates",
+    "Máy có thể chạy deploy của môi trường (ci.view)",
+  )
+    .input(z.object({ id }))
+    .output(z.array(runnerCandidate)),
 };
 
 // ---- Đích triển khai (FR-013, FR-014) ------------------------------------------------------------------------------
@@ -838,6 +882,8 @@ function targetConfigSchema<V extends z.ZodType<{ name: string }>>(variable: V) 
         .object({ jobPath: jenkinsJobPath, params: z.array(jenkinsTargetParam).max(50).default([]) })
         .nullable()
         .default(null),
+      /** Tên credential trong kho của máy chạy deploy (specs/032 FR-061); hub không giữ giá trị. */
+      credential: credentialRef.nullable().default(null),
       health: healthCheck.nullable().default(null),
     }),
     z.object({
@@ -860,6 +906,7 @@ function targetConfigSchema<V extends z.ZodType<{ name: string }>>(variable: V) 
       syncToRevision: z.boolean().default(false),
       branch: branchName,
       timeoutSec: timeoutSec(600),
+      credential: credentialRef.nullable().default(null),
       health: healthCheck.nullable().default(null),
     }),
     z.object({
@@ -1022,6 +1069,15 @@ export const deploy = z.object({
   health: z.object({ ok: z.boolean(), at, status: z.number().int().nullable(), message: z.string() }).nullable(),
   approval: z
     .object({ required: z.number().int(), expiresAt: at, decisions: z.array(deployApprovalDecision) })
+    .nullable(),
+  /** Ai chạy lần này (specs/032); null với lần "ngoài Hive". Log đầy đủ nằm trên máy đã chạy, không ở hub. */
+  runner: z
+    .object({
+      mode: z.enum(ENVIRONMENT_RUNNER_MODES),
+      machine: z.object({ id, name: z.string() }).nullable(),
+      /** Việc đang chờ máy nhận: lý do để người bấm biết phải làm gì. */
+      waiting: z.string().nullable(),
+    })
     .nullable(),
   createdAt: at,
   startedAt: at.nullable(),

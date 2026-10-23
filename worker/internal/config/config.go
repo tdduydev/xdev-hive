@@ -21,6 +21,11 @@ type Config struct {
 	KeyStorage string `json:"keyStorage,omitempty"`
 	// TeamID chỉ để hiển thị; hub xác định đội từ token.
 	TeamID string `json:"teamId,omitempty"`
+	// OrgID và OrgName là tổ chức hub trả lúc đăng ký (spec 034), để sổ đăng ký nhận ra lần đăng ký trùng tổ chức.
+	OrgID   string `json:"orgId,omitempty"`
+	OrgName string `json:"orgName,omitempty"`
+	// KeyScope tách khoá máy trong keychain theo đăng ký; rỗng ở máy cài trước spec 034.
+	KeyScope string `json:"keyScope,omitempty"`
 	// Path là file đã đọc, để tìm khoá máy nằm cạnh nó; không ghi ra file.
 	Path string `json:"-"`
 }

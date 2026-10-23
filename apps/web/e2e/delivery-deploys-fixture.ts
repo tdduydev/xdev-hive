@@ -85,6 +85,7 @@ function makeDeploy(
     external: null,
     health: null,
     approval: null,
+    runner: null,
     createdAt: at(30),
     startedAt: at(29),
     finishedAt: null,
@@ -150,6 +151,7 @@ const env = (id: string, name: string, position: number, locked: boolean): Deplo
   position,
   policy: { deployRoles: [], approveRoles: [], approvals: 0, approvalTtlHours: 24 },
   lock: locked ? { by: duy, at: at(120), reason: "Đóng băng phát hành tuần lễ" } : null,
+  runner: { mode: "legacy", machines: [], requireLabel: false },
   createdAt: at(2000),
   updatedAt: at(2000),
 });

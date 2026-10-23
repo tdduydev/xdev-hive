@@ -25,6 +25,7 @@ type RegisterRequest struct {
 type Registration struct {
 	ID           string
 	OrgID        string
+	OrgName      string
 	TeamID       string
 	MachineID    string
 	MachineToken string
@@ -48,6 +49,7 @@ func (c *HealthClient) Register(ctx context.Context, req RegisterRequest) (Regis
 	var r struct {
 		ID           string `json:"id"`
 		OrgID        string `json:"orgId"`
+		OrgName      string `json:"orgName"`
 		TeamID       string `json:"teamId"`
 		MachineID    string `json:"machineId"`
 		MachineToken string `json:"machineToken"`
@@ -59,7 +61,7 @@ func (c *HealthClient) Register(ctx context.Context, req RegisterRequest) (Regis
 		}
 		return Registration{}, err
 	}
-	return Registration{ID: r.ID, OrgID: r.OrgID, TeamID: r.TeamID, MachineID: r.MachineID, MachineToken: r.MachineToken}, nil
+	return Registration{ID: r.ID, OrgID: r.OrgID, OrgName: r.OrgName, TeamID: r.TeamID, MachineID: r.MachineID, MachineToken: r.MachineToken}, nil
 }
 
 func nonNil(s []string) []string {

@@ -128,6 +128,10 @@ const ServersPage = lazyRouteComponent(() => import("@/pages/settings/servers-pa
 const EnvironmentsPage = lazyRouteComponent(() => import("@/pages/settings/environments-page.tsx"), "EnvironmentsPage");
 const DeployBoardPage = lazyRouteComponent(() => import("@/pages/deploys/board-page.tsx"), "DeployBoardPage");
 const DeployPage = lazyRouteComponent(() => import("@/pages/deploys/deploy-page.tsx"), "DeployPage");
+const DeployApprovalsPage = lazyRouteComponent(
+  () => import("@/pages/deploys/approvals-page.tsx"),
+  "DeployApprovalsPage",
+);
 const SdlcModesPage = lazyRouteComponent(() => import("@/pages/admin/sdlc-modes-page.tsx"), "SdlcModesPage");
 const SdlcFleetPage = lazyRouteComponent(() => import("@/pages/sdlc/fleet-page.tsx"), "SdlcFleetPage");
 const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
@@ -475,6 +479,7 @@ const deliveryRoutes = [
     component: EnvironmentsPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/deploys/$id", component: DeployPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/deploy-approvals", component: DeployApprovalsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/servers", component: ServersPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/ci-connections", component: CiConnectionsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/settings/jenkins-tokens", component: JenkinsTokensPage }),

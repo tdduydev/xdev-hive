@@ -34,6 +34,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/machinekey"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
+	"github.com/tdduydev/xdev-hive/worker/internal/registry"
 	"github.com/tdduydev/xdev-hive/worker/internal/repolock"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/service"
@@ -47,6 +48,9 @@ func main() {
 	// tự do nên phải xét trước khi đọc lệnh.
 	if os.Getenv(gitgroups.AskpassEnv) == "1" {
 		os.Exit(gitgroups.Askpass(os.Args[1:], os.Stdout))
+	}
+	if args, ok := takeRegistrationFlag(os.Args[1:]); ok {
+		os.Args = append(os.Args[:1], args...)
 	}
 	if len(os.Args) < 2 {
 		usage()
@@ -100,6 +104,8 @@ func main() {
 		os.Exit(serviceCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "update":
 		os.Exit(updateCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "registrations":
+		os.Exit(registrationsCommand(os.Args[2:], os.Stdout, os.Stderr))
 	default:
 		usage()
 		os.Exit(2)
@@ -107,7 +113,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | secrets [status | list | set | rename | describe | assign | unassign | delete] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | outbox [status | submit | flush | drop] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker [--registration ID] <version | registrations [list | add | use | set | remove] [--json] |check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | secrets [status | list | set | rename | describe | assign | unassign | delete] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | outbox [status | submit | flush | drop] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -269,27 +275,60 @@ func register(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	sel, scope := registerTarget(*configPath, path)
+	cfg, err := enroll(enrollment{path: path, scope: scope, hub: *hub, token: *token, machine: *machine, capacity: *capacity}, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if err := config.Save(path, cfg); err != nil {
+		// Hub chỉ trả token một lần; không lưu được thì người dùng phải xin mã mới, nên báo rõ.
+		fmt.Fprintf(stderr, "Đã đăng ký nhưng không lưu được token: %v\nXin admin đội tạo mã mới rồi chạy lại.\n", err)
+		return 1
+	}
+	if sel != "" {
+		recordOrg(sel, cfg, stderr)
+	}
+	if *asJSON {
+		_ = json.NewEncoder(stdout).Encode(configView{Registered: true, HubURL: *hub, MachineID: cfg.MachineID, TeamID: cfg.TeamID, OrgName: cfg.OrgName, ConfigPath: path})
+		return 0
+	}
+	fmt.Fprintf(stdout, "Đã đăng ký máy %s%s. Cấu hình lưu ở %s.\nChạy `hive-worker run` để nhận việc.\n", cfg.MachineID, orgSuffix(cfg.OrgName), path)
+	return 0
+}
+
+// enrollment là một lần đổi mã đăng ký lấy danh tính máy: `register` ghi vào đăng ký đang chọn, `registrations add`
+// ghi vào đăng ký mới.
+type enrollment struct {
+	path, scope         string
+	hub, token, machine string
+	capacity            int
+}
+
+// enroll gọi hub đăng ký và trả cấu hình cần lưu; ngoài khoá máy thì chưa ghi gì ra đĩa.
+func enroll(e enrollment, stderr io.Writer) (config.Config, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	client := hubclient.New(*hub)
+	client := hubclient.New(e.hub)
 	clis, dropped := client.SupportedCLIs(ctx, detectCLIs())
 	if len(dropped) > 0 {
 		fmt.Fprintf(stderr, "Hub chưa nhận CLI %s; cập nhật hub để giao run cho chúng.\n", strings.Join(dropped, ", "))
 	}
 	req := hubclient.RegisterRequest{
-		RegistrationToken: *token,
-		MachineID:         *machine,
+		RegistrationToken: e.token,
+		MachineID:         e.machine,
 		OS:                runtime.GOOS,
 		Version:           version.Version,
 		CLIs:              clis,
-		Capacity:          *capacity,
+		Capacity:          e.capacity,
 	}
 	// Đăng ký lại cùng hub và tên máy thì dùng lại khoá cũ: tạo khoá mới trước khi hub nhận mã thì mã sai hay hết hạn
 	// cũng làm mất khoá của máy đang chạy.
-	store := newKeyStore(path)
-	key, keyErr := store.Load(*hub, *machine)
+	store := newKeyStore(e.path)
+	store.Scope = e.scope
+	key, keyErr := store.Load(e.hub, e.machine)
 	if errors.Is(keyErr, machinekey.ErrNoKey) {
-		key, keyErr = store.Create(*hub, *machine)
+		key, keyErr = store.Create(e.hub, e.machine)
 	}
 	if keyErr != nil {
 		fmt.Fprintf(stderr, "Không tạo được khoá máy (%v); máy dùng machine token dài hạn.\n", keyErr)
@@ -298,25 +337,24 @@ func register(args []string, stdout, stderr io.Writer) int {
 	}
 	reg, err := client.Register(ctx, req)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
+		return config.Config{}, err
 	}
-	cfg := config.Config{HubURL: *hub, MachineID: reg.MachineID, ID: reg.ID, MachineToken: reg.MachineToken, TeamID: reg.TeamID}
-	if key != nil && keyWorks(ctx, client, *hub, reg.ID, key) {
+	cfg := config.Config{
+		HubURL: e.hub, MachineID: reg.MachineID, ID: reg.ID, MachineToken: reg.MachineToken, TeamID: reg.TeamID,
+		OrgID: reg.OrgID, OrgName: reg.OrgName, KeyScope: e.scope,
+	}
+	if key != nil && keyWorks(ctx, client, e.hub, reg.ID, key) {
 		// Hub nhận khoá thì machine token đã bị vô hiệu; không giữ nó trên đĩa.
 		cfg.KeyStorage, cfg.MachineToken = key.Storage, ""
 	}
-	if err := config.Save(path, cfg); err != nil {
-		// Hub chỉ trả token một lần; không lưu được thì người dùng phải xin mã mới, nên báo rõ.
-		fmt.Fprintf(stderr, "Đã đăng ký nhưng không lưu được token: %v\nXin admin đội tạo mã mới rồi chạy lại.\n", err)
-		return 1
+	return cfg, nil
+}
+
+func orgSuffix(name string) string {
+	if name == "" {
+		return ""
 	}
-	if *asJSON {
-		_ = json.NewEncoder(stdout).Encode(configView{Registered: true, HubURL: *hub, MachineID: reg.MachineID, TeamID: reg.TeamID, ConfigPath: path})
-		return 0
-	}
-	fmt.Fprintf(stdout, "Đã đăng ký máy %s. Cấu hình lưu ở %s.\nChạy `hive-worker run` để nhận việc.\n", reg.MachineID, path)
-	return 0
+	return " cho tổ chức " + name
 }
 
 // configView là cấu hình in ra cho người hay app đọc. Không bao giờ có machine token.
@@ -325,6 +363,7 @@ type configView struct {
 	HubURL     string `json:"hubUrl,omitempty"`
 	MachineID  string `json:"machineId,omitempty"`
 	TeamID     string `json:"teamId,omitempty"`
+	OrgName    string `json:"orgName,omitempty"`
 	ConfigPath string `json:"configPath"`
 }
 
@@ -349,7 +388,7 @@ func showConfig(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	default:
-		view = configView{Registered: true, HubURL: cfg.HubURL, MachineID: cfg.MachineID, TeamID: cfg.TeamID, ConfigPath: path}
+		view = configView{Registered: true, HubURL: cfg.HubURL, MachineID: cfg.MachineID, TeamID: cfg.TeamID, OrgName: cfg.OrgName, ConfigPath: path}
 	}
 	if *asJSON {
 		_ = json.NewEncoder(stdout).Encode(view)
@@ -363,11 +402,14 @@ func showConfig(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// pathOr là worker.json lệnh này dùng: cờ --config, rồi HIVE_WORKER_CONFIG, rồi worker.json của đăng ký đang chọn
+// (spec 034). Máy chưa có sổ đăng ký ra đúng đường dẫn cũ.
 func pathOr(p string) (string, error) {
 	if p != "" {
 		return p, nil
 	}
-	return config.DefaultPath()
+	path, _, err := registry.Paths("")
+	return path, err
 }
 
 func run(args []string) int {
@@ -390,6 +432,10 @@ func run(args []string) int {
 		return code
 	}
 	defer lock.Close()
+	if err := pinRegistration(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	path, err := pathOr(*configPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -439,8 +485,7 @@ func run(args []string) int {
 	pool := accounts.NewPool(accounts.DefaultPath(path))
 	go pool.Watch(ctx)
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
-	// newWorkerStatus còn nhận thư mục cache gốc, hai cấp trên DataDir.
-	status := newWorkerStatus(cfg, *owner, filepath.Dir(filepath.Dir(dataDir)))
+	status := newWorkerStatus(cfg, *owner, dataDir)
 	terminal.SetLocalSecretsConfig(path)
 	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status, ob)
 	defer stopLocal()
@@ -511,6 +556,10 @@ func host(args []string) int {
 	}
 	defer lock.Close()
 	if err := checkHostRuntime(*allowRunc); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := pinRegistration(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

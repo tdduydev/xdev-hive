@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-23
 
-**Status**: Draft. Có 3 câu hỏi mở cần chủ dự án (mục "Câu hỏi mở"), mỗi câu có khuyến nghị. Spec đã chọn mặc định theo khuyến nghị.
+**Status**: Draft, phạm vi rút gọn ngày 2026-10-23 (mục "Phạm vi rút gọn"). Có 3 câu hỏi mở cần chủ dự án (mục "Câu hỏi mở"), mỗi câu có khuyến nghị. Spec đã chọn mặc định theo khuyến nghị.
 
 **Input**: "Chạy CI/CD và triển khai trên worker trong mạng nội bộ, hub chỉ giữ cấu hình và lịch sử".
 
@@ -26,6 +26,29 @@ của delivery chưa theo mô hình này.
 Spec này chuyển mọi đường chạy của delivery sang worker. Hub giữ cấu hình (không có secret), hàng đợi, duyệt, trạng thái
 và lịch sử. Thông tin đăng nhập (SSH key, token Jenkins, Argo CD, Kubernetes) nằm trong kho bí mật của hệ điều hành trên
 máy worker, dùng lại kho của spec 031.
+
+## Phạm vi rút gọn (2026-10-23)
+
+Chủ dự án thu hẹp spec này. Phần còn lại:
+
+- **Worker**: chỉ bấm job Jenkins hoặc sync application Argo CD, rồi theo dõi trạng thái tới khi xong.
+- **Hub**: cấu hình đích theo dự án và môi trường (job Jenkins hoặc application Argo CD, kèm **tên** credential trên máy
+  chạy); cổng duyệt trước khi giao việc cho worker; lưu kết quả (trạng thái, thời điểm, link, người duyệt).
+- **Web**: cấu hình đích và máy chạy ở trang Môi trường, trang "Duyệt triển khai", lịch sử triển khai có cột "Máy chạy".
+- Đường cũ (hub tự gọi) giữ sau `HIVE_DELIVERY_OUTBOUND`, chọn theo môi trường (`runner=legacy`).
+
+Các mục dưới đây vẫn giữ trong spec để làm sau, nhưng không làm ở lượt này:
+
+- `ssh-script` chạy từ worker (US2, FR-030, SC-006): ngoài phạm vi.
+- `kubectl` và mọi lời gọi thẳng API Kubernetes (US4 phần Kubernetes, FR-033): ngoài phạm vi.
+- Health check ở worker (FR-036, bước `health`): ngoài phạm vi.
+- GitLab (`gitlab-manual`, bước CI GitLab trong US3): ngoài phạm vi.
+- Bước CI Jenkins từ tab CI/CD (US3 phần "Chạy lại", hỏi build theo lịch): ngoài phạm vi.
+- Chuyển Proceed/Abort của Jenkins input cho máy đã chạy: ngoài phạm vi.
+- Sinh khoá SSH ở worker (US7 kịch bản 4, FR-064): ngoài phạm vi.
+- Trang "Chuyển sang worker" và xoá giá trị đã mã hoá ở hub (US8): ngoài phạm vi; đổi `runner` từng môi trường thay thế.
+- Bảng deploy (dự án × môi trường): ngoài phạm vi.
+- Chạy đủ 5 cách trên ba hệ điều hành (FR-100, SC-010): ngoài phạm vi, chỉ còn Jenkins và Argo CD.
 
 ## Câu hỏi mở
 
@@ -97,7 +120,7 @@ sử ghi đúng tên máy.
 
 ---
 
-### User Story 2 - `ssh-script` chạy từ worker (Priority: P1)
+### User Story 2 - `ssh-script` chạy từ worker (Priority: P1) — ngoài phạm vi
 
 Dev bấm triển khai commit `abc123` lên `staging` bằng `ssh-script`. Worker trên `runner-hn-01` mở SSH tới
 `web01.internal`, kiểm dấu vân tay, đẩy script, chạy tách khỏi phiên SSH, đọc log, chạy health, rồi báo hub từng bước.
@@ -242,7 +265,7 @@ Jenkins, Argo CD, Kubernetes nào.
 
 ---
 
-### User Story 8 - Chuyển từ đường hub chạy sang worker (Priority: P2)
+### User Story 8 - Chuyển từ đường hub chạy sang worker (Priority: P2) — ngoài phạm vi, thay bằng `runner` từng môi trường
 
 Tổ chức đang có cấu hình CI/CD cũ ở hub với token mã hoá trên hub. Admin mở trang "Chuyển sang worker": thấy từng kết nối
 và máy chủ ở trạng thái "Chưa chuyển", "Thiếu credential trên máy X", "Đã chuyển". Bấm chuyển một môi trường: hub bắt đầu

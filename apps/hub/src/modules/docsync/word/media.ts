@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { createPostgresBlobStore, ForbiddenError, NotFoundError, withTenant } from "../../platform/index.ts";
-import { ORG_HEADER, requireOrgRole } from "../../tenancy/index.ts";
+import { ORG_HEADER, requireOrgRole, tokenOrgMismatch } from "../../tenancy/index.ts";
 import { loadVisible } from "../routes/word-imports.ts";
 import { docWordImportFiles } from "../schema.ts";
 import { canReviewStaged } from "./staging.ts";
@@ -41,6 +41,7 @@ export async function handleWordMedia(
   if (!deps.pool) return reply(500, "Hub chưa cấu hình HIVE_DATABASE_URL.", "INTERNAL_SERVER_ERROR");
   const orgId = request.headers.get(ORG_HEADER) ?? new URL(request.url).searchParams.get("org");
   if (!orgId || !UUID.test(orgId)) return reply(400, `Chưa chọn tổ chức (header ${ORG_HEADER}).`, "BAD_REQUEST");
+  if (tokenOrgMismatch(session, orgId)) return reply(401, "Chưa đăng nhập.", "UNAUTHORIZED");
   if (!UUID.test(params.importId) || !UUID.test(params.fileId)) return notFound();
   const ctx = { userId: session.user.id, orgId };
   const blobStore = deps.blobStore ?? createPostgresBlobStore();

@@ -6,6 +6,7 @@ import { registerWebhookRefresh } from "./ci/webhook-refresh.ts";
 import { registerExternalDeploys } from "./deploys/external.ts";
 import { registerOrchestrator } from "./deploys/orchestrator.ts";
 import type { DeliveryDeps } from "./deps.ts";
+import { registerDispatch } from "./dispatch.ts";
 import { registerRetention } from "./retention.ts";
 
 // Tên queue nằm ở queues.ts để phần nghiệp vụ xếp job được mà không vòng lại qua phần đăng ký worker.
@@ -17,6 +18,7 @@ export async function registerDelivery(jobs: Jobs, deps: DeliveryDeps): Promise<
   await registerWebhookRefresh(jobs, deps);
   await registerOrchestrator(jobs, deps);
   await registerExternalDeploys(jobs, deps);
+  await registerDispatch(jobs, deps);
   await registerApprovals(jobs, deps);
   await registerRetention(jobs, deps);
 }

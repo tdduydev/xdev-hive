@@ -5,7 +5,7 @@ import { streamSSE } from "hono/streaming";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
 import { ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
-import { ORG_HEADER } from "../tenancy/index.ts";
+import { ORG_HEADER, tokenOrgMismatch } from "../tenancy/index.ts";
 import { runForUser } from "./engine.ts";
 import { eventsAfter, logsAfter } from "./queries.ts";
 import { runs } from "./schema.ts";
@@ -115,6 +115,7 @@ export function runStreamHandler(deps: RunStreamDeps) {
     if (!pool || !notifier) return c.json({ message: "Hub chưa cấu hình HIVE_DATABASE_URL." }, 500);
     const orgId = c.req.header(ORG_HEADER) ?? c.req.query("org");
     if (!orgId || !UUID.test(orgId)) return c.json({ message: `Chưa chọn tổ chức (header ${ORG_HEADER}).` }, 400);
+    if (tokenOrgMismatch(session, orgId)) return c.json({ message: "Chưa đăng nhập." }, 401);
     const runId = c.req.param("id") ?? "";
     if (!UUID.test(runId)) return c.json({ message: "Không tìm thấy run trong tổ chức." }, 404);
     const userId = session.user.id;

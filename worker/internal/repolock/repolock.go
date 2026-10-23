@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/registry"
 )
 
 // Các run cùng repo dùng chung một repo cache bare. Hai lệnh git ghi vào cache cùng lúc (fetch cùng ref, worktree add
@@ -24,14 +26,12 @@ var (
 // FilePollInterval là nhịp thử lại khoá file; khoá file không chờ theo context được nên thử không chặn rồi ngủ.
 const FilePollInterval = 50 * time.Millisecond
 
-// DataDir là thư mục dữ liệu của worker. Service, worker chạy tay và lệnh `hive-worker branches` của app desktop phải
-// ra cùng một thư mục thì mới khoá cùng một file và nhận ra worktree của run.
+// DataDir là thư mục dữ liệu của đăng ký đang chọn (spec 034): mỗi tổ chức một repo cache và worktree riêng. Service,
+// worker chạy tay và lệnh `hive-worker branches` của app desktop chọn cùng một đăng ký thì ra cùng một thư mục, mới khoá
+// cùng một file và nhận ra worktree của run.
 func DataDir() (string, error) {
-	d, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(d, "xdev-hive", "worker"), nil
+	_, dir, err := registry.Paths("")
+	return dir, err
 }
 
 // LockRepo khoá repo cache trong tiến trình và giữa các tiến trình worker dùng chung DataDir (service và chạy tay

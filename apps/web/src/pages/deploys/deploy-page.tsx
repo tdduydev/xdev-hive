@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { Deploy, DeployStep } from "@xdev-hive/contracts";
-import { Alert } from "@xdev-hive/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Pill } from "@xdev-hive/ui/pill";
@@ -59,6 +59,16 @@ const text: Dict<{
   ended: string;
   noLog: string;
   stateLabel: string;
+  runner: string;
+  runnerLegacy: string;
+  runnerNone: string;
+  waitingTitle: string;
+  log: string;
+  logOnMachine: (name: string) => string;
+  logNoMachine: string;
+  approvers: string;
+  approved: string;
+  rejected: string;
 }> = {
   vi: {
     title: "Lần triển khai",
@@ -90,6 +100,16 @@ const text: Dict<{
     ended: "Lần triển khai đã xong",
     noLog: "Lần triển khai không có log.",
     stateLabel: "Trạng thái",
+    runner: "Máy chạy",
+    runnerLegacy: "Hub (cách cũ)",
+    runnerNone: "Chưa có máy nhận",
+    waitingTitle: "Đang chờ máy chạy",
+    log: "Log",
+    logOnMachine: (name) => `Log đầy đủ nằm trên máy ${name}. Hub chỉ giữ trạng thái và các bước.`,
+    logNoMachine: "Lần này chưa được giao cho máy nào nên chưa có log.",
+    approvers: "Người duyệt",
+    approved: "duyệt",
+    rejected: "từ chối",
   },
   en: {
     title: "Deployment",
@@ -121,6 +141,16 @@ const text: Dict<{
     ended: "Deployment finished",
     noLog: "This deployment has no log.",
     stateLabel: "State",
+    runner: "Runner",
+    runnerLegacy: "Hub (legacy)",
+    runnerNone: "No machine yet",
+    waitingTitle: "Waiting for a runner",
+    log: "Log",
+    logOnMachine: (name) => `The full log stays on ${name}. The hub keeps only the state and steps.`,
+    logNoMachine: "No machine has taken this deployment yet, so there is no log.",
+    approvers: "Approvers",
+    approved: "approved",
+    rejected: "rejected",
   },
 };
 
@@ -200,14 +230,29 @@ export function DeployPage() {
       <PageBody>
         <div className="grid items-start gap-5 app:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
           <div className="grid min-w-0 gap-5">
+            {d.runner?.waiting && isDeployActive(state) && (
+              <Alert>
+                <AlertTitle>{t.waitingTitle}</AlertTitle>
+                <AlertDescription>{d.runner.waiting}</AlertDescription>
+              </Alert>
+            )}
             <StepsCard steps={steps} />
-            <LogCard
-              log={stream.log}
-              status={stream.status}
-              onRetry={stream.retry}
-              endedText={t.ended}
-              emptyEndedText={t.noLog}
-            />
+            {d.runner?.mode === "worker" ? (
+              // Việc chạy trên máy của đội: hub không nhận log (specs/032 FR-050), chỉ chỉ chỗ xem.
+              <SectionCard title={t.log}>
+                <p className="text-sm text-muted-foreground">
+                  {d.runner.machine ? t.logOnMachine(d.runner.machine.name) : t.logNoMachine}
+                </p>
+              </SectionCard>
+            ) : (
+              <LogCard
+                log={stream.log}
+                status={stream.status}
+                onRetry={stream.retry}
+                endedText={t.ended}
+                emptyEndedText={t.noLog}
+              />
+            )}
           </div>
           <aside aria-label={t.details} className="grid min-w-0 gap-4">
             <DetailsCard deploy={d} state={state} projectName={projectName} envName={envName} now={now} />
@@ -294,6 +339,12 @@ function DetailsCard({
     { term: t.by, detail: deployActor(deploy) },
     { term: t.version, detail: <VersionLines version={deploy.version} /> },
   ];
+  if (deploy.runner) {
+    items.push({
+      term: t.runner,
+      detail: deploy.runner.mode === "legacy" ? t.runnerLegacy : (deploy.runner.machine?.name ?? t.runnerNone),
+    });
+  }
   if (deploy.health) items.push({ term: t.health, detail: <HealthPill health={deploy.health} /> });
   if (deploy.skipBackup) items.push({ term: t.skipBackup, detail: deploy.skipBackup.reason });
   if (deploy.external) {
@@ -316,6 +367,21 @@ function DetailsCard({
         deploy.approval.required,
       ),
     });
+    if (deploy.approval.decisions.length > 0) {
+      items.push({
+        term: t.approvers,
+        detail: (
+          <ul className="grid gap-0.5">
+            {deploy.approval.decisions.map((x) => (
+              <li key={`${x.by.userId}-${x.at}`}>
+                {x.by.name} {x.decision === "approve" ? t.approved : t.rejected}
+                {x.reason ? `: ${x.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        ),
+      });
+    }
   }
   items.push({ term: t.created, detail: formatDayTime(deploy.createdAt) });
   if (deploy.startedAt) items.push({ term: t.started, detail: formatDayTime(deploy.startedAt) });

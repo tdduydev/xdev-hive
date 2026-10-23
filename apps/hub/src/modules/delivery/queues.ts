@@ -6,7 +6,10 @@ export const DELIVERY_CI_POLL_QUEUE = "delivery-ci-poll";
 export const DELIVERY_DEPLOY_QUEUE = "delivery-deploy";
 /** Theo dõi lần đang chạy, tự xếp lại bằng `startAfter` (plan.md mục 5). */
 export const DELIVERY_DEPLOY_WATCH_QUEUE = "delivery-deploy-watch";
+/** Hết hạn chờ duyệt của một lần; `singletonKey` là id lần triển khai, hẹn bằng `startAfter`. */
 export const DELIVERY_APPROVAL_EXPIRE_QUEUE = "delivery-approval-expire";
+/** Theo dõi việc giao cho máy chạy (specs/032): chọn lại máy khi chờ, `lost` khi hết lease; `singletonKey` là id việc. */
+export const DELIVERY_JOB_CHECK_QUEUE = "delivery-job-check";
 export const DELIVERY_LOG_RETENTION_QUEUE = "delivery-log-retention";
 /** Đăng ký lại webhook GitLab có thêm pipeline/job events cho dự án có sẵn. */
 export const DELIVERY_WEBHOOK_REFRESH_QUEUE = "delivery-webhook-refresh";
@@ -22,6 +25,7 @@ export const deliveryQueues: JobQueue[] = [
   { name: DELIVERY_DEPLOY_QUEUE, policy: "stately" },
   { name: DELIVERY_DEPLOY_WATCH_QUEUE, policy: "stately", heartbeatSeconds: DEPLOY_WATCH_HEARTBEAT_SECONDS },
   { name: DELIVERY_APPROVAL_EXPIRE_QUEUE, policy: "singleton" },
+  { name: DELIVERY_JOB_CHECK_QUEUE, policy: "stately" },
   { name: DELIVERY_LOG_RETENTION_QUEUE, policy: "singleton" },
   { name: DELIVERY_WEBHOOK_REFRESH_QUEUE, policy: "singleton" },
 ];

@@ -97,6 +97,47 @@ func TestKeychainFirst(t *testing.T) {
 	}
 }
 
+// Hai tổ chức trên cùng hub, cùng tên máy: tạo khoá cho đăng ký sau không được thay khoá của đăng ký trước (spec 034).
+func TestScopeSeparatesRegistrations(t *testing.T) {
+	kr := &fakeKeyring{}
+	legacy := &Store{Keyring: kr}
+	orgA := &Store{Keyring: kr, Scope: "reg_aaaaaaaa"}
+	orgB := &Store{Keyring: kr, Scope: "reg_bbbbbbbb"}
+	old, err := legacy.Create(hub, machine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := orgA.Create(hub, machine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := orgB.Load(hub, machine); !errors.Is(err, ErrNoKey) {
+		t.Fatalf("đăng ký B chưa có khoá: %v", err)
+	}
+	b, err := orgB.Create(hub, machine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		s    *Store
+		want string
+	}{{legacy, old.PublicKey()}, {orgA, a.PublicKey()}, {orgB, b.PublicKey()}} {
+		got, err := c.s.Load(hub, machine)
+		if err != nil || got.PublicKey() != c.want {
+			t.Fatalf("phạm vi %q: %+v, %v", c.s.Scope, got, err)
+		}
+	}
+	if err := orgA.Delete(hub, machine); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := orgB.Load(hub, machine); err != nil {
+		t.Fatalf("gỡ đăng ký A không được xoá khoá của B: %v", err)
+	}
+	if _, err := legacy.Load(hub, machine); err != nil {
+		t.Fatalf("gỡ đăng ký A không được xoá khoá cũ: %v", err)
+	}
+}
+
 func TestFileWhenNoKeychain(t *testing.T) {
 	s := &Store{Keyring: &fakeKeyring{broken: true}, File: filepath.Join(t.TempDir(), "sub", "worker.key")}
 	k, err := s.Create(hub, machine)

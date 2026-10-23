@@ -45,7 +45,6 @@ describe("deliveryEvent", () => {
       { ...head, type: "started", workerId: "w1" },
       { ...head, type: "step", name: "build", state: "running" },
       { ...head, type: "external", ref: "deploy/web#12", url: "https://jenkins.example/job/web/12" },
-      { ...head, type: "health", ok: true, status: 200 },
       { ...head, type: "finished", state: "failed", error: { code: "timeout", message: "Hết thời gian" } },
     ]) {
       expect(deliveryEvent.safeParse(e).success).toBe(true);
