@@ -6,6 +6,7 @@ import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Pill } from "@xdev-hive/ui/pill";
 import { type ReactNode, useId, useState } from "react";
+import { DeployCompare } from "@/components/deploy-compare.tsx";
 import { LogCard } from "@/components/log-card.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { type DescriptionItem, DescriptionList } from "@/components/ui/description-list.tsx";
@@ -237,6 +238,9 @@ export function DeployPage() {
               </Alert>
             )}
             <StepsCard steps={steps} />
+            <Card className="min-w-0 px-5 py-4">
+              <DeployCompare deployId={d.id} />
+            </Card>
             {d.runner?.mode === "worker" ? (
               // Việc chạy trên máy của đội: hub không nhận log (specs/032 FR-050), chỉ chỉ chỗ xem.
               <SectionCard title={t.log}>
