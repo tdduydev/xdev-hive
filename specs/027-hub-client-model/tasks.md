@@ -82,7 +82,7 @@ description: "Danh sách task: Hub giữ dữ liệu và tiến độ, client l�
 - [x] T010 [US1] `memory.write` qua `withClientEvent` khi có khoá; header trả `Hive-Client-Event` ·
   `apps/hub/src/modules/knowledge/router.ts`, `apps/hub/src/app.ts` (đưa `resHeaders` vào context oRPC),
   `apps/hub/src/rpc-context.ts` nếu có
-- [ ] T011 [US1] `tasks.history({taskId})`: gộp `client_events` (task, run của task) và `run_events` loại `state`, sắp
+- [x] T011 [US1] `tasks.history({taskId})`: gộp `client_events` (task, run của task) và `run_events` loại `state`, sắp
   theo giờ nhận · `packages/contracts/src/tasks.ts`, `apps/hub/src/modules/tasks/history.ts`,
   `apps/hub/src/modules/tasks/router.ts`, `apps/hub/src/modules/tasks/history.db.test.ts`, `openapi.json`
 - [ ] T012 [P] [US1] Khung "Lịch sử" trong trang task: nguồn, máy, người, giờ tạo, giờ nhận, lý do từ chối ·
