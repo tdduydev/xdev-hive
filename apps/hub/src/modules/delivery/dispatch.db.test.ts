@@ -56,7 +56,8 @@ function harness() {
     schedule: async () => {},
     work: async () => {},
   };
-  let now = new Date("2026-10-23T03:00:00.000Z");
+  // Bắt đầu từ giờ thật: approveDeploy so hạn duyệt với đồng hồ thật, mốc cố định sẽ hết hạn theo ngày chạy test.
+  let now = new Date();
   const deps = { pool: app, masterKey, jobs };
   return {
     deps,
