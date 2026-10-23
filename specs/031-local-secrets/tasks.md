@@ -402,7 +402,7 @@ không chứa giá trị.
   `lib.rs`.
 
   Sau T023.
-- [ ] T032 [P] [US7] C·vừa — File mới `apps/desktop/src/components/secret-approval-dialog.tsx` và test.
+- [x] T032 [P] [US7] C·vừa — File mới `apps/desktop/src/components/secret-approval-dialog.tsx` và test.
   - Hỏi `secret_approvals` mỗi 2 giây.
   - Hộp thoại liệt kê tên và dự án, không giá trị; nút mặc định là Từ chối.
   - Gắn vào `apps/desktop/src/shell/app-shell.tsx`.
