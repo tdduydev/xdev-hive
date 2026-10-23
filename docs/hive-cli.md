@@ -97,7 +97,7 @@ hive remote status
 
 1. Tại máy: `hive remote pair` (hoặc nút **Ghép điện thoại** trong app). Máy in mã QR, hạn 10 phút.
 2. Trên điện thoại: quét mã, đăng nhập hub bằng đúng tài khoản chủ máy, tạo passkey.
-3. Tại máy: bấm **Cho phép** khi được hỏi (có 60 giây).
+3. Tại máy: bấm **Cho phép** khi được hỏi (có khoảng 50 giây).
 
 Mã QR chứa một bí mật chỉ máy và điện thoại biết; hub không thấy nó. Nếu ai đó đổi khoá trên đường đi, máy từ chối với
 lý do "Khoá của thiết bị không khớp mã ghép".

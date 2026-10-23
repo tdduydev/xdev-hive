@@ -685,9 +685,18 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md,hive-cli.md}`
   - **Phụ thuộc**: T090 · **Mức**: nhẹ
 
-- [ ] T093 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp màn mới (sáng, tối, 360 px).
+- [x] T093 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp màn mới (sáng, tối, 360 px).
+  - Đã làm (CLI010B): chạy `/speckit-analyze`, sửa cho khớp code: `term_output {seq, data}`, `term_ack` theo `seq`,
+    `term_input`/`term_resize` với `connId`/`seq`/`mac` tuỳ chọn, `terminal_chunks (session_id, seq)`, nối lại
+    `{after}`, vé `remote.ticket` và route `/v1/remote/…`, migration `0065`/`0071`, `creack/pty` + ConPTY, thao tác
+    socket `remote.start.decide`/`remote.totp.*`, lệnh `hive remote totp`, TOTP trên HTTPS do worker kiểm, chờ xác nhận
+    tại máy khoảng 50 giây (sửa cả `docs/hive-cli.md`), đuôi đồng bộ lại 128 KiB, giới hạn 2 giờ/12 giờ chỉ cho phiên
+    mở từ xa, gộp chunk 64 KiB/1 s chưa làm, US7/US8 ngoài phạm vi. **Chưa chụp màn** (bỏ qua theo phân công).
+  - Còn lại: web chưa có nút "Tắt từ xa cho máy này" (US5-2, chỉ có route hub); SC-008 chưa rõ "15%" (đo được
+    43.9–48.6% một lõi); `scripts/e2e-remote.ts` chưa chạy; spec viết tiếng Việt trong khi hiến chương VI ghi spec tiếng
+    Anh (theo cách cả repo đang làm, không dịch).
   - **Scope**: `specs/010-hive-cli-remote/*`, `apps/web/e2e/screenshots/**`
-  - **Phụ thuộc**: T081, T023, T028 · **Mức**: nhẹ
+  - **Phụ thuộc**: T081, T023, T028 (T081 ngoài phạm vi từ 2026-10-23, nên chạy không chờ T081) · **Mức**: nhẹ
 
 ---
 
@@ -707,7 +716,7 @@ task passkey/TOTP/`hive`/PWA ở trên: những task đó vẫn mở cho máy c�
   40 ms/32 KiB, 256 KiB/s, che bí mật kể cả bị cắt giữa hai lần đọc, 4 phiên/máy, đóng sau 30 phút không hoạt động,
   `CloseAll` khi mất hub); gói `accounts.Pool.AcquireInteractive` (D10); kênh khai `terminal`, chỉ nhận `term_open` trên
   máy dùng chung. Test với `/bin/sh` (một phần của T010, T011).
-- [x] T103 Hub: module `terminal` (bảng `terminal_sessions`, `terminal_chunks`, RLS ép, migration `0063`), mở phiên (cờ
+- [x] T103 Hub: module `terminal` (bảng `terminal_sessions`, `terminal_chunks`, RLS ép, migration `0065`), mở phiên (cờ
   `HIVE_REMOTE_TERMINAL`, quyền, máy dùng chung, giới hạn số phiên, cuộc trò chuyện chứa đề xuất), chuyển gói worker, che
   bí mật trước khi lưu, đóng khi máy mất kết nối (một phần T013, T041).
 - [x] T104 Hub: `/ws/terminal` (vé một lần, Origin, vòng đệm, nối lại theo seq, người xem chỉ xem, giới hạn nhập) (phần
@@ -777,7 +786,7 @@ T040, T041, T027 ─ T091 (lượt hai sau T050, T051)
 | security | T091 | `attack_test.go`, `terminal-attack.db.test.ts` (file mới, không chung với làn khác) |
 | docs | T092 → T093 | `docs/**`, `specs/010-hive-cli-remote/*` |
 
-`go.mod`/`go.sum` bị T003, T012, T024 sửa (thêm thư viện): T003 thêm `go-pty`; T012 thêm `go-keyring`, `x/term`; T024
+`go.mod`/`go.sum` bị T003, T012, T024 sửa (thêm thư viện): T003 thêm `creack/pty` (thay `go-pty`, xem plan); T012 thêm `go-keyring`, `x/term`; T024
 thêm thư viện QR. Ba task ở ba đợt khác nhau; nếu chạy chồng thì người điều phối gộp `go.mod` lúc merge (xung đột chỉ ở
 khối `require`).
 

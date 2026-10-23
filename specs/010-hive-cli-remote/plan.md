@@ -19,7 +19,8 @@ và kiểm HMAC trên từng gói nhập, nên hub chỉ chuyển tiếp: hub b�
 
 **Primary Dependencies**:
 
-- Go mới: `aymanbagabas/go-pty` 0.2 (PTY, ConPTY; đã chọn trong decisions.md), `zalando/go-keyring` (keychain),
+- Go mới: `creack/pty` (PTY trên Unix) và ConPTY gọi thẳng qua `golang.org/x/sys/windows` (lúc làm thay cho
+  `aymanbagabas/go-pty` đã ghi trong decisions.md; xem `worker/internal/pty`), `zalando/go-keyring` (keychain),
   `golang.org/x/term` (raw mode; module `x` đã dùng), `rsc.io/qr` hoặc tương đương nhỏ để in QR trong terminal.
 - Go có sẵn: `coder/websocket`, `crypto/ecdh`, `crypto/ecdsa`, `crypto/hkdf`.
 - Web mới: `@xterm/xterm` + `@xterm/addon-fit` (+ `addon-webgl` nếu đo thấy cần), `vite-plugin-pwa` 2.0 (đã có trong
@@ -119,7 +120,7 @@ sequenceDiagram
   W->>H: term_opened {sessionId, origin: local, …}
   H->>H: kiểm chủ máy, task; tạo terminal_sessions
   loop output
-    W->>H: term_output {offset, bytes}
+    W->>H: term_output {seq, data}
     H-->>W: term_ack {upto}
   end
   D->>C: /exit
@@ -190,7 +191,7 @@ sequenceDiagram
   participant P as Điện thoại
   participant H as Hub
   participant W as Worker
-  P->>H: terminal.ticket {sessionId, mode: view}
+  P->>H: remote.ticket {sessionId, mode: view}
   P->>H: WS /ws/terminal?ticket=… (Origin kiểm)
   H-->>P: đuôi vòng đệm + output trực tiếp
   P->>P: ephKey (ECDH), challenge = SHA-256(chuẩn hoá{machine, "control", {sessionId, connId}, ephPub, ts, nonce})
@@ -219,17 +220,17 @@ fixture `packages/contracts/fixtures/worker-protocol.json`. Mọi gói dùng `en
 | W → H | `term_state` | `enabled`, `totp{enabled, locked}`, `roots[{id, label}]`, `clis[]`, `accounts[{id, label, cli, state}]`, `devices[{id, label, userId, synced}]`, `sessions[{id, origin, controller}]`, `confirmOnMachine` | Sau `welcome` và khi đổi; không gửi đường dẫn tuyệt đối của root, chỉ nhãn |
 | W → H | `term_opened` | `sessionId`, `requestId?`, `origin`, `cli`, `accountLabel`, `cwdLabel`, `projectId?`, `taskId?`, `cols`, `rows`, `record`, `remote` | Phiên tại máy và phiên từ xa |
 | W → H | `term_denied` | `requestId`, `code`, `reason` | `REMOTE_DISABLED`, `ROOT_ESCAPE`, `ROOT_MISSING`, `ASSERTION_*`, `TOTP_INVALID`, `TOTP_REPLAY`, `TOTP_LOCKED`, `TOTP_NOT_ALLOWED`, `CONFIRM_DENIED`, `CONFIRM_TIMEOUT`, `ACCOUNT_*`, `CLI_MISSING` |
-| W → H | `term_output` | `sessionId`, `offset`, `bytes` (≤ 32 KiB) | Lưu đĩa tới khi `term_ack` |
+| W → H | `term_output` | `sessionId`, `seq`, `data` (≤ 32 KiB) | Lưu đĩa tới khi `term_ack` |
 | W → H | `term_event` | `sessionId`, `seq`, `event` (`attention`, `idle`, `controller`, `resize`, `gap`, `input_rejected`, `viewer`), `data` | Enum riêng, không đụng `runEventKind` |
 | W → H | `term_granted` / `term_revoked` | `sessionId`, `connId`, `workerEphPub`, `resumeToken` / `reason` | |
 | W → H | `term_exit` | `sessionId`, `exitCode`, `reason`, `by?` | |
 | W → H | `term_pair_result` | `pairId`, `ok`, `deviceId?`, `reason?` | |
 | H → W | `term_start` | `requestId`, `userId`, `deviceId`, `cli`, `accountId?`, `rootId`, `subdir?`, `model?`, `projectId?`, `taskId?`, `prompt?`, `cols`, `rows`, `auth` | `auth` là `{kind: "passkey", assertion, ephPub, ts, nonce}` hoặc `{kind: "totp", code, ephPub, ts, nonce}` (D15); `params` của challenge passkey là các trường này theo thứ tự cố định |
 | H → W | `term_control` | `sessionId`, `connId`, `userId`, `deviceId`, `auth` (như trên) hoặc `resumeToken` | |
-| H → W | `term_input` | `sessionId`, `connId`, `seq`, `data` (≤ 4 KiB), `mac` | |
-| H → W | `term_resize` | `sessionId`, `connId`, `cols`, `rows`, `seq`, `mac` | |
+| H → W | `term_input` | `sessionId`, `data` (≤ 4 KiB), `connId?`, `seq?`, `mac?` | `connId`/`seq`/`mac` chỉ có khi người gõ là điện thoại; lát Leader (máy dùng chung) không có |
+| H → W | `term_resize` | `sessionId`, `cols`, `rows`, `connId?`, `seq?`, `mac?` | Như `term_input` |
 | H → W | `term_detach` | `sessionId`, `connId` | |
-| H → W | `term_ack` | `sessionId`, `upto` (offset) | |
+| H → W | `term_ack` | `sessionId`, `upto` (`seq`) | |
 | H → W | `term_close` | `sessionId`, `by`, `reason` | Chủ phiên, quản trị đội |
 | H → W | `term_disable` | `by` | Chỉ tắt; không có gói bật |
 | H → W | `term_pair` | `pairId`, `userId`, `label`, `credentialId`, `spki`, `tag` | |
@@ -251,7 +252,8 @@ nối xem từ xa, trong đó tối đa 4 kết nối của người khác chủ
   bản hive và hive-worker khác nhau. Chạy `hive-worker update`.".
 - Yêu cầu JSON một dòng: `session.create`, `session.list`, `session.attach{id, mode}`, `session.kill`, `remote.status`,
   `remote.enable`, `remote.disable`, `remote.roots.add|remove`, `remote.devices.remove`, `remote.settings`,
-  `remote.pair.begin`, `remote.pair.decide`, `remote.confirm.decide`, `watch` (luồng sự kiện cho app: yêu cầu ghép, yêu
+  `remote.pair.begin`, `remote.pair.decide`, `remote.start.decide` (hỏi trên máy trước khi mở phiên từ xa),
+  `remote.totp.begin|confirm|disable|unlock`, `watch` (luồng sự kiện cho app: yêu cầu ghép, yêu
   cầu xác nhận, phiên, trạng thái), `hook` (cho `hive __hook`).
 - Sau `session.attach` kết nối chuyển sang khung nhị phân `[loại u8][độ dài u32][dữ liệu]`: `out`, `in`, `resize`,
   `ctl` (JSON: giành quyền, bị giành, thoát).
@@ -267,7 +269,7 @@ nối xem từ xa, trong đó tối đa 4 kết nối của người khác chủ
 | `hive ls [--all] [--json]` | Phiên trên máy (+ run gần đây của tôi khi đã đăng nhập) |
 | `hive attach <id> [--escape KEY]` | Phiên trên máy / run (log + chỉ dẫn) / phiên máy khác (chỉ xem) |
 | `hive kill <id>` | Ngắt phiên trên máy |
-| `hive remote on\|off\|status`, `remote roots add <dir> [--label] \| rm <id>`, `remote devices [rm <id>]`, `remote pair`, `remote set <khoá> <giá trị>`, `remote watch --json` | US2, US5; `watch` cho app |
+| `hive remote on\|off\|status`, `remote roots add <dir> [--label] \| rm <id>`, `remote devices [rm <id>]`, `remote pair`, `remote set <khoá> <giá trị>`, `remote totp enroll\|status\|unlock\|disable`, `remote watch --json` | US2, US5, TOTP; `watch` cho app |
 | `hive version` | Phiên bản `hive` và worker |
 | `hive __hook <loại>` | Ẩn; hook của CLI gọi |
 
@@ -282,28 +284,30 @@ chối quyền.
   - `terminal_sessions`: `id`, `org_id`, `team_id`, `machine_id`, `owner_user_id`, `origin`, `cli`, `account_label`,
     `cwd_label`, `project_id?`, `task_id?`, `visibility`, `state`, `cols`, `rows`, `exit_code?`, `end_reason?`,
     `bytes`, `started_at`, `ended_at`
-  - `terminal_chunks(session_id, org_id, offset, bytes)`, khoá chính `(session_id, offset)`
+  - `terminal_chunks(session_id, org_id, seq, data, created_at)`, khoá chính `(session_id, seq)`
   - `terminal_events(id, session_id, org_id, seq?, kind, data, actor_user_id?, device_id?, at)`
   - `remote_devices(id, org_id, machine_id, user_id, label, synced, created_at, last_used_at, revoked_at)`
   - `push_subscriptions(id, org_id, user_id, endpoint, p256dh, auth, device_label, created_at)`
   - `machine_remote_state(machine_id, org_id, enabled, roots jsonb, accounts jsonb, updated_at)` (từ `term_state`, để
     điện thoại thấy khi máy offline)
 
-  Mọi bảng `orgScoped`, RLS ép. Migration số kế tiếp lúc làm (sau migration của spec 009).
+  Mọi bảng `orgScoped`, RLS ép. Migration thực tế: `0065_terminal_sessions.sql` (lát Leader) và
+  `0071_remote_terminal.sql`.
 - `gateway.ts`: handler `onWorkerPacket(machine, packet)` cho mọi gói `term_*`, do `fleet/gateway.ts` gọi qua deps tiêm
   ở `main.ts`; `send(machineId, packet)` dùng hàm gửi có sẵn của fleet.
-- `live.ts`: bộ đệm vòng, danh sách kết nối, người điều khiển, giới hạn băng thông, nối lại theo offset.
+- `live.ts`: bộ đệm vòng, danh sách kết nối, người điều khiển, giới hạn băng thông, nối lại theo `seq`.
 - `ws.ts`: `/ws/terminal` (vé, `Origin` bằng `HIVE_PUBLIC_URL`, đóng 4401/4403/4404/4429).
-- `record.ts`: gộp chunk (64 KiB hoặc 1 s) rồi ghi, ack worker sau khi ghi; hàm `hive.purge_terminal_chunks()` theo số
+- `record.ts`: ghi mỗi gói `term_output` thành một dòng (gộp 64 KiB hoặc 1 s chưa làm), ack worker sau khi ghi; hàm `hive.purge_terminal_chunks()` theo số
   ngày lưu log của chính sách agent (cùng cron `retention.ts`).
 - `pairing.ts`, `devices.ts`, `push.ts` (VAPID; khoá sinh lần đầu, mã hoá envelope bằng khoá chủ), `router.ts`, `index.ts`.
 
-**Route oRPC `terminal.*`** (contracts `terminal.ts`):
+**Route oRPC** (contracts `terminal.ts`; phần từ xa nằm trong contract `remote`, đường dẫn `/v1/remote/…`; route đẩy
+có trong contract nhưng hub chưa phục vụ vì US7 ngoài phạm vi):
 
 | Route | Ai | Việc |
 |---|---|---|
 | `machines` | người dùng | Máy của tôi: online, `remote` (bật, roots nhãn, CLI, tài khoản), phiên đang chạy |
-| `list`, `get`, `chunks` | chủ phiên; đội khi `team` | Danh sách, chi tiết, đọc bản ghi theo offset (phân trang) |
+| `list`, `get`, `chunks` | chủ phiên; đội khi `team` | Danh sách, chi tiết, đọc bản ghi theo `seq` (`after`, phân trang) |
 | `ticket` | như `get` | Vé WS dùng một lần 60 s (`view`); quyền gõ xin trong WS |
 | `start` | chủ máy | Chuyển `term_start`; trả `requestId`, kết quả qua `get`/WS |
 | `close` | chủ phiên, quản trị đội | `term_close` |
@@ -386,7 +390,7 @@ resize|input_rejected|close|exit|visibility`. Gói từ worker về trạng thá
 - Đường phím: điện thoại → hub (1 khung WS) → worker (1 gói WSS) → PTY; echo đi ngược lại. Hub chuyển tiếp ngay trong
   tiến trình, không qua DB hay NOTIFY; ghi DB đi đường riêng sau.
 - Worker gom output 8 ms/32 KiB; hub không gom output trực tiếp.
-- Nối lại phía điện thoại: client giữ `lastOffset`; WS mới gửi `{t: "resume", offset, resumeToken?}`; hub gửi từ vòng
+- Nối lại phía điện thoại: client giữ `seq` cuối; WS mới gửi `{t: "resume", after, resumeToken?}`; hub gửi từ vòng
   đệm hoặc DB; có `resumeToken` còn hạn (2 phút) thì worker cấp lại quyền với khoá K cũ, `seq` tiếp tục.
 - Nối lại phía worker: như run hiện nay (gửi lại phần chưa ack); quyền từ xa bị thu khi mất kết nối hub quá 2 phút.
 - Heartbeat WS trình duyệt 20 s; Safari iOS đóng WS khi ẩn trang — nối lại khi trang hiện lại (`visibilitychange`).
@@ -463,7 +467,7 @@ scripts/e2e-remote.ts               # MỚI: hub thật + worker thật + CLI gi
 1. Phát hành worker + `hive` có ghi phiên tại máy (US1) — không có gì từ xa; hub mới khai `features`.
 2. Bật ghép và điều khiển phiên có sẵn (US2, US3, US5) sau cờ hub `HIVE_REMOTE_TERMINAL=1` (mặc định tắt) để thử nội bộ. Hub nội bộ HTTP cần thêm TOTP (T008, T025–T028) và
    chỉ bật cờ khi cảnh báo HTTP đã hiện ở app và web.
-3. Mở phiên từ xa (US4), PWA + đẩy (US7), xem cùng (US8).
+3. Mở phiên từ xa (US4). PWA + đẩy (US7) và xem cùng (US8) ngoài phạm vi từ 2026-10-23.
 4. Bỏ cờ sau một tuần thử nội bộ không có sự cố bảo mật.
 
 ## Lát đầu: Terminal Leader trên máy dùng chung (spec Q4, tasks T100–T107)
