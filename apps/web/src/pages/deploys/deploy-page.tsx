@@ -170,7 +170,6 @@ export function DeployPage() {
   // Mỗi khung `steps` hay `end` nghĩa là phiên bản, health, giờ kết thúc trong deploys.get có thể đã đổi.
   const stream = useDeployStream(org.id, id, () => {
     void queryClient.invalidateQueries({ queryKey: api.deploys.get.key({ input: { id } }) });
-    void queryClient.invalidateQueries({ queryKey: api.deploys.approvals.compare.key({ input: { id } }) });
   });
   const systemId = deploy.data?.systemId ?? "";
   const board = useQuery(api.deploys.board.queryOptions({ input: { systemId }, enabled: !!systemId }));
