@@ -19,7 +19,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
-const memoryUsage = "Cách dùng: hive-worker memory [scan | edit --path FILE (--stdin | --content-file FILE) | delete --path FILE | restore --id MÃ | merge --source FILE [--source FILE …] --target FILE (--stdin | --content-file FILE) | share --project KHOÁ [--pick TÊN=GÓI …] [--folder THƯ_MỤC] | unshare --project KHOÁ | compress --profile GÓI --project KHOÁ [--files FILE …]] [--json]"
+const memoryUsage = "Cách dùng: hive-worker memory [scan | edit --path FILE (--stdin | --content-file FILE) | delete --path FILE | restore --id MÃ | merge --source FILE [--source FILE …] --target FILE (--stdin | --content-file FILE) | share --project KHOÁ [--pick TÊN=GÓI …] [--folder THƯ_MỤC] | unshare --project KHOÁ | compress --profile GÓI --project KHOÁ [--files FILE …] | consolidate --profile GÓI --project KHOÁ] [--json]"
 
 // Test thay thư mục nhà, phiên bản Claude Code và nguồn nội dung.
 var (
@@ -62,7 +62,7 @@ func memoryCommand(args []string, stdout, stderr io.Writer) int {
 	target := fs.String("target", "", "merge: file đích")
 	id := fs.String("id", "", "restore: mã bản lưu")
 	project := fs.String("project", "", "khoá dự án của Claude (tên thư mục trong projects/)")
-	profile := fs.String("profile", "", "compress: gói (tài khoản) của Claude chứa memory")
+	profile := fs.String("profile", "", "compress, consolidate: gói (tài khoản) của Claude chứa memory")
 	folder := fs.String("folder", "", "share: thư mục dự án trên máy, khi app chưa gắn dự án này")
 	fromStdin := fs.Bool("stdin", false, "đọc nội dung mới từ stdin")
 	contentFile := fs.String("content-file", "", "đọc nội dung mới từ file")
@@ -220,6 +220,15 @@ func memoryCommand(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 		return emit(res, fmt.Sprintf("Có %d đề xuất nén (đã dùng %d token). Chưa ghi gì: xem rồi áp dụng bằng memory edit.", len(res.Files), res.TokensUsed))
+	case "consolidate":
+		if *profile == "" || *project == "" {
+			return usage()
+		}
+		res, err := memoryConsolidate(cfg, home, roots, localProjects, *profile, *project)
+		if err != nil {
+			return fail(err)
+		}
+		return emit(res, fmt.Sprintf("Có %d nhóm nên gộp (đã dùng %d token). Chưa ghi gì: xem rồi áp dụng bằng memory merge.", len(res.Merges), res.TokensUsed))
 	case "share", "unshare":
 		if *project == "" {
 			return usage()
@@ -363,6 +372,49 @@ func memoryCompress(cfg, home string, roots []memstore.Root, local []projects.Pr
 	if len(picked) == 0 {
 		return memstore.Compression{}, fmt.Errorf("gói %s không có file memory nào trong dự án %s", profile, project)
 	}
+	opts, err := memoryClaudeOptions(cfg, home, profile)
+	if err != nil {
+		return memstore.Compression{}, err
+	}
+	opts.Files = picked
+	return memstore.Compress(context.Background(), opts)
+}
+
+// memoryConsolidate nhờ Claude đánh giá các file chủ đề trong memory của một gói ở một dự án và đề xuất nhóm nên gộp.
+// Các cặp mà cờ trùng lặp trong cùng gói đã thấy được đưa vào làm gợi ý.
+func memoryConsolidate(cfg, home string, roots []memstore.Root, local []projects.Project, profile, project string) (memstore.Consolidation, error) {
+	var picked []string
+	var hints [][2]string
+	inv := memstore.Scan(roots, local)
+	for _, f := range inv.Files {
+		if f.CLI != "claude" || f.Profile != profile || f.ProjectKey != project || f.Kind != "memory" {
+			continue
+		}
+		picked = append(picked, f.Path)
+		for _, flag := range f.Flags {
+			if flag.Code != memstore.Duplicate {
+				continue
+			}
+			for _, other := range flag.Related {
+				if f.Path < other && filepath.Dir(other) == filepath.Dir(f.Path) {
+					hints = append(hints, [2]string{f.Path, other})
+				}
+			}
+		}
+	}
+	if len(picked) == 0 {
+		return memstore.Consolidation{}, fmt.Errorf("gói %s không có file memory nào trong dự án %s", profile, project)
+	}
+	opts, err := memoryClaudeOptions(cfg, home, profile)
+	if err != nil {
+		return memstore.Consolidation{}, err
+	}
+	opts.Files = picked
+	return memstore.Consolidate(context.Background(), opts, hints)
+}
+
+// memoryClaudeOptions là lệnh claude và CLAUDE_CONFIG_DIR của gói, để lượt nhờ AI tính vào đúng gói người dùng chọn.
+func memoryClaudeOptions(cfg, home, profile string) (memstore.CompressOptions, error) {
 	// Gói mặc định dùng đăng nhập sẵn có của CLI nên không đặt CLAUDE_CONFIG_DIR.
 	var env []string
 	list, _ := accounts.Load(accounts.DefaultPath(cfg))
@@ -379,9 +431,9 @@ func memoryCompress(cfg, home string, roots []memstore.Root, local []projects.Pr
 	}
 	command, args, err := memoryClaudeCommand()
 	if err != nil {
-		return memstore.Compression{}, err
+		return memstore.CompressOptions{}, err
 	}
-	return memstore.Compress(context.Background(), memstore.CompressOptions{Command: command, Args: args, Env: env, Files: picked})
+	return memstore.CompressOptions{Command: command, Args: args, Env: env}, nil
 }
 
 // claudeCommand là lệnh claude thật, hoặc CLI giả khai trong HIVE_WORKER_CLI_OVERRIDES (cùng cơ chế với run).

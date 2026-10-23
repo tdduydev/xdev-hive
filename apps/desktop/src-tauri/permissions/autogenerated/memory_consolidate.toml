@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-memory-consolidate"
+description = "Enables the memory_consolidate command without any pre-configured scope."
+commands.allow = ["memory_consolidate"]
+
+[[permission]]
+identifier = "deny-memory-consolidate"
+description = "Denies the memory_consolidate command without any pre-configured scope."
+commands.deny = ["memory_consolidate"]

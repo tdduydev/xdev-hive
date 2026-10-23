@@ -4,6 +4,7 @@ import { Textarea } from "@xdev-hive/ui/textarea";
 import { RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MemoryCompressDialog } from "@/components/memory-compress-dialog.tsx";
+import { MemoryConsolidateDialog } from "@/components/memory-consolidate-dialog.tsx";
 import { type LocalMemoryItem, MemoryHubSync } from "@/components/memory-hub-sync.tsx";
 import { type ContextCandidate, SharedContextSection } from "@/components/shared-context-section.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
@@ -30,6 +31,8 @@ interface Text {
   refresh: string;
   compress: string;
   compressLabel: (profile: string) => string;
+  consolidate: string;
+  consolidateLabel: (profile: string) => string;
   hubSync: string;
   loading: string;
   empty: string;
@@ -79,6 +82,8 @@ const text: Dict<Text> = {
     refresh: "Đọc lại",
     compress: "Nén bằng AI",
     compressLabel: (profile) => `Nén memory của gói ${profile} bằng AI`,
+    consolidate: "Đánh giá và gộp",
+    consolidateLabel: (profile) => `Đánh giá và gộp các file memory trùng nhau của gói ${profile}`,
     hubSync: "Đồng bộ với hub",
     loading: "Đang đọc…",
     empty: "Chưa tìm thấy memory hoặc hướng dẫn trên máy.",
@@ -134,6 +139,8 @@ const text: Dict<Text> = {
     refresh: "Reload",
     compress: "Compress with AI",
     compressLabel: (profile) => `Compress the memory of plan ${profile} with AI`,
+    consolidate: "Review and merge",
+    consolidateLabel: (profile) => `Review and merge overlapping memory files of plan ${profile}`,
     hubSync: "Sync with the hub",
     loading: "Reading…",
     empty: "No local memory or instructions found.",
@@ -222,6 +229,7 @@ export function MemoryScreen() {
   const [share, setShare] = useState<ShareReview | null>(null);
   const account = useLinkedAccount();
   const [compressing, setCompressing] = useState<{ profile: string; project: string } | null>(null);
+  const [consolidating, setConsolidating] = useState<{ profile: string; project: string } | null>(null);
   // Thư mục dự án → id dự án trên hub (projects.json): chỉ dự án đã gắn mới đồng bộ được memory với hub.
   const [bound, setBound] = useState<Map<string, string>>(new Map());
   const [localList, setLocalList] = useState<LocalProject[]>([]);
@@ -480,6 +488,24 @@ export function MemoryScreen() {
                                 {t.compress}
                               </Button>
                             )}
+                            {cli.cli === "claude" &&
+                              project.key &&
+                              profile.files.filter((f) => f.kind === "memory" && f.name !== "MEMORY.md").length >=
+                                2 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="ml-2 h-6"
+                                  aria-label={t.consolidateLabel(profile.id)}
+                                  disabled={busy}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setConsolidating({ profile: profile.id, project: project.key });
+                                  }}
+                                >
+                                  {t.consolidate}
+                                </Button>
+                              )}
                           </summary>
                           <ul className="ml-3 divide-y">
                             {profile.files.map((file) => (
@@ -752,6 +778,18 @@ export function MemoryScreen() {
           project={compressing.project}
           onApplied={() => {
             setCompressing(null);
+            void reload();
+          }}
+        />
+      )}
+      {consolidating && (
+        <MemoryConsolidateDialog
+          open
+          onOpenChange={(open) => !open && setConsolidating(null)}
+          profile={consolidating.profile}
+          project={consolidating.project}
+          onApplied={() => {
+            setConsolidating(null);
             void reload();
           }}
         />

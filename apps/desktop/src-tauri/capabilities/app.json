@@ -81,6 +81,7 @@
     "allow-memory-scan",
     "allow-memory-apply",
     "allow-memory-compress",
+    "allow-memory-consolidate",
     "allow-context-status",
     "allow-context-enable",
     "allow-context-disable",

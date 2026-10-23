@@ -122,6 +122,13 @@ fn compress_args(profile: &str, project: &str, files: &[String]) -> Result<Vec<S
     Ok(args)
 }
 
+fn consolidate_args(profile: &str, project: &str) -> Result<Vec<String>, String> {
+    let mut args = vec!["memory".into(), "consolidate".into(), "--json".into()];
+    args.push(text_arg("profile", profile)?);
+    args.push(text_arg("project", project)?);
+    Ok(args)
+}
+
 struct ContentFile(PathBuf);
 
 impl ContentFile {
@@ -184,6 +191,17 @@ pub async fn memory_compress(
     files: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     sidecar_json(&app, compress_args(&profile, &project, &files)?, vec![]).await
+}
+
+/// Nhờ Claude đánh giá memory của một gói trong một dự án và đề xuất nhóm file nên gộp. Chỉ đề xuất: mỗi nhóm được gộp
+/// qua `memory_apply` (merge) sau khi người dùng xem diff.
+#[tauri::command]
+pub async fn memory_consolidate(
+    app: AppHandle,
+    profile: String,
+    project: String,
+) -> Result<serde_json::Value, String> {
+    sidecar_json(&app, consolidate_args(&profile, &project)?, vec![]).await
 }
 
 #[cfg(test)]
@@ -292,6 +310,21 @@ mod tests {
         assert_eq!(compress_args("claude-2", "p", &[]).unwrap().len(), 5);
         assert!(compress_args("", "p", &[]).is_err());
         assert!(compress_args("c", "p", &["bad\nfile".to_string()]).is_err());
+    }
+
+    #[test]
+    fn consolidate_passes_profile_and_project() {
+        assert_eq!(
+            consolidate_args("claude-2", "-Users-a-app").unwrap(),
+            [
+                "memory",
+                "consolidate",
+                "--json",
+                "--profile=claude-2",
+                "--project=-Users-a-app"
+            ]
+        );
+        assert!(consolidate_args("", "p").is_err());
     }
 
     #[test]

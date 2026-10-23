@@ -78,6 +78,7 @@ fn main() {
         "memory_scan",
         "memory_apply",
         "memory_compress",
+        "memory_consolidate",
         "context_status",
         "context_enable",
         "context_disable",

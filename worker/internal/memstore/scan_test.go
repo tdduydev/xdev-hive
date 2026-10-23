@@ -229,7 +229,7 @@ func TestScan100FilesGitCallsBounded(t *testing.T) {
 	for i := range 99 {
 		name := fmt.Sprintf("note-%03d.md", i)
 		fmt.Fprintf(&index, "[note %d](%s)\n", i, name)
-		writeFixture(t, filepath.Join(dir, name), "Memory for `src/current.go` and `liveSymbol()`. "+strings.Repeat("some context ", 20))
+		writeFixture(t, filepath.Join(dir, name), "Memory for `src/current.go` and `liveSymbol()`. "+strings.Repeat(fmt.Sprintf("context%d ", i), 20))
 	}
 	writeFixture(t, filepath.Join(dir, "MEMORY.md"), index.String())
 	oldTotal, oldCall := gitTotalBudget, gitCallBudget
