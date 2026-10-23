@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "reserved_name",
+    "message": "`PATH` là tên dành riêng, hãy đặt tên khác.",
+    "names": ["PATH"]
+  }
+}

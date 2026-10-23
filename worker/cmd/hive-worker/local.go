@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,17 +22,16 @@ import (
 // localStopWait là thời gian chờ các phiên `hive chat` dừng hẳn khi worker tắt.
 const localStopWait = 10 * time.Second
 
-// Người đang giữ worker, để cửa sổ VS Code biết worker ở máy là của app desktop, của cửa sổ khác hay chạy tay
-// (specs/017 mục 7). Giá trị lạ bị từ chối ngay ở cờ --owner thay vì lọt ra client.
+// Người đang giữ worker, để client trên máy biết worker là của app desktop hay chạy tay. Giá trị lạ bị từ chối ngay ở
+// cờ --owner thay vì lọt ra client.
 const (
 	ownerDesktop = "desktop"
-	ownerVSCode  = "vscode"
 	ownerCLI     = "cli"
 )
 
-func validOwner(s string) bool { return s == ownerDesktop || s == ownerVSCode || s == ownerCLI }
+func validOwner(s string) bool { return s == ownerDesktop || s == ownerCLI }
 
-// workerStatus là nguồn của op `worker.status` (specs/017 T006): trạng thái kênh tới hub do channel báo qua OnStatus,
+// workerStatus là nguồn của op `worker.status`: trạng thái kênh tới hub do channel báo qua OnStatus,
 // còn lại là thông tin cố định lúc worker khởi động.
 type workerStatus struct {
 	owner      string
@@ -49,7 +49,7 @@ func newWorkerStatus(cfg config.Config, owner, dataDir string) *workerStatus {
 	return &workerStatus{
 		owner:      owner,
 		machineID:  cfg.MachineID,
-		registered: cfg.MachineID != "" && cfg.MachineToken != "",
+		registered: cfg.Registered(),
 		activeDir:  filepath.Join(dataDir, "xdev-hive", "worker", "active"),
 		state:      "starting",
 	}
@@ -86,8 +86,8 @@ func (w *workerStatus) reply(c *localipc.Conn) error {
 // startLocalIPC mở socket nội bộ cho `hive` (specs/010 T004, T011), trả hàm đóng và Handler ghi phiên lên hub (đệm
 // trong recordDir). Không mở được (worker khác đang nghe) thì chỉ ghi log và Handler nil: run từ
 // hub vẫn chạy, worker không khai `terminal` với hub vì không có phiên nào để ghi. status nil thì socket không nhận
-// op worker.status.
-func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remote, status *workerStatus) (func(), terminal.Handler) {
+// op worker.status; ob nil thì không nhận op `outbox.*`.
+func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remote, status *workerStatus, ob *outboxService) (func(), terminal.Handler) {
 	path, err := localipc.DefaultPath()
 	if err != nil {
 		slog.Warn("Không xác định được đường dẫn socket nội bộ", "error", err)
@@ -108,15 +108,18 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 		ctl := &terminal.Controller{Local: local, Remote: remote, Recorder: recorder, Logger: slog.Default(),
 			Verifier: &remoteauth.Verifier{Devices: remote.Store, TOTP: remote.TOTP}}
 		recorder.Controller, local.Controller, remote.Controller = ctl, ctl, ctl
-	}
-	handle := local.Handle
-	if status != nil {
-		handle = func(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
-			if req.Op == "worker.status" {
-				return status.reply(c)
-			}
-			return local.Handle(ctx, c, req)
+		if ob != nil {
+			ob.setNotify(remote.Notify)
 		}
+	}
+	handle := func(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
+		switch {
+		case req.Op == "worker.status" && status != nil:
+			return status.reply(c)
+		case strings.HasPrefix(req.Op, "outbox.") && ob != nil:
+			return ob.handle(ctx, c, req)
+		}
+		return local.Handle(ctx, c, req)
 	}
 	// Server không theo ctx của worker: lúc tắt phải báo các client đang gắn rằng phiên đã đóng trước khi ngắt kết nối.
 	ctx, cancel := context.WithCancel(context.Background())

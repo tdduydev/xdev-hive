@@ -1,6 +1,6 @@
 import { implement, ORPCError } from "@orpc/server";
 import { type AssistStartInput, type AssistTarget, contract, type DocAssist } from "@xdev-hive/contracts";
-import { ConflictError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
+import { ConflictError, type RequestContext, runClientWrite, type Tx, withTenant } from "../platform/index.ts";
 import { defaultProviderFactory } from "../scm/index.ts";
 import { allowWith, type OrgDeps, orgMiddlewares, requireOrgRole } from "../tenancy/index.ts";
 import type { Principal } from "./access.ts";
@@ -213,9 +213,14 @@ export function knowledgeRouter(
       },
     },
     memory: {
+      // Máy gửi memory lên khi hub vắng rồi gửi lại từ hộp thư đi: cùng khoá thì chỉ ghi một lần (specs/027 US1).
       write: memory.write
-        .use(inOrg)
-        .handler(({ context: { tx, user }, input }) => writeMemory(tx, asUser(user), input, deps)),
+        .use(orgMember)
+        .handler(({ context: { pool, user, orgId, headers, resHeaders }, input }) =>
+          runClientWrite(pool, { userId: user.id, orgId }, { headers, resHeaders }, "memory.write", (tx) =>
+            writeMemory(tx, asUser(user), input, deps),
+          ),
+        ),
       // Gọi API embeddings trước, ngoài transaction (orgMember), để không giữ kết nối database trong lúc chờ mạng.
       search: memory.search.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
         const queryEmbedding = await embedQuery(deps.embedder, input.query);

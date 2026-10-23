@@ -8,6 +8,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { LogCard } from "@/components/log-card.tsx";
+import { TaskHistory } from "@/components/task-history.tsx";
 import { TreeLinks } from "@/components/tree-links.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
@@ -37,6 +38,7 @@ import {
 } from "@/lib/run-view.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { useRunStream } from "@/lib/use-run-stream.ts";
+import { LinkedArtifactsSection, useCanWriteTeam } from "@/pages/artifacts/linked-section.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -51,6 +53,7 @@ export function RunPage() {
   const project = useQuery(
     api.projects.get.queryOptions({ input: { id: run.data?.projectId ?? "" }, enabled: !!run.data }),
   );
+  const canLinkArtifacts = useCanWriteTeam(run.data?.teamId);
   // Sự kiện `state` qua SSE nghĩa là trạng thái, kết quả hay chi phí trong runs.get đã đổi.
   const stream = useRunStream(org.id, id, () => {
     void queryClient.invalidateQueries({ queryKey: api.runs.get.key({ input: { id } }) });
@@ -117,6 +120,8 @@ export function RunPage() {
           <div className="grid min-w-0 gap-5">
             <LogCard log={stream.log} status={stream.status} onRetry={stream.retry} />
             <EventsCard events={stream.events} />
+            {/* Chưa có trang task riêng: trang run là nơi người xem mở từ bảng việc. */}
+            {task.data && <TaskHistory taskId={task.data.id} />}
           </div>
           <aside aria-label="Thông tin run" className="grid min-w-0 gap-4">
             <DetailsCard run={r} now={now} />
@@ -124,6 +129,7 @@ export function RunPage() {
             <CostCard run={r} capUsd={project.data?.settings.budget?.perRunUsd} />
             {r.explore && <ExploreCard explore={r.explore} />}
             <PolicyCard run={r} />
+            <LinkedArtifactsSection target={{ kind: "run", id: r.id }} canLink={canLinkArtifacts} />
           </aside>
         </div>
       </PageBody>

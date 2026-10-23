@@ -5,15 +5,19 @@ import { brotliCompress, gzip, constants as zlibConstants } from "node:zlib";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { implement } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
+import { ResponseHeadersPlugin } from "@orpc/server/plugins";
 import { contract, WORD_IMPORT_UPLOAD_PATH } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
 import {
+  ARTIFACT_UPLOAD_PATH,
   registerMcpTools as artifactsMcpTools,
   artifactsRouter,
   frameRoutes,
   frameTicketKey,
+  handleArtifactUpload,
+  provideDocProposer,
   provideLinkTarget,
   provideThreadHost,
 } from "./modules/artifacts/index.ts";
@@ -48,16 +52,19 @@ import {
   handleWordUpload,
   wordImportHealth,
 } from "./modules/docsync/index.ts";
-import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
+import { clientMachineOf, fleetRouter, type MachineAuth, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
+  createDocLinkTarget,
+  createDocProposer,
   type Embedder,
   handleRunSkills,
   handleSkillWebhook,
   registerMcpTools as knowledgeMcpTools,
   knowledgeRouter,
 } from "./modules/knowledge/index.ts";
+import { assertSettingsUnlocked, layeredConfigRouter, syncPolicyEntries } from "./modules/layers/index.ts";
 import {
   createThreadHost,
   createThreadLinkTarget,
@@ -72,8 +79,16 @@ import {
   type RunTokenVerifier,
 } from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
-import { type HubConfig, type Jobs, NotFoundError, type RequestContext, type Tx } from "./modules/platform/index.ts";
 import {
+  type HubConfig,
+  type Jobs,
+  NotFoundError,
+  type RequestContext,
+  socketAddress,
+  type Tx,
+} from "./modules/platform/index.ts";
+import {
+  createRunLinkTarget,
   RunNotifier,
   type RunsEngine,
   runForUser,
@@ -83,10 +98,16 @@ import {
 } from "./modules/runs/index.ts";
 import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
-import { reviewSpecFor, type SdlcDeps, registerMcpTools as sdlcMcpTools, sdlcRouter } from "./modules/sdlc/index.ts";
+import {
+  createSdlcItemLinkTarget,
+  reviewSpecFor,
+  type SdlcDeps,
+  registerMcpTools as sdlcMcpTools,
+  sdlcRouter,
+} from "./modules/sdlc/index.ts";
 import { skillLearningRouter } from "./modules/skilllearn/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
-import { tasksRouter } from "./modules/tasks/index.ts";
+import { createTaskLinkTarget, tasksRouter } from "./modules/tasks/index.ts";
 import {
   allowWith,
   orgMiddlewares,
@@ -129,6 +150,8 @@ export interface AppDeps {
   resolveTxt?: TxtResolver | undefined;
   /** Thay API Telegram/Slack thật bằng máy chủ giả khi test. */
   chatApis?: ChatApiDeps | undefined;
+  /** Đổi chữ ký khoá máy lấy access token; dùng chung với cổng WSS. Không có thì máy chỉ dùng được machine token. */
+  machineAuth?: MachineAuth | undefined;
 }
 
 export function createApp({
@@ -143,6 +166,7 @@ export function createApp({
   runNotifier,
   resolveTxt,
   chatApis,
+  machineAuth,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -157,12 +181,18 @@ export function createApp({
       : requireOrgRole(tx, userId, min),
   );
   registry.provideProjects(findProject);
+  registry.provideClientMachine(clientMachineOf);
   runsMcpTools(registry);
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
   leaderMcpTools(registry, { runs });
   provideThreadHost(createThreadHost(runs));
   provideLinkTarget("chat_thread", createThreadLinkTarget());
+  provideLinkTarget("task", createTaskLinkTarget());
+  provideLinkTarget("run", createRunLinkTarget());
+  provideLinkTarget("sdlc_item", createSdlcItemLinkTarget());
+  provideLinkTarget("doc", createDocLinkTarget());
+  provideDocProposer(createDocProposer());
   artifactsMcpTools(registry, { pool, jobs, publicUrl });
   sdlcMcpTools(registry);
   docsyncMcpTools(registry);
@@ -272,6 +302,7 @@ export function createApp({
       auth,
       pool,
       publicUrl,
+      machineAuth,
       workerReleases: new WorkerReleaseCache(config.workerReleases),
       issuePersonalToken: (tx, userId, purpose) => issueDesktopToken(tx, userId, registry, purpose),
     }),
@@ -279,7 +310,7 @@ export function createApp({
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),
     chat: chatRouter({ ...shared, ...chatApis, publicUrl, telegramPollingBotIds: config.telegramPollingBotIds }),
-    projects: catalogRouter({ ...shared, jobs, publicUrl }),
+    projects: catalogRouter({ ...shared, jobs, publicUrl, settingsGuard: assertSettingsUnlocked }),
     projectMembers: projectMembersRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({
       auth,
@@ -324,18 +355,27 @@ export function createApp({
     mcpAdmin: mcpAdminRouter({ auth: baseAuth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({
+      policyGuard: syncPolicyEntries,
       auth,
       pool,
       templates: templateService({ publicUrl, jobs }),
       remote: remotePolicyHook,
     }),
+    layeredConfig: layeredConfigRouter({ auth, pool }),
     terminal: terminalRouter({ auth, pool, terminal }),
     remote: remoteRouter({ auth, pool, remote: { enabled: terminal.enabled, publicUrl } }),
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
-  const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
-  const openapi = new OpenAPIHandler(router, { clientInterceptors: [mapDomainErrors] });
+  // ResponseHeadersPlugin để thủ tục có ghi trả `Hive-Client-Event` (specs/027), kể cả khi trả lỗi.
+  const rpc = new RPCHandler(router, {
+    clientInterceptors: [mapDomainErrors],
+    plugins: [new ResponseHeadersPlugin()],
+  });
+  const openapi = new OpenAPIHandler(router, {
+    clientInterceptors: [mapDomainErrors],
+    plugins: [new ResponseHeadersPlugin()],
+  });
   const app = new Hono();
   // Danh sách của trang chủ và bảng việc cỡ MB với vài nghìn task (JSON nén còn chừng một phần mười, ~6 ms mỗi MB).
   // Luồng SSE (text/event-stream) không bị nén vì phải tới từng sự kiện.
@@ -357,6 +397,8 @@ export function createApp({
   app.post("/hooks/docs/:homeId", (c) => handleDocsWebhook(docSyncDeps, c.req.param("homeId"), c.req.raw));
   app.post("/api/v1/docs/assets", (c) => handleAssetUpload(docSyncDeps, c.req.raw));
   app.get("/api/v1/docs/assets", (c) => handleAssetDownload(docSyncDeps, c.req.raw));
+  // Ảnh và PDF của artifact: tệp nhị phân đi qua Hono như đính kèm tài liệu, metadata vẫn do oRPC `artifacts` trả.
+  app.post(ARTIFACT_UPLOAD_PATH, (c) => handleArtifactUpload({ pool, auth, jobs, publicUrl }, c.req.raw));
   app.get("/api/v1/docs/assets/:id", (c, next) =>
     c.req.param("id") === "list" ? next() : handleAssetDownload(docSyncDeps, c.req.raw, c.req.param("id")),
   );
@@ -461,7 +503,7 @@ export function createApp({
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
-      context: { headers: c.req.raw.headers },
+      context: { headers: c.req.raw.headers, remoteAddress: socketAddress(c.env) },
     });
     if (matched) return c.newResponse(response.body, response);
     await next();
@@ -469,7 +511,7 @@ export function createApp({
   app.use("/api/*", async (c, next) => {
     const { matched, response } = await openapi.handle(c.req.raw, {
       prefix: "/api",
-      context: { headers: c.req.raw.headers },
+      context: { headers: c.req.raw.headers, remoteAddress: socketAddress(c.env) },
     });
     if (matched) return c.newResponse(response.body, response);
     await next();

@@ -30,7 +30,7 @@ export type ArtifactType = z.output<typeof artifactType>;
 /** Loại bật mặc định (PO chốt 2026-10-14); loại khác có trình xem sau MVP. */
 export const ARTIFACT_MVP_TYPES: readonly ArtifactType[] = ["markdown", "code", "html", "mermaid", "react"];
 /** Loại chạy trong khung cách ly ở hub và app; trên trang công khai mọi loại đều vào khung (FR-144). */
-export const ARTIFACT_FRAME_TYPES: readonly ArtifactType[] = ["html", "react", "svg", "mermaid", "csv", "pdf"];
+export const ARTIFACT_FRAME_TYPES: readonly ArtifactType[] = ["html", "react", "svg", "mermaid", "csv", "image", "pdf"];
 
 export const artifactScope = z.enum(["private", "project", "team", "org"]);
 export type ArtifactScope = z.output<typeof artifactScope>;
@@ -133,6 +133,10 @@ export const ARTIFACT_ERRORS = {
     message: "Link công khai đang tắt trong chính sách của tổ chức.",
   },
   ARTIFACT_LINK_EXPIRY_INVALID: { status: "BAD_REQUEST", message: "Hạn link vượt mức tối đa của tổ chức." },
+  ARTIFACT_NOT_MARKDOWN: {
+    status: "BAD_REQUEST",
+    message: "Chỉ artifact Markdown mới chuyển được thành tài liệu.",
+  },
 } as const satisfies Record<string, { status: ArtifactErrorStatus; message: string }>;
 export type ArtifactErrorCode = keyof typeof ARTIFACT_ERRORS;
 
@@ -236,6 +240,8 @@ export const artifactVersionMeta = z.object({
   version: z.int().min(1),
   sha256: z.string(),
   sizeBytes: z.number().int().nonnegative(),
+  /** Ảnh và PDF: tệp nằm ở kho file của nền tảng, `content` luôn null. */
+  hasBlob: z.boolean(),
   /** Tác giả là người hoặc run, không bao giờ cả hai. */
   authorUser: userRef.nullable(),
   authorRunId: id.nullable(),
@@ -252,7 +258,7 @@ export const artifactVersionMeta = z.object({
 export type ArtifactVersionMeta = z.output<typeof artifactVersionMeta>;
 
 export const artifactVersion = artifactVersionMeta.extend({
-  /** null khi bản đã bị xoá vì bí mật (hoặc là blob, sau MVP). */
+  /** null khi bản đã bị xoá vì bí mật (hoặc là ảnh/PDF: xem `hasBlob`). */
   content: z.string().nullable(),
   compileError: z.string().nullable(),
 });
@@ -402,6 +408,8 @@ const artifactListShape = {
   terminalSessionId: id.optional(),
   runId: id.optional(),
   taskId: id.optional(),
+  sdlcItemId: id.optional(),
+  docId: id.optional(),
   /** Chỉ artifact tôi là chủ ("Của tôi"). */
   mine: queryFlag.default(false),
   /** Tìm theo tiêu đề và nội dung bản mới nhất. */
@@ -496,6 +504,8 @@ export type ArtifactToolResult = z.output<typeof artifactToolResult>;
 // ---- Route ---------------------------------------------------------------------------------------------------------
 
 const versionRef = z.object({ id, version: versionNumber });
+export const artifactToDoc = versionRef.extend({ key: docKey, title: artifactTitle.optional() });
+export type ArtifactToDoc = z.output<typeof artifactToDoc>;
 
 export const artifactsContract = {
   settings: artifactRoute("GET", "/v1/artifact-settings", "Chính sách artifact đang áp của tổ chức").output(
@@ -597,9 +607,9 @@ export const artifactsContract = {
   askLeaderFix: artifactRoute("POST", "/v1/artifacts/{id}/ask-leader-fix", "Gửi lỗi của trang cho Leader sửa")
     .input(artifactAskLeaderFix)
     .output(z.object({ threadId: id, messageId: id, runId: id.nullable() })),
-  /** Sau MVP (US11): tạo đề xuất tài liệu `knowledge`, chỉ loại `markdown`. */
+  /** US11: tạo đề xuất tài liệu `knowledge`, chỉ loại `markdown`. */
   toDoc: artifactRoute("POST", "/v1/artifacts/{id}/to-doc", "Chuyển phiên bản thành đề xuất tài liệu")
-    .input(versionRef.extend({ key: docKey, title: artifactTitle.optional() }))
+    .input(artifactToDoc)
     .output(z.object({ proposalId: id })),
   /** Sau MVP (US11): một PR một artifact một phiên bản, đi chính sách kết quả của dự án. */
   toRepo: artifactRoute("POST", "/v1/artifacts/{id}/to-repo", "Mở PR lưu phiên bản vào repo của dự án")

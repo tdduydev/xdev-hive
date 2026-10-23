@@ -16,7 +16,7 @@ import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { FileTextIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { LoadFailure } from "@/components/ui/query-state.tsx";
 import { WordImportDialog } from "@/components/word-import-dialog.tsx";
 import { useWordImportSupport } from "@/lib/build-info.ts";
@@ -26,6 +26,11 @@ import { DocSyncDetails, useDocManage, useDocTree } from "@/pages/knowledge/doc-
 import { useOrg } from "@/shell/org-context.ts";
 
 // Các ảnh cùng lượt render dùng chung một request; nội dung Markdown vẫn giữ đường dẫn repo.
+// Nạp khi cần: mục này kéo theo môi trường artifact của web (rpc, tải tệp) mà trình soạn tài liệu không dùng.
+const LinkedArtifactsSection = lazy(() =>
+  import("@/pages/artifacts/linked-section.tsx").then((m) => ({ default: m.LinkedArtifactsSection })),
+);
+
 export function createAssetResolver(
   resolve: (input: { docKey: string; hrefs: string[] }) => Promise<DocResolvedLink[]>,
 ) {
@@ -157,6 +162,7 @@ function WebDocEditor({ docKey }: { docKey: string }) {
   const [linking, setLinking] = useState(false);
   const word = useWordImportSupport();
   const homeId = tree.data?.find((item) => item.key === docKey)?.homeId;
+  const docId = tree.data?.find((item) => item.key === docKey)?.docId;
   // Hỏi cho mọi người đọc được tài liệu: nhãn nguồn và file gốc không đòi quyền sửa. Hub chưa có `ofDoc` thì lỗi cũng
   // coi như chưa gắn, nút vẫn hiện.
   const imported = useQuery({
@@ -279,6 +285,16 @@ function WebDocEditor({ docKey }: { docKey: string }) {
       )}
       {homeId && (
         <WordImportDialog open={updating} onOpenChange={setUpdating} mode="update" docKey={docKey} homeId={homeId} />
+      )}
+      {docId && (
+        <details className="border-b border-border px-4 py-2">
+          <summary className="cursor-pointer text-sm font-medium">Artifact gắn với tài liệu</summary>
+          <div className="pt-3">
+            <Suspense fallback={null}>
+              <LinkedArtifactsSection target={{ kind: "doc", id: docId }} canLink />
+            </Suspense>
+          </div>
+        </details>
       )}
       <DocEditorProvider env={env}>
         <DocEditor docKey={docKey} />

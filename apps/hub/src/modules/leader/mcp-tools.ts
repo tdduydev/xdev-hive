@@ -89,6 +89,7 @@ export function registerMcpTools(
   const approvalTtlSec = opts.approvalTtlSec ?? configuredApprovalTtl();
   registry.register({
     name: "leader_reply",
+    writes: true,
     title: "Trả lời trong cuộc trò chuyện",
     description: "Gửi câu trả lời vào cuộc trò chuyện hiện tại với người dùng.",
     input: z.object({ threadId: z.string().uuid(), content: z.string().trim().min(1).max(20_000) }),
@@ -109,6 +110,7 @@ export function registerMcpTools(
 
   registry.register({
     name: "leader_propose",
+    writes: true,
     title: "Đề xuất hành động",
     description: "Tạo đề xuất để người có quyền xem xét; không thực hiện hành động ngay.",
     input: z.object({
@@ -155,6 +157,7 @@ export function registerMcpTools(
 
   registry.register({
     name: "leader_action",
+    writes: true,
     title: "Đề xuất hoặc thực hiện hành động trên hub",
     description:
       "Hành động lên hub của Leader trong terminal: tạo task, giao run, huỷ run, đổi cài đặt dự án. Chế độ Đề xuất: thành đề xuất chờ người duyệt ở khung bên cạnh. Chế độ Bypass: thực hiện ngay bằng quyền người mở phiên. task.create và run.dispatch nên có `tier` và `tierReason` (xem `leader_tiers`).",

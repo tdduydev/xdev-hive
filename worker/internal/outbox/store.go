@@ -1,6 +1,6 @@
-// Package outbox giữ việc chờ gửi lên hub khi máy ngoại tuyến (spec 027 "Mục hộp thư đi"). Đây là phần tối thiểu của
-// spec 029: chỉ kênh `worker` (sự kiện máy gửi tới `POST /api/v1/client-events` bằng machine token), không có kênh
-// `mcp`, `rpc`, trạng thái `held` hay bản nén để gửi lại khi epoch database đổi.
+// Package outbox giữ việc chờ gửi lên hub khi hub vắng (spec 027 "Mục hộp thư đi", ADR 0032). Ba kênh: `worker` (sự
+// kiện máy gửi tới `POST /api/v1/client-events` bằng machine token), `mcp` (tool có ghi, `POST /mcp`) và `rpc`
+// (procedure có ghi, `POST /rpc/<path>`), hai kênh sau gửi bằng token của người đã tạo mục.
 //
 // Mỗi mục là một file `<Root>/<identity>/<key>.json`; khoá ULID cũng là idempotencyKey gửi hub, nên gửi lại sau khi
 // tiến trình chết giữa chừng chỉ làm hub trả `duplicate` (SC-006).
@@ -26,6 +26,8 @@ import (
 
 const (
 	TransportWorker = "worker"
+	TransportMCP    = "mcp"
+	TransportRPC    = "rpc"
 
 	KindTokenScore        = "machine.token_score"
 	KindMemoryPropose     = "memory.propose"
@@ -43,47 +45,46 @@ const (
 	lockWait    = 30 * time.Second
 )
 
-// kindGroups là các kind kênh worker được nhận và nhóm của chúng (MACHINE_EVENT_KINDS trong contracts). Kind lạ bị
-// chặn ngay khi nộp, vì hub kiểm schema strict và sẽ từ chối dù gửi bao nhiêu lần.
-var kindGroups = map[string]string{
-	KindTokenScore:        "progress",
-	KindProjectTokenUsage: "progress",
-	KindMemoryPropose:     "proposal",
-}
-
 type State string
 
 const (
 	StatePending   State = "pending"
 	StateSending   State = "sending"
+	StateHeld      State = "held"
 	StateAccepted  State = "accepted"
 	StateDuplicate State = "duplicate"
 	StateRejected  State = "rejected"
 	StateExpired   State = "expired"
 )
 
-// Identity là danh tính gửi. Kênh worker chỉ có máy: hub đọc tổ chức và máy từ token, không từ body.
-type Identity struct {
-	HubURL    string `json:"hubUrl"`
-	OrgID     string `json:"orgId,omitempty"`
-	MachineID string `json:"machineId"`
+// Lý do giữ mục: gửi bằng danh tính hiện tại thì hub chắc chắn từ chối, nên chờ người dùng đăng nhập lại thay vì thử
+// lại tới khi hết hạn.
+const (
+	HeldLoginRequired    = "login_required"
+	HeldIdentityMismatch = "identity_mismatch"
+	HeldMachineRevoked   = "machine_revoked"
+)
+
+// sources là giá trị `X-Hive-Source` hub nhận (CLIENT_SOURCES trong contracts).
+var sources = map[string]bool{
+	"worker-run": true, "worker": true, "desktop": true, "hive-cli": true, "mcp-local": true, "vscode": true, "web": true,
 }
 
-var unsafeIDChars = regexp.MustCompile(`[^A-Za-z0-9_-]`)
+var defaultSource = map[string]string{TransportWorker: "worker", TransportMCP: "mcp-local", TransportRPC: "hive-cli"}
 
-// Key là tên thư mục của danh tính: `machine-<machineId>` (spec 027). Ký tự ngoài chữ, số, `_`, `-` bị thay để id lạ
-// không thoát ra ngoài thư mục outbox.
-func (id Identity) Key() string {
-	return "machine-" + unsafeIDChars.ReplaceAllString(id.MachineID, "_")
+// Target là thứ mục ghi vào (task, doc, project…). Các mục cùng target tạo một stream gửi theo thứ tự.
+type Target struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
 }
 
-func normalizeHub(u string) string { return strings.TrimRight(u, "/") }
-
+// Result là trả lời của hub. Response giữ kết quả tool hay procedure để client đang chờ nhận đúng nội dung như gọi thẳng.
 type Result struct {
-	Outcome    string `json:"outcome"`
-	Code       string `json:"code,omitempty"`
-	Reason     string `json:"reason,omitempty"`
-	ReceivedAt string `json:"receivedAt,omitempty"`
+	Outcome    string          `json:"outcome"`
+	Code       string          `json:"code,omitempty"`
+	Reason     string          `json:"reason,omitempty"`
+	ReceivedAt string          `json:"receivedAt,omitempty"`
+	Response   json.RawMessage `json:"response,omitempty"`
 }
 
 type Item struct {
@@ -94,9 +95,13 @@ type Item struct {
 	Kind          string          `json:"kind"`
 	Group         string          `json:"group"`
 	Stream        string          `json:"stream"`
+	Target        *Target         `json:"target,omitempty"`
+	Project       string          `json:"project,omitempty"`
 	Body          json.RawMessage `json:"body"`
 	CreatedAt     time.Time       `json:"createdAt"`
 	State         State           `json:"state"`
+	HeldReason    string          `json:"heldReason,omitempty"`
+	RetriedAt     *time.Time      `json:"retriedAt,omitempty"`
 	Attempts      int             `json:"attempts"`
 	LastAttemptAt *time.Time      `json:"lastAttemptAt,omitempty"`
 	NextAttemptAt *time.Time      `json:"nextAttemptAt,omitempty"`
@@ -147,12 +152,16 @@ func (s Store) lock(id Identity) (func(), error) {
 }
 
 // Submission là việc cần gửi. Key và CreatedAt bỏ trống thì tạo mới; truyền vào khi chuyển việc đã có khoá (báo cáo
-// điểm chờ của bản trước) để hub vẫn nhận ra trùng. Replace bỏ các mục cùng kind chưa gửi được, cho loại chỉ cần số đọc
-// mới nhất như điểm máy.
+// điểm chờ của bản trước, client gửi lại sau khi socket đứt) để hub vẫn nhận ra trùng. Replace bỏ các mục cùng kind chưa
+// gửi được, cho loại chỉ cần số đọc mới nhất như điểm máy. Transport bỏ trống là `worker`. Stream bỏ trống thì lấy từ
+// Target (`task:<id>`), không có Target thì là kind.
 type Submission struct {
+	Transport string
 	Kind      string
 	Source    string
 	Stream    string
+	Target    *Target
+	Project   string
 	Payload   json.RawMessage
 	Key       string
 	CreatedAt time.Time
@@ -162,50 +171,13 @@ type Submission struct {
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
 
 func (s Store) Submit(id Identity, sub Submission) (Item, error) {
-	group, ok := kindGroups[sub.Kind]
-	if !ok {
-		return Item{}, fmt.Errorf("loại việc %q không gửi được qua hộp thư đi", sub.Kind)
-	}
-	if id.MachineID == "" || id.HubURL == "" {
-		return Item{}, errors.New("máy chưa đăng ký với hub; chạy `hive-worker register --hub URL --token MÃ` trước")
-	}
-	payload := strings.TrimSpace(string(sub.Payload))
-	if !json.Valid([]byte(payload)) || !strings.HasPrefix(payload, "{") {
-		return Item{}, errors.New("nội dung gửi phải là một object JSON")
-	}
-	now := s.now()
-	it := Item{
-		Key: sub.Key, Source: sub.Source, Identity: id, Transport: TransportWorker, Kind: sub.Kind, Group: group,
-		Stream: sub.Stream, Body: json.RawMessage(payload), CreatedAt: sub.CreatedAt.UTC(), State: StatePending,
-	}
-	it.Identity.HubURL = normalizeHub(id.HubURL)
-	if it.Key == "" {
-		it.Key = NewKey(now)
-	} else if !keyPattern.MatchString(it.Key) {
-		return Item{}, errors.New("khoá chống trùng gồm 16–64 ký tự chữ, số, `_` hoặc `-`")
-	}
-	if sub.CreatedAt.IsZero() {
-		it.CreatedAt = now.UTC()
-	}
-	if it.Source == "" {
-		it.Source = "worker"
-	}
-	if it.Stream == "" {
-		it.Stream = it.Kind
-	}
-	b, err := json.Marshal(it)
+	it, b, err := s.prepare(id, sub, false)
 	if err != nil {
 		return Item{}, err
 	}
-	maxItem, maxTotal := s.MaxItemBytes, s.MaxTotalBytes
-	if maxItem <= 0 {
-		maxItem = DefaultMaxItemBytes
-	}
+	maxTotal := s.MaxTotalBytes
 	if maxTotal <= 0 {
 		maxTotal = DefaultMaxTotalBytes
-	}
-	if int64(len(b)) > maxItem {
-		return Item{}, &Error{Code: "ITEM_TOO_LARGE", Message: fmt.Sprintf("Việc chờ gửi quá lớn (tối đa %d MB).", maxItem>>20)}
 	}
 
 	unlock, err := s.lock(id)
@@ -238,6 +210,117 @@ func (s Store) Submit(id Identity, sub Submission) (Item, error) {
 		return Item{}, err
 	}
 	return it, nil
+}
+
+// Prepare kiểm và dựng mục như Submit nhưng không ghi đĩa, cho nhóm `immediate` gửi thẳng tới hub qua cùng Dispatcher.
+func (s Store) Prepare(id Identity, sub Submission) (Item, error) {
+	it, _, err := s.prepare(id, sub, true)
+	return it, err
+}
+
+func (s Store) prepare(id Identity, sub Submission, immediate bool) (Item, []byte, error) {
+	transport := sub.Transport
+	if transport == "" {
+		transport = TransportWorker
+	}
+	group, ok := GroupOf(transport, sub.Kind)
+	if !ok {
+		return Item{}, nil, &Error{Code: "UNKNOWN_KIND", Message: fmt.Sprintf("loại việc %q không gửi được qua hộp thư đi", sub.Kind)}
+	}
+	if !immediate && !Queueable(group) {
+		return Item{}, nil, &Error{Code: "NOT_QUEUEABLE", Message: fmt.Sprintf("%q cần hub trả lời ngay nên không xếp hàng được", sub.Kind)}
+	}
+	switch {
+	case transport == TransportWorker && (id.MachineID == "" || id.HubURL == ""):
+		return Item{}, nil, errors.New("máy chưa đăng ký với hub; chạy `hive-worker register --hub URL --token MÃ` trước")
+	case transport != TransportWorker && (id.UserID == "" || id.HubURL == ""):
+		return Item{}, nil, &Error{Code: "NOT_SIGNED_IN", Message: "Chưa đăng nhập hub; chạy `hive login` trước."}
+	}
+	if sub.Source != "" && !sources[sub.Source] {
+		return Item{}, nil, fmt.Errorf("nguồn %q không hợp lệ", sub.Source)
+	}
+	if t := sub.Target; t != nil && (t.Type == "" || t.ID == "") {
+		return Item{}, nil, errors.New("đích ghi cần cả loại và id")
+	}
+	payload := strings.TrimSpace(string(sub.Payload))
+	if !json.Valid([]byte(payload)) || !strings.HasPrefix(payload, "{") {
+		return Item{}, nil, errors.New("nội dung gửi phải là một object JSON")
+	}
+	now := s.now()
+	it := Item{
+		Key: sub.Key, Source: sub.Source, Identity: id, Transport: transport, Kind: sub.Kind, Group: group,
+		Stream: sub.Stream, Target: sub.Target, Project: sub.Project, Body: json.RawMessage(payload), CreatedAt: sub.CreatedAt.UTC(),
+		State: StatePending,
+	}
+	it.Identity.HubURL = normalizeHub(id.HubURL)
+	if it.Key == "" {
+		it.Key = NewKey(now)
+	} else if !keyPattern.MatchString(it.Key) {
+		return Item{}, nil, errors.New("khoá chống trùng gồm 16–64 ký tự chữ, số, `_` hoặc `-`")
+	}
+	if sub.CreatedAt.IsZero() {
+		it.CreatedAt = now.UTC()
+	}
+	if it.Source == "" {
+		it.Source = defaultSource[transport]
+	}
+	switch {
+	case it.Stream != "":
+	case it.Target != nil:
+		it.Stream = it.Target.Type + ":" + it.Target.ID
+	default:
+		it.Stream = it.Kind
+	}
+	b, err := json.Marshal(it)
+	if err != nil {
+		return Item{}, nil, err
+	}
+	maxItem := s.MaxItemBytes
+	if maxItem <= 0 {
+		maxItem = DefaultMaxItemBytes
+	}
+	if int64(len(b)) > maxItem {
+		return Item{}, nil, &Error{Code: "ITEM_TOO_LARGE", Message: fmt.Sprintf("Việc chờ gửi quá lớn (tối đa %d MB).", maxItem>>20)}
+	}
+	return it, b, nil
+}
+
+// IncomingDir là nơi client đặt file tạm của mục lớn hơn một dòng socket (`bodyFile`); không phải thư mục danh tính.
+const IncomingDir = "incoming"
+
+// Identities trả danh tính của các thư mục còn mục, đọc từ mục đầu tiên: tên thư mục là băm nên không suy ngược được.
+// Vòng gửi của `hive-worker run` dùng để gửi cả mục của người đã đăng xuất hay đổi tài khoản khi họ đăng nhập lại.
+func (s Store) Identities() ([]Identity, error) {
+	entries, err := os.ReadDir(s.Root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Identity
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == IncomingDir || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(s.Root, e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			name := f.Name()
+			if f.IsDir() || strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".json") {
+				continue
+			}
+			it, err := s.read(filepath.Join(s.Root, e.Name(), name))
+			if err != nil || it.Identity.Key() != e.Name() {
+				continue
+			}
+			out = append(out, it.Identity)
+			break
+		}
+	}
+	return out, nil
 }
 
 type loaded struct {
@@ -474,4 +557,140 @@ func NewKey(now time.Time) string {
 		}
 	}
 	return string(out)
+}
+
+// expired tính 14 ngày từ lúc tạo, hoặc từ lần người dùng bấm Gửi lại mục đã hết hạn.
+func (it Item) expired(now time.Time) bool {
+	from := it.CreatedAt
+	if it.RetriedAt != nil && it.RetriedAt.After(from) {
+		from = *it.RetriedAt
+	}
+	return now.Sub(from) >= ExpireAfter
+}
+
+// update đọc, sửa rồi ghi lại từng mục có khoá trong keys khi đang giữ khoá file. fn trả false thì bỏ qua mục đó.
+func (s Store) update(id Identity, keys []string, fn func(*Item) bool) (int, error) {
+	unlock, err := s.lock(id)
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+	n := 0
+	for _, key := range keys {
+		if !keyPattern.MatchString(key) {
+			return n, errors.New("khoá không hợp lệ")
+		}
+		it, err := s.read(s.itemPath(id, key))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return n, err
+		}
+		if !fn(&it) {
+			continue
+		}
+		if err := s.write(id, it); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// Hold giữ mục tới khi người dùng đăng nhập lại; sender gọi khi hub trả 401 hay token là của người khác.
+func (s Store) Hold(id Identity, key, reason string) error {
+	_, err := s.update(id, []string{key}, func(it *Item) bool {
+		if it.State != StatePending && it.State != StateSending {
+			return false
+		}
+		it.State, it.HeldReason, it.NextAttemptAt = StateHeld, reason, nil
+		return true
+	})
+	return err
+}
+
+// Retry đưa mục `held` hay `expired` về `pending` để lượt gửi sau thử ngay. Mục bị từ chối không gửi lại: hub trả đúng
+// lần từ chối cũ cho cùng khoá.
+func (s Store) Retry(id Identity, keys []string) (int, error) {
+	now := s.now()
+	return s.update(id, keys, func(it *Item) bool {
+		if it.State != StateHeld && it.State != StateExpired {
+			return false
+		}
+		if it.State == StateExpired {
+			it.RetriedAt = &now
+		}
+		it.State, it.HeldReason, it.NextAttemptAt, it.LastError = StatePending, "", nil, ""
+		return true
+	})
+}
+
+// RetryHeld đưa mọi mục bị giữ vì reason về `pending`, vd. sau `hive login` cho đúng người.
+func (s Store) RetryHeld(id Identity, reason string) (int, error) {
+	items, err := s.List(id)
+	if err != nil {
+		return 0, err
+	}
+	var keys []string
+	for _, it := range items {
+		if it.State == StateHeld && (reason == "" || it.HeldReason == reason) {
+			keys = append(keys, it.Key)
+		}
+	}
+	return s.Retry(id, keys)
+}
+
+// Export trả các mục có khoá trong keys, rỗng thì mọi mục, để người dùng lưu ra file trước khi bỏ.
+func (s Store) Export(id Identity, keys []string) ([]Item, error) {
+	items, err := s.List(id)
+	if err != nil || len(keys) == 0 {
+		return items, err
+	}
+	want := map[string]bool{}
+	for _, k := range keys {
+		want[k] = true
+	}
+	out := []Item{}
+	for _, it := range items {
+		if want[it.Key] {
+			out = append(out, it)
+		}
+	}
+	return out, nil
+}
+
+// Stats là số mục theo trạng thái và dung lượng, cho thanh trạng thái "Hub đang vắng – N mục chờ gửi".
+type Stats struct {
+	Pending    int   `json:"pending"`
+	Held       int   `json:"held"`
+	Rejected   int   `json:"rejected"`
+	Expired    int   `json:"expired"`
+	Bytes      int64 `json:"bytes"`
+	LimitBytes int64 `json:"limitBytes"`
+}
+
+func (s Store) Stats(id Identity) (Stats, error) {
+	st := Stats{LimitBytes: s.MaxTotalBytes}
+	if st.LimitBytes <= 0 {
+		st.LimitBytes = DefaultMaxTotalBytes
+	}
+	items, total, err := s.load(id)
+	if err != nil {
+		return st, err
+	}
+	st.Bytes = total
+	for _, it := range items {
+		switch it.State {
+		case StatePending, StateSending:
+			st.Pending++
+		case StateHeld:
+			st.Held++
+		case StateRejected:
+			st.Rejected++
+		case StateExpired:
+			st.Expired++
+		}
+	}
+	return st, nil
 }

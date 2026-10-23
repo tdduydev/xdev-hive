@@ -16,6 +16,7 @@ import {
   sdlcItemTasks,
   sdlcModes,
   sdlcOverrides,
+  sdlcQaCases,
   sdlcQuestions,
   sdlcSteps,
   sdlcTraceLinks,
@@ -39,6 +40,7 @@ const TABLES: Record<string, PgTable & { orgId: unknown }> = {
   sdlc_trace_links: sdlcTraceLinks,
   sdlc_overrides: sdlcOverrides,
   sdlc_auto_approvals: sdlcAutoApprovals,
+  sdlc_qa_cases: sdlcQaCases,
 };
 
 type Org = OrgFixture & { user: (n: string) => string };
@@ -74,6 +76,11 @@ async function seed(name: "a" | "b") {
      values ($1, $2, $3, 1, 'dang-nhap', 'Đăng nhập', 'Ý tưởng', '{"kind":"manual"}', 'bugfix', '{}', '{}', 'S',
        'u', 'u') returning id`,
     [orgId, teamId, projectId],
+  );
+  await admin.query(
+    `insert into hive.sdlc_qa_cases (org_id, item_id, code, definition)
+    values ($1, $2, 'TC-001', '{}')`,
+    [orgId, itemId],
   );
   await admin.query(
     `insert into hive.sdlc_item_projects (org_id, item_id, project_id, team_id, role, settings, added_by)
@@ -182,6 +189,16 @@ describe("RLS bảng AI SDLC", () => {
     const b = seeded.b;
     expect(
       await inA((tx) =>
+        tx.insert(sdlcQaCases).values({
+          orgId: b.org.orgId,
+          itemId: b.itemId,
+          code: "TC-002",
+          definition: {} as never,
+        }),
+      ),
+    ).toBe("42501");
+    expect(
+      await inA((tx) =>
         tx.insert(sdlcItems).values(item({ orgId: b.org.orgId, teamId: b.org.teamId, projectId: b.projectId })),
       ),
     ).toBe("42501");
@@ -217,6 +234,16 @@ describe("RLS bảng AI SDLC", () => {
     const a = seeded.a;
     const b = seeded.b;
     const orgId = a.org.orgId;
+    expect(
+      await inA((tx) =>
+        tx.insert(sdlcQaCases).values({
+          orgId,
+          itemId: b.itemId,
+          code: "TC-002",
+          definition: {} as never,
+        }),
+      ),
+    ).toBe("23503");
     // Task của B chưa thuộc hạng mục nào, để chỉ khoá ngoại chặn (chỉ mục duy nhất theo task kiểm trước khoá ngoại).
     const { rows } = await admin.query(
       `insert into hive.tasks (org_id, team_id, project_id, number, key, title, created_by)

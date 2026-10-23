@@ -17,6 +17,15 @@ describe("buildCsp", () => {
     expect(d.get("sandbox")).toEqual(["allow-scripts"]);
   });
 
+  it("blobBase là ngoại lệ duy nhất của connect-src và chỉ mở thêm ảnh từ đúng thư mục đó", () => {
+    const blobBase = "https://hive.example.com/_artifact/blob/";
+    const d = directives(buildCsp({ libBase: LIB_BASE, blobBase }));
+    expect(d.get("connect-src")).toEqual([blobBase]);
+    expect(d.get("img-src")).toEqual(["data:", "blob:", blobBase]);
+    expect(d.get("script-src")).toEqual(["'unsafe-inline'", LIB_BASE]);
+    expect(() => buildCsp({ libBase: LIB_BASE, blobBase: "https://x.example/b/; connect-src *" })).toThrow();
+  });
+
   it("chỉ có host của hub làm nguồn ngoài", () => {
     const csp = buildCsp({ libBase: LIB_BASE });
     const sources = csp.split(/[\s;]+/).filter((t) => /^[a-z-]+:\/\//.test(t));

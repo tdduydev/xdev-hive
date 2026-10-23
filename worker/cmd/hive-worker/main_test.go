@@ -57,14 +57,15 @@ func TestRegisterSavesToken(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mã thoát %d, stderr: %s", code, stderr.String())
 	}
-	if got["registrationToken"] != "hwr_abc" || got["machineId"] != "may-test" || got["os"] != runtime.GOOS || got["capacity"] != float64(2) {
+	if got["registrationToken"] != "hwr_abc" || got["machineId"] != "may-test" || got["os"] != runtime.GOOS || got["capacity"] != float64(2) || got["publicKey"] == nil {
 		t.Fatalf("body gửi hub = %v", got)
 	}
 	cfg, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config.Config{HubURL: srv.URL, MachineID: "may-test", MachineToken: "hwm_secret", TeamID: "00000000-0000-4000-8000-000000000003"}
+	// Hub cũ không có route đổi token: máy giữ machine token, lần chạy sau gửi khoá lại.
+	want := config.Config{HubURL: srv.URL, MachineID: "may-test", ID: "00000000-0000-4000-8000-000000000001", MachineToken: "hwm_secret", TeamID: "00000000-0000-4000-8000-000000000003", Path: path}
 	if cfg != want {
 		t.Fatalf("cấu hình = %+v", cfg)
 	}

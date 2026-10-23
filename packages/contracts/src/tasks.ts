@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { taskHistoryItem } from "./client-events.ts";
 import { id, orgRoute, queryFlag } from "./common.ts";
 import { run } from "./runs.ts";
 import { cli } from "./worker-protocol.ts";
@@ -256,5 +257,13 @@ export const tasksContract = {
   )
     .input(taskSetDependenciesInput)
     .output(task),
+  history: orgRoute(
+    "GET",
+    "/v1/tasks/{id}/history",
+    "Lịch sử ghi của task: lần ghi từ client (nguồn, máy, giờ tạo, giờ nhận, lý do từ chối) và trạng thái run",
+    "tasks",
+  )
+    .input(z.object({ id }))
+    .output(z.array(taskHistoryItem)),
   plans: plansContract,
 };

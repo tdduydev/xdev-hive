@@ -23,6 +23,7 @@ import { dryRunMode, listModes, removeMode, saveMode } from "./modes.ts";
 import { overrideRoutes } from "./overrides.ts";
 import { participantRoutes } from "./participants.ts";
 import { type SdlcDeps, skipPhase } from "./phases.ts";
+import { qaRoutes } from "./qa-routes.ts";
 import { questionRoutes } from "./questions.ts";
 import { stepRoutes } from "./steps.ts";
 import { syncRoute } from "./sync.ts";
@@ -37,6 +38,7 @@ export function sdlcRouter(deps: OrgDeps & SdlcDeps) {
   const { authed, inOrg } = orgMiddlewares(deps);
   const os = implement(contract.sdlc).$context<RequestContext>().use(authed).use(inOrg);
   return {
+    qa: qaRoutes(deps),
     modes: {
       list: os.modes.list.handler(({ context: { tx, user }, input }) => listModes(tx, user.id, input)),
       save: os.modes.save.handler(({ context: { tx, user }, input }) => saveMode(tx, user.id, input)),

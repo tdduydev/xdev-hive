@@ -1,0 +1,48 @@
+{
+  "secrets": [
+    {
+      "name": "DATABASE_URL",
+      "description": "Postgres của môi trường thử",
+      "createdAt": "2026-10-01T08:30:00Z",
+      "valueChangedAt": "2026-10-01T08:30:00Z",
+      "projects": [
+        {
+          "localId": "1111111111111111",
+          "name": "app",
+          "folder": "/home/dev/app"
+        },
+        {
+          "localId": "2222222222222222",
+          "name": "api",
+          "folder": "/home/dev/api"
+        }
+      ],
+      "inUseBy": 0
+    },
+    {
+      "name": "STRIPE_TEST_KEY",
+      "description": "",
+      "createdAt": "2026-10-01T08:30:00Z",
+      "valueChangedAt": "2026-10-01T08:30:00Z",
+      "projects": [],
+      "inUseBy": 0
+    }
+  ],
+  "reserved": {
+    "exact": [
+      "PATH",
+      "HOME",
+      "USER",
+      "USERNAME",
+      "USERPROFILE",
+      "SHELL",
+      "COMSPEC",
+      "TEMP",
+      "TMP",
+      "TMPDIR",
+      "PATHEXT",
+      "NODE_OPTIONS"
+    ],
+    "prefixes": ["HIVE_", "LD_", "DYLD_", "GIT_", "SSH_", "ANTHROPIC_", "OPENAI_", "CLAUDE_", "CODEX_", "GEMINI_"]
+  }
+}
