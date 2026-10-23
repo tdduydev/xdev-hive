@@ -140,7 +140,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test: tham số không bao giờ nhận giá trị; stdout lỗi không chứa giá trị.
 
   Sau T004, T006.
-- [ ] T008 [P] [US1] B·vừa — File mới `apps/desktop/src-tauri/src/secrets.rs` với `secrets_status`, `secrets_list`,
+- [x] T008 [P] [US1] B·vừa — File mới `apps/desktop/src-tauri/src/secrets.rs` với `secrets_status`, `secrets_list`,
   `secret_save`, `secret_rename`, `secret_assign`, `secret_delete`.
   - Theo mẫu `ssh_keys.rs`: `spawn`, `child.write` giá trị, đóng stdin, `wipe`.
   - Mô tả đi qua file tạm, xoá sau khi chạy.
@@ -148,13 +148,13 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test dựng tham số; test giá trị không có trong argv.
 
   Viết theo contract, chạy song song với T007.
-- [ ] T009 [P] [US1] C·vừa — File mới `apps/desktop/src/lib/secrets.ts`:
+- [x] T009 [P] [US1] C·vừa — File mới `apps/desktop/src/lib/secrets.ts`:
   - kiểu `StoreStatus`, `SecretItem`, `ReservedNames`, `GrantEntry`, `ApprovalRequest`;
   - hàm gọi lệnh Tauri;
   - kiểm tên phía UI bằng `@xdev-hive/contracts/local-secrets`.
   - Test `apps/desktop/src/lib/secrets.test.ts` khớp fixture `worker/internal/secretstore/testdata/cli/*.json`.
     Nếu T007 chưa xong, dùng mẫu trong contract.
-- [ ] T010 [US1] C·vừa — Màn mới `apps/desktop/src/screens/secrets-screen.tsx` và test:
+- [x] T010 [US1] C·vừa — Màn mới `apps/desktop/src/screens/secrets-screen.tsx` và test:
   - bảng tên, mô tả, dự án, ngày đổi;
   - sheet thêm và sửa: ô giá trị `type=password`, `autoComplete="off"`, xoá state sau khi gửi (FR-007);
   - gán dự án từ `local-projects.ts`;
@@ -166,7 +166,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   `apps/desktop/src/lib/nav.ts`, không đặt `needs` (FR-008). Thêm chữ vi/en vào `apps/desktop/src/lib/i18n.ts`.
 
   Sau T009.
-- [ ] T011 [US1] C·nhẹ — `apps/desktop/src/screens/projects-screen.tsx`: mỗi dự án hiện số bí mật gán và nút tới màn
+- [x] T011 [US1] C·nhẹ — `apps/desktop/src/screens/projects-screen.tsx`: mỗi dự án hiện số bí mật gán và nút tới màn
   Bí mật (lọc theo dự án). Kèm test.
 
   Sau T010.
@@ -297,7 +297,7 @@ không chứa giá trị.
   - Test: tiến trình con in env khớp byte (giá trị có xuống dòng, nháy, `$`, Unicode); argv con không chứa giá trị.
 
   Sau T012, T017.
-- [ ] T020 [P] [US3] B·vừa — Bọc argv ở desktop.
+- [x] T020 [P] [US3] B·vừa — Bọc argv ở desktop.
   - `apps/desktop/src-tauri/src/profiles.rs`: `cli_launch`, `agent_launch` bọc `Launch.argv` bằng
     `[<sidecar>, "secrets", "exec", "--project=<localId>", "--kind=terminal", "--cli=<cli>", "--", …]` khi dự án có gán.
     `localId` tìm theo `folder` qua `secrets list`/`projects --json`.
@@ -326,11 +326,11 @@ không chứa giá trị.
   `secrets log clear` (FR-042). Fixture `testdata/cli/log.json`.
 
   Sau T007, T004.
-- [ ] T023 [P] [US6] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secrets_log`, `secrets_log_clear`. Đăng ký ở
+- [x] T023 [P] [US6] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secrets_log`, `secrets_log_clear`. Đăng ký ở
   `lib.rs`.
 
   Sau T008.
-- [ ] T024 [P] [US6] C·vừa — Tab Nhật ký trong `apps/desktop/src/screens/secrets-screen.tsx`:
+- [x] T024 [P] [US6] C·vừa — Tab Nhật ký trong `apps/desktop/src/screens/secrets-screen.tsx`:
   - lọc theo bí mật và dự án;
   - nhãn "đã xoá" (FR-044) và "giá trị xuất hiện trong output" (FR-037);
   - nút xoá toàn bộ, có xác nhận.
@@ -398,11 +398,11 @@ không chứa giá trị.
   Phần hỏi `[c/K]` trong terminal thuộc T019 (file của A2), không sửa ở đây.
 
   Sau T028, T022.
-- [ ] T031 [P] [US7] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secret_approvals`, `secret_approve`. Đăng ký ở
+- [x] T031 [P] [US7] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secret_approvals`, `secret_approve`. Đăng ký ở
   `lib.rs`.
 
   Sau T023.
-- [ ] T032 [P] [US7] C·vừa — File mới `apps/desktop/src/components/secret-approval-dialog.tsx` và test.
+- [x] T032 [P] [US7] C·vừa — File mới `apps/desktop/src/components/secret-approval-dialog.tsx` và test.
   - Hỏi `secret_approvals` mỗi 2 giây.
   - Hộp thoại liệt kê tên và dự án, không giá trị; nút mặc định là Từ chối.
   - Gắn vào `apps/desktop/src/shell/app-shell.tsx`.
@@ -423,7 +423,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 6.
 
-- [ ] T034 [US9] C·nhẹ — `apps/desktop/src/screens/secrets-screen.tsx`:
+- [x] T034 [US9] C·nhẹ — `apps/desktop/src/screens/secrets-screen.tsx`:
   - banner khi `StoreStatus.available=false` hoặc `locked=true`, có cách sửa (FR-062);
   - dòng có `missingInStore` hiện "Kho thiếu giá trị, hãy đặt lại".
 
@@ -455,14 +455,14 @@ không chứa giá trị.
   - `secrets purge --project|--all`: trả `removed` và `left` (FR-064).
 
   Test: chỉ `reveal` in giá trị ra stdout. Sau T030.
-- [ ] T037 [US8] B·vừa — `apps/desktop/src-tauri/src/secrets.rs`:
+- [x] T037 [US8] B·vừa — `apps/desktop/src-tauri/src/secrets.rs`:
   - `secret_reveal`;
   - `secret_copy`: Rust đặt clipboard, giữ bản so sánh, sau 30 giây xoá nếu chưa đổi, rồi `wipe`;
   - `secrets_purge`.
 
   Thêm `tauri-plugin-clipboard-manager` vào `apps/desktop/src-tauri/Cargo.toml`, quyền vào `capabilities/app.json`,
   đăng ký ở `lib.rs`. Kèm test. Sau T031.
-- [ ] T038 [US8] C·vừa — UI.
+- [x] T038 [US8] C·vừa — UI.
   - `apps/desktop/src/screens/secrets-screen.tsx`:
     - nút Hiện và Sao chép có hộp xác nhận, nút mặc định là Huỷ;
     - giá trị chỉ ở state của dòng, tự ẩn sau 10 giây hoặc khi rời màn (FR-052);
@@ -478,6 +478,7 @@ không chứa giá trị.
   - Không có thì dùng hộp xác nhận.
   - File mới `apps/desktop/src-tauri/src/os_auth.rs`.
   - Thêm phụ thuộc mới vào `Cargo.toml`: cần chủ dự án duyệt trước.
+  - để sau (quyết định 2026-10-23: tuỳ chọn, chưa làm)
 
   Sau T037.
 

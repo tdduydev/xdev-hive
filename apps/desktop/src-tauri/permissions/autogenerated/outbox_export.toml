@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-outbox-export"
+description = "Enables the outbox_export command without any pre-configured scope."
+commands.allow = ["outbox_export"]
+
+[[permission]]
+identifier = "deny-outbox-export"
+description = "Denies the outbox_export command without any pre-configured scope."
+commands.deny = ["outbox_export"]

@@ -349,16 +349,11 @@ pub async fn propose_skill(
     if !valid_name(&name) {
         return Err(format!("Tên skill không hợp lệ: {name}"));
     }
-    let hub = crate::hub_of(&app).ok_or("Máy chưa đăng ký với hub nào.")?;
-    let token = crate::account::stored_token(&hub)
-        .ok_or("Chưa liên kết tài khoản: mở thẻ người dùng ở góc dưới để dán token MCP.")?;
     let mut args = serde_json::json!({ "name": name, "baseVersion": base_version, "content": text, "note": note });
     if let Some(p) = project.filter(|p| !p.is_empty()) {
         args["project"] = p.into();
     }
-    crate::hub::call_tool(&hub, &token, "skill_propose", args)
-        .await
-        .map_err(|e| e.text())
+    crate::outbox::submit(&app, "skill_propose", args).await
 }
 
 #[cfg(test)]

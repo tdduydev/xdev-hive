@@ -9,9 +9,11 @@ import { useLinkedAccount } from "@/lib/account.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
+  OUTBOX_KEY,
+  OUTBOX_REFRESH_MS,
   type OutboxItem,
+  onOutboxChanged,
   outboxDrop,
-  outboxFlush,
   outboxStatus,
   rejectedItems,
   submitMemory,
@@ -43,6 +45,7 @@ const text: Dict<{
   sent: string;
   rejected: (reason: string) => string;
   expired: string;
+  held: string;
   tooLong: (max: number) => string;
   waitingTitle: string;
   waiting: (n: number) => string;
@@ -67,6 +70,7 @@ const text: Dict<{
     sent: "Đã gửi, đang chờ người trong đội duyệt.",
     rejected: (reason) => `Hub không nhận: ${reason}`,
     expired: "Quá hạn chưa gửi được, hãy gửi lại.",
+    held: "Đang giữ trên máy; mở Hộp thư đi để xem lý do và gửi lại.",
     tooLong: (max) => `Dài quá ${max} ký tự, hãy chia nhỏ hoặc nén trước khi gửi.`,
     waitingTitle: "Đang chờ gửi",
     waiting: (n) => `${n} việc đang chờ gửi lên hub, sẽ gửi khi có mạng.`,
@@ -75,6 +79,7 @@ const text: Dict<{
     noReason: "Hub không nêu lý do.",
     outboxKinds: {
       "memory.propose": "Đề xuất memory",
+      "memory.write": "Đề xuất memory",
       "project.token_usage": "Số liệu token của dự án",
       "machine.token_score": "Điểm token của máy",
     },
@@ -95,6 +100,7 @@ const text: Dict<{
     sent: "Sent, waiting for a teammate to approve.",
     rejected: (reason) => `The hub did not accept it: ${reason}`,
     expired: "Expired before it could be sent, send it again.",
+    held: "Held on this machine; open Outbox to see why and retry.",
     tooLong: (max) => `Over ${max} characters: split or compress it before sending.`,
     waitingTitle: "Waiting to send",
     waiting: (n) =>
@@ -104,6 +110,7 @@ const text: Dict<{
     noReason: "The hub gave no reason.",
     outboxKinds: {
       "memory.propose": "Memory proposal",
+      "memory.write": "Memory proposal",
       "project.token_usage": "Project token usage",
       "machine.token_score": "Machine token score",
     },
@@ -162,11 +169,9 @@ function HubSection({
   });
   const error = brief.error ?? memories.error ?? projects.error;
   const qc = useQueryClient();
-  // Mở màn là thử gửi phần còn đọng từ lần trước; lỗi mạng không đáng báo vì việc vẫn nằm trong hàng đợi.
+  // Worker sở hữu lượt gửi; giao diện chỉ làm mới khi nhận sự kiện của hàng đợi.
   useEffect(() => {
-    outboxFlush()
-      .catch(() => null)
-      .then(() => qc.invalidateQueries({ queryKey: OUTBOX_KEY }));
+    return onOutboxChanged(() => void qc.invalidateQueries({ queryKey: OUTBOX_KEY }));
   }, [qc]);
 
   return (
@@ -238,8 +243,7 @@ function SendRow({
         qc.invalidateQueries({ queryKey: api.memory.list.key({ input: { project: projectKey } }) }),
       ]),
   });
-  const outcome = send.data?.outcome;
-  const state = outcome?.state;
+  const state = send.data?.state;
 
   return (
     <li className="flex flex-col gap-1 py-2 text-sm">
@@ -261,20 +265,18 @@ function SendRow({
           {state === "accepted" || state === "duplicate"
             ? t.sent
             : state === "rejected"
-              ? t.rejected(outcome?.reason || t.noReason)
+              ? t.rejected(send.data?.result?.reason || t.noReason)
               : state === "expired"
                 ? t.expired
-                : t.queued}
+                : state === "held"
+                  ? t.held
+                  : t.queued}
         </p>
       )}
       {send.error && <Alert variant="destructive">{errorText(send.error)}</Alert>}
     </li>
   );
 }
-
-const OUTBOX_KEY = ["outbox"] as const;
-/** Worker tự gửi mỗi 15 giây khi chạy; hỏi lại cùng nhịp để thẻ phản ánh việc đã đi. */
-const OUTBOX_REFRESH_MS = 15_000;
 
 /**
  * "Đang chờ gửi" và việc hub không nhận, đọc từ hàng đợi của worker. Không có việc nào thì không vẽ gì. Lỗi đọc hàng
@@ -313,7 +315,11 @@ function OutboxBlocks() {
               <li key={item.key} className="flex items-start justify-between gap-2 py-2 text-sm">
                 <span className="flex flex-col gap-0.5">
                   <span className="text-xs font-medium text-muted-foreground">{label(item)}</span>
-                  <span>{item.state === "expired" ? t.expired : item.reason || t.noReason}</span>
+                  <span>
+                    {item.state === "expired"
+                      ? t.expired
+                      : item.reason || (item.state === "held" ? t.held : t.noReason)}
+                  </span>
                 </span>
                 <Button
                   size="sm"

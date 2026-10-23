@@ -8,10 +8,12 @@ import {
   FileUpIcon,
   FolderGitIcon,
   GlobeIcon,
+  KeyRoundIcon,
   type LucideIcon,
   MonitorIcon,
   NetworkIcon,
   PlayIcon,
+  SendIcon,
   ServerIcon,
   SettingsIcon,
   ZapIcon,
@@ -58,6 +60,7 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
 };
 
 export type ScreenId =
+  | "outbox"
   | "home"
   | "agents"
   | "tree"
@@ -70,6 +73,7 @@ export type ScreenId =
   | "projects"
   | "setup"
   | "ssh"
+  | "secrets"
   | "docs"
   | "word-import"
   | "settings";
@@ -117,6 +121,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         label: { vi: "Agent trên máy", en: "Agents on this machine" },
         icon: ActivityIcon,
       },
+      { id: "outbox", label: { vi: "Hộp thư đi", en: "Outbox" }, icon: SendIcon },
       {
         // Cây Leader giao việc cho agent trên các máy (specs/028 US4), cạnh Agent trên máy vì là lối mở tới terminal của run.
         // Dữ liệu của đội trên hub nên cần kết nối Hive; cùng quyền với Lượt chạy vì người xem đội không giao việc.
@@ -181,6 +186,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         needs: "runs.local",
       },
       { id: "setup", label: { vi: "Môi trường", en: "Environment" }, icon: CpuIcon, needs: "env.manage" },
+      {
+        // Bí mật tại máy (specs/031-local-secrets): giá trị nằm trong kho của hệ điều hành, không theo vai trò trên hub nên
+        // mọi hồ sơ đều thấy (FR-008).
+        id: "secrets",
+        label: { vi: "Bí mật", en: "Secrets" },
+        icon: KeyRoundIcon,
+      },
       {
         // Chuyển đăng nhập SSH từ mật khẩu sang khoá (specs/023-desktop-ssh-keys). Khoá SSH là của người dùng trên máy,
         // không theo vai trò trên hub, nên mọi hồ sơ đều thấy.

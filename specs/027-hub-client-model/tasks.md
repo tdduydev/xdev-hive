@@ -125,18 +125,18 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
   chờ hub (khoá …)"; tool `immediate` và tool đọc lỗi mạng trả "Hub đang vắng (<hub>)…"; worker không chạy thì tool
   ghi trả "Sidecar hive-worker không chạy…" · `worker/cmd/hive/mcp.go`, `worker/cmd/hive/mcp_outbox.go`,
   `worker/cmd/hive/mcp_test.go`
-- [ ] T021 [US2] Desktop: `propose_doc`, `propose_skill`, `memory-hub-sync` gọi `hive outbox submit`; sidecar không
+- [x] T021 [US2] Desktop: `propose_doc`, `propose_skill`, `memory-hub-sync` gọi `hive outbox submit`; sidecar không
   chạy thì báo, không ghi thẳng hub · `apps/desktop/src-tauri/src/outbox.rs`, `cli.rs`, `skills.rs`, `lib.rs`,
   `apps/desktop/src/components/memory-hub-sync.tsx`
-- [ ] T022 [US2] Màn "Hộp thư đi": mục `held`, `rejected`, `expired`, nút Bỏ, Gửi lại, Xuất; thanh trạng thái "Hub đang
+- [x] T022 [US2] Màn "Hộp thư đi": mục `held`, `rejected`, `expired`, nút Bỏ, Gửi lại, Xuất; thanh trạng thái "Hub đang
   vắng – N mục chờ gửi" · `apps/desktop/src/components/outbox-panel.tsx`, `apps/desktop/src/lib/outbox.ts`,
   `apps/desktop/src/i18n.ts`
 - [x] T023 [P] [US2] VS Code ghi qua `outbox.submit` · `apps/vscode/src/worker/ipc.ts` (extension đã gỡ ở `main`,
   e6751d68; mã này bỏ theo khi merge)
 - [x] T024 [US2] Sự kiện `watch`: `outbox`, `outbox.item` · `worker/cmd/hive-worker/outbox_ipc.go`,
   `worker/internal/terminal/local.go`
-- [ ] T025 [US2] Đăng xuất khi còn mục: hỏi "Gửi trước", "Giữ lại", "Bỏ" · `apps/desktop/src/components/outbox-panel.tsx`,
-  `worker/cmd/hive/login.go` (phần worker và `hive logout --outbox` xong: op `outbox.logout`; còn phần desktop)
+- [x] T025 [US2] Đăng xuất khi còn mục: hỏi "Gửi trước", "Giữ lại", "Bỏ" · `apps/desktop/src/components/sign-out-dialog.tsx`,
+  `worker/cmd/hive/login.go` (desktop và khay dùng chung hộp thoại; gọi `hive logout --outbox` → op `outbox.logout`)
 
 **Checkpoint**: US1 + US2 là MVP.
 
