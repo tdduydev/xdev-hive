@@ -6,6 +6,8 @@
 package projects
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +19,9 @@ import (
 
 // Project là một dự án của hub gắn với một thư mục repo trên máy.
 type Project struct {
+	// LocalID là id của mục trên máy này, không đổi khi gắn dự án hay dời thư mục; bí mật tại máy gán theo nó (specs/031
+	// FR-010) vì repo chưa gắn dự án không có ProjectID.
+	LocalID string `json:"localId"`
 	// ProjectID là id dự án trên hub; rỗng là repo chưa gắn dự án nào.
 	ProjectID string `json:"projectId"`
 	Name      string `json:"name"`
@@ -37,10 +42,57 @@ func DefaultPath(workerConfig string) string {
 // LegacyPath là file cấu hình của app v1, nơi có projects[] {name, repo}.
 func LegacyPath(home string) string { return filepath.Join(home, ".xdev-hive", "config.json") }
 
-// Load đọc danh sách; file không có thì trả rỗng, không lỗi.
+// Load đọc danh sách; file không có thì trả rỗng, không lỗi. Dòng do bản cũ ghi chưa có LocalID thì được sinh và ghi lại
+// một lần, trong khoá, để hai tiến trình đọc cùng lúc không sinh hai id khác nhau cho một dòng. Không ghi được thì trả
+// LocalID rỗng chứ không trả id mới mỗi lần đọc: bí mật gán theo id đó sẽ mất ở lần đọc sau.
 func Load(path string) ([]Project, error) {
 	f, err := read(path)
-	return f.Projects, err
+	if err != nil || !missingLocalID(f.Projects) {
+		return f.Projects, err
+	}
+	var filled *file
+	if modify(path, func(nf *file) error { filled = nf; return nil }) != nil || filled == nil {
+		return f.Projects, nil
+	}
+	return filled.Projects, nil
+}
+
+// FindLocal là mục có localID; nil khi không có (hoặc id rỗng).
+func FindLocal(list []Project, localID string) *Project {
+	if localID == "" {
+		return nil
+	}
+	for i := range list {
+		if list[i].LocalID == localID {
+			return &list[i]
+		}
+	}
+	return nil
+}
+
+// FindFolder là mục có thư mục chứa dir (dir là thư mục đó hay thư mục con). Repo lồng nhau thì lấy mục sâu nhất, như
+// cách cmd/hive chọn dự án theo thư mục đang đứng.
+func FindFolder(list []Project, dir string) *Project {
+	dir = cleanPath(dir)
+	if dir == "" {
+		return nil
+	}
+	var found *Project
+	longest := -1
+	for i := range list {
+		folder := cleanPath(list[i].Folder)
+		if folder == "" {
+			continue
+		}
+		rel, err := filepath.Rel(folder, dir)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			continue
+		}
+		if len(folder) > longest {
+			found, longest = &list[i], len(folder)
+		}
+	}
+	return found
 }
 
 // Find là mục đã gắn của dự án; nil khi máy chưa gắn dự án này (hoặc id rỗng).
@@ -119,44 +171,62 @@ func Bind(path, projectID, folder, name, repoURL string) error {
 	return modify(path, func(f *file) error {
 		kept := f.Projects[:0]
 		full := false
+		// Gắn dự án cho repo chưa gắn giữ LocalID của repo đó, để bí mật đã gán cho repo vẫn theo nó.
+		localID, unlinkedID := "", ""
 		for _, p := range f.Projects {
 			switch {
 			case strings.EqualFold(p.ProjectID, projectID):
 				full = p.FullPermission
+				localID = p.LocalID
 			case p.ProjectID == "" && samePath(p.Folder, root):
+				if unlinkedID == "" {
+					unlinkedID = p.LocalID
+				}
 			default:
 				kept = append(kept, p)
 			}
 		}
-		f.Projects = append(kept, Project{ProjectID: projectID, Name: name, Folder: root, FullPermission: full})
+		if localID == "" {
+			localID = unlinkedID
+		}
+		if localID == "" {
+			localID = newLocalID()
+		}
+		f.Projects = append(kept, Project{LocalID: localID, ProjectID: projectID, Name: name, Folder: root, FullPermission: full})
 		return nil
 	})
 }
 
-// Unbind bỏ gắn dự án.
-func Unbind(path, projectID string) error {
-	return modify(path, func(f *file) error {
+// Unbind bỏ gắn dự án và trả LocalID của mục đã gỡ, để bên gọi gỡ bí mật đã gán (secretstore.DropProject).
+func Unbind(path, projectID string) (string, error) {
+	var localID string
+	err := modify(path, func(f *file) error {
 		for i, p := range f.Projects {
 			if p.ProjectID != "" && strings.EqualFold(p.ProjectID, projectID) {
+				localID = p.LocalID
 				f.Projects = append(f.Projects[:i], f.Projects[i+1:]...)
 				return nil
 			}
 		}
 		return fmt.Errorf("máy chưa gắn dự án %q", projectID)
 	})
+	return localID, err
 }
 
-// UnbindFolder bỏ repo chưa gắn dự án (mục nhập từ app v1) theo thư mục.
-func UnbindFolder(path, folder string) error {
-	return modify(path, func(f *file) error {
+// UnbindFolder bỏ repo chưa gắn dự án (mục nhập từ app v1) theo thư mục và trả LocalID của mục đã gỡ.
+func UnbindFolder(path, folder string) (string, error) {
+	var localID string
+	err := modify(path, func(f *file) error {
 		for i, p := range f.Projects {
 			if p.ProjectID == "" && samePath(p.Folder, folder) {
+				localID = p.LocalID
 				f.Projects = append(f.Projects[:i], f.Projects[i+1:]...)
 				return nil
 			}
 		}
 		return fmt.Errorf("không có repo chưa gắn ở %s", folder)
 	})
+	return localID, err
 }
 
 // SetFull bật hoặc tắt toàn quyền của dự án đã gắn trên máy này.
@@ -249,7 +319,7 @@ func ImportLegacy(legacy, dst string, force bool) (int, error) {
 			if name == "" {
 				name = filepath.Base(folder)
 			}
-			f.Projects = append(f.Projects, Project{Name: name, Folder: folder})
+			f.Projects = append(f.Projects, Project{LocalID: newLocalID(), Name: name, Folder: folder})
 			n++
 		}
 		return nil
@@ -271,7 +341,7 @@ func AddFolder(path, folder, name string) (bool, error) {
 		if containsFolder(f.Projects, folder) {
 			return nil
 		}
-		f.Projects = append(f.Projects, Project{Name: name, Folder: folder})
+		f.Projects = append(f.Projects, Project{LocalID: newLocalID(), Name: name, Folder: folder})
 		added = true
 		return nil
 	})
@@ -282,6 +352,34 @@ func AddFolder(path, folder, name string) (bool, error) {
 func WithLock(path string, fn func() error) error { return withLock(path, fn) }
 
 func WriteJSON(path string, v any) error { return writeJSON(path, v) }
+
+// newLocalID: 16 hex ngẫu nhiên. Không suy từ thư mục hay ProjectID, vì cả hai đổi được mà gán bí mật phải giữ nguyên.
+func newLocalID() string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+func missingLocalID(list []Project) bool {
+	for _, p := range list {
+		if p.LocalID == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// fillLocalIDs sinh LocalID cho dòng thiếu (do bản cũ ghi, hay sửa tay), và cho dòng trùng id của dòng trước: hai mục
+// chung một id thì bí mật gán cho mục này lộ sang mục kia.
+func fillLocalIDs(list []Project) {
+	seen := map[string]bool{}
+	for i := range list {
+		if list[i].LocalID == "" || seen[list[i].LocalID] {
+			list[i].LocalID = newLocalID()
+		}
+		seen[list[i].LocalID] = true
+	}
+}
 
 func containsFolder(list []Project, folder string) bool {
 	for _, p := range list {

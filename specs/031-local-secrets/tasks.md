@@ -110,7 +110,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test bảng gồm giá trị bị cắt đôi qua hai khối, và giá trị ngắn hơn 8 không bị che. Có benchmark 16 KiB/khối.
 
   Không phụ thuộc task khác.
-- [ ] T006 [P] A2·vừa — `worker/internal/projects/projects.go`:
+- [x] T006 [P] A2·vừa — `worker/internal/projects/projects.go`:
   - thêm `LocalID string \`json:"localId"\``, 16 hex ngẫu nhiên, sinh trong `AddFolder`, `Bind`;
   - `Load` gặp dòng thiếu thì sinh trong `WithLock` và ghi lại;
   - `Unbind` và `UnbindFolder` trả `LocalID` đã gỡ;

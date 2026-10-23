@@ -70,9 +70,9 @@ func projectsCommand(args []string, stdout, stderr io.Writer) int {
 	case "unbind":
 		switch {
 		case *id != "":
-			err = projects.Unbind(file, *id)
+			_, err = projects.Unbind(file, *id)
 		case *folder != "":
-			err = projects.UnbindFolder(file, *folder)
+			_, err = projects.UnbindFolder(file, *folder)
 		default:
 			fmt.Fprintln(stderr, projectsUsage)
 			return 2
