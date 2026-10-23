@@ -166,7 +166,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   `apps/desktop/src/lib/nav.ts`, không đặt `needs` (FR-008). Thêm chữ vi/en vào `apps/desktop/src/lib/i18n.ts`.
 
   Sau T009.
-- [ ] T011 [US1] C·nhẹ — `apps/desktop/src/screens/projects-screen.tsx`: mỗi dự án hiện số bí mật gán và nút tới màn
+- [x] T011 [US1] C·nhẹ — `apps/desktop/src/screens/projects-screen.tsx`: mỗi dự án hiện số bí mật gán và nút tới màn
   Bí mật (lọc theo dự án). Kèm test.
 
   Sau T010.
