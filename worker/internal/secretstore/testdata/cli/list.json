@@ -43,17 +43,6 @@
       "PATHEXT",
       "NODE_OPTIONS"
     ],
-    "prefixes": [
-      "HIVE_",
-      "LD_",
-      "DYLD_",
-      "GIT_",
-      "SSH_",
-      "ANTHROPIC_",
-      "OPENAI_",
-      "CLAUDE_",
-      "CODEX_",
-      "GEMINI_"
-    ]
+    "prefixes": ["HIVE_", "LD_", "DYLD_", "GIT_", "SSH_", "ANTHROPIC_", "OPENAI_", "CLAUDE_", "CODEX_", "GEMINI_"]
   }
 }

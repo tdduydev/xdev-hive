@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -248,8 +249,15 @@ func TestSecretsCLIFixtures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("thiếu fixture (chạy lại với SECRETS_UPDATE_GOLDEN=1): %v", err)
 		}
-		// git autocrlf trên Windows đổi xuống dòng của file đã checkout.
-		if strings.ReplaceAll(string(want), "\r\n", "\n") != pretty.String() {
+		// So theo giá trị JSON, không theo chữ: autocrlf đổi xuống dòng, biome gộp mảng ngắn về một dòng.
+		var wantV, gotV any
+		if err := json.Unmarshal(want, &wantV); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if err := json.Unmarshal(pretty.Bytes(), &gotV); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !reflect.DeepEqual(wantV, gotV) {
 			t.Errorf("%s lệch kiểu Go; chạy lại với SECRETS_UPDATE_GOLDEN=1 rồi cập nhật kiểu TS.\ncó:\n%s\nmuốn:\n%s", name, want, pretty.String())
 		}
 	}
