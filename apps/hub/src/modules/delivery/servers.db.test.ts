@@ -5,6 +5,7 @@ import ssh2 from "ssh2";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { seedOrg } from "../../../test/org-fixture.ts";
 import { createPool, decryptSecret, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
+import { generateServerKey } from "./clients/ssh.ts";
 import {
   confirmServerHostKey,
   confirmServerRotation,
@@ -245,7 +246,7 @@ describe("kiểm kết nối và host key", () => {
   it("host key đổi: dừng trước mọi lệnh, audit và báo quản trị đội, kèm dấu vân tay vừa thấy", async () => {
     const s = await create("may-doi-hostkey");
     authorized = [s.publicKey];
-    const old = ssh2.utils.parseKey(ssh2.utils.generateKeyPairSync("ed25519").private);
+    const old = ssh2.utils.parseKey(generateServerKey().privateKey);
     if (old instanceof Error || Array.isArray(old)) throw new Error("khoá giả hỏng");
     const stale = { algorithm: "ssh-ed25519", fingerprint: fingerprintOf(old.getPublicSSH()) };
     await admin.query("update hive.deploy_servers set host_keys = $2 where id = $1", [s.id, JSON.stringify([stale])]);

@@ -3,10 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkSecretName,
+  checkSecretValue,
   type DeleteResult,
   formatWhen,
   type GrantEntry,
   isMissingValue,
+  SECRET_VALUE_MAX_BYTES,
   type SecretItem,
   type SecretsList,
   type StoreStatus,
@@ -130,6 +132,19 @@ describe("lệnh Tauri", () => {
 
   it("ngoài app Tauri thì từ chối bằng thông báo tiếng Việt", async () => {
     await expect(secretsStatus()).rejects.toThrow(/app xDev Hive/);
+  });
+});
+
+describe("kiểm giá trị", () => {
+  it("theo giới hạn của worker", () => {
+    expect(checkSecretValue("1234567")).toBe("short");
+    expect(checkSecretValue("12345678")).toBeNull();
+    // 8 ký tự có dấu là đủ dù UTF-16 hay byte dài hơn.
+    expect(checkSecretValue("ặặặặặặặặ")).toBeNull();
+    expect(checkSecretValue("😀😀😀😀")).toBe("short");
+    expect(checkSecretValue("a".repeat(SECRET_VALUE_MAX_BYTES))).toBeNull();
+    expect(checkSecretValue("a".repeat(SECRET_VALUE_MAX_BYTES + 1))).toBe("long");
+    expect(checkSecretValue("abcd\0efgh")).toBe("nul");
   });
 });
 
