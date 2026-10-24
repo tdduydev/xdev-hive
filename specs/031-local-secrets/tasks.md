@@ -506,6 +506,27 @@ không chứa giá trị.
 
 ---
 
+## Phase 13: Bí mật dùng cho mọi dự án (FR-066)
+
+- [x] T043 Điều phối·nhẹ — Spec: FR-066, US2 kịch bản 8, `LocalSecret.allProjects`, Out of Scope; `data-model.md` §2;
+  [contracts/sidecar-cli.md](contracts/sidecar-cli.md) (`--all-projects`, `SecretItem.allProjects`);
+  [contracts/tauri-commands.md](contracts/tauri-commands.md) (`secret_save.allProjects`).
+- [x] T044 A·nặng — Worker:
+  - `secretstore/catalog.go`: trường `AllProjects`, `SetAllProjects`, `ForProject` gộp bí mật dùng chung (không trùng,
+    xếp theo tên), giới hạn 64 tính cả bí mật dùng chung.
+  - `cmd/hive-worker/secrets.go`: `assign|unassign --all-projects`, loại trừ với `--project` (mã 2); JSON có
+    `allProjects`, `projects` của bí mật dùng chung là mọi dự án trên máy.
+  - Test: danh mục cũ thiếu trường, giới hạn 64, `Grant` cho dự án thêm sau và nhật ký cấp, CLI; fixture
+    `testdata/cli/item.json`, `list.json`.
+- [x] T045 B·nhẹ — `secrets.rs`: `secret_save` nhận `all_projects`, gọi `assign|unassign --all-projects` trước vòng gán
+  dự án. Máy dev không có Rust, CI kiểm.
+- [x] T046 C·vừa — Desktop: `lib/secrets.ts` (kiểu), `secret-form-dialog.tsx` (ô "Dùng cho mọi dự án" kèm cảnh báo, ẩn
+  chọn dự án), `secrets-screen.tsx` (nhãn "Mọi dự án", bộ lọc theo dự án vẫn hiện bí mật dùng chung), chữ vi/en, Vitest.
+
+  Sau T043. T044 trước T045 và T046 (fixture chung).
+
+---
+
 ## Dependencies & Execution Order
 
 ```
@@ -520,6 +541,8 @@ B:        T008 ─▶ T023 ─▶ T031 ─▶ T037 ─▶ (T039);  T020 (sau con
 C:        T009 ─▶ T010 ─▶ T011;  T010 ─▶ T024 ─▶ T034 ─▶ T038;  T009 ─▶ T032
 D:        T002;  T026 ─▶ T027 ─▶ T033;  T026 ─▶ T025;  T040
 Cuối:     T041, T042
+FR-066:   T043 ─▶ T044 ─┬─▶ T045
+                        └─▶ T046
 ```
 
 - User story phụ thuộc Phase 2. US2, US5 và US4 phải xong cùng nhau mới phát hành, vì đưa biến mà chưa che là không an
@@ -571,7 +594,7 @@ Gợi ý chia lượt:
 
 ## Tổng kết
 
-- **Số task**: 42 (T001–T042), T039 là tuỳ chọn.
+- **Số task**: 46 (T001–T046), T039 là tuỳ chọn.
   - Setup: 2.
   - Foundational: 4.
   - US1: 5.
@@ -584,6 +607,7 @@ Gợi ý chia lượt:
   - US9: 2.
   - US8: 4.
   - Polish: 3.
+  - Dùng cho mọi dự án (FR-066): 4.
 - **[P]**: 17 task.
 - **Ước lượng**: khoảng 30 ngày-agent. Với năm luồng song song, khoảng 8–10 ngày lịch.
   **[Inference]** Ước theo spec 029 (25 ngày-agent, ba luồng).

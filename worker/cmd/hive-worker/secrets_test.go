@@ -171,6 +171,47 @@ func TestSecretsCommandFlow(t *testing.T) {
 	}
 }
 
+// FR-066: bí mật dùng chung liệt kê mọi dự án trên máy, để desktop bọc terminal của dự án nào cũng được.
+func TestSecretsAllProjects(t *testing.T) {
+	cfg := secretsEnv(t)
+	if r := secretsCall(t, valueJSON(fakeValue), "set", "--config", cfg, "--name", "SENTRY_DSN"); r.code != 0 {
+		t.Fatalf("set: %+v", r)
+	}
+	if r := secretsCall(t, "", "assign", "--config", cfg, "--name", "SENTRY_DSN", "--project", appLocalID); r.code != 0 {
+		t.Fatalf("assign: %+v", r)
+	}
+	for _, args := range [][]string{
+		{"assign", "--name", "SENTRY_DSN", "--project", appLocalID, "--all-projects"},
+		{"unassign", "--name", "SENTRY_DSN"},
+	} {
+		if r := secretsCall(t, "", append(args, "--config", cfg)...); r.code != 2 {
+			t.Fatalf("%v phải là lỗi cú pháp: %+v", args, r)
+		}
+	}
+
+	var item secretItem
+	r := secretsCall(t, "", "assign", "--config", cfg, "--name", "sentry_dsn", "--all-projects")
+	if r.code != 0 || json.Unmarshal([]byte(r.stdout), &item) != nil || !item.AllProjects || len(item.Projects) != 2 ||
+		item.Projects[0].LocalID != appLocalID || item.Projects[1].LocalID != apiLocalID {
+		t.Fatalf("assign --all-projects: %+v", r)
+	}
+	cat, _ := secretstore.LoadCatalog(secretstore.CatalogPath(cfg))
+	if s := cat.Find("SENTRY_DSN"); s == nil || !s.AllProjects || len(s.Projects) != 0 {
+		t.Fatalf("danh mục chỉ giữ cờ, không giữ gán riêng: %+v", s)
+	}
+
+	var list secretsListView
+	r = secretsCall(t, "", "list", "--config", cfg, "--json", "--project", apiLocalID)
+	if r.code != 0 || json.Unmarshal([]byte(r.stdout), &list) != nil || len(list.Secrets) != 1 || !list.Secrets[0].AllProjects {
+		t.Fatalf("lọc theo dự án phải có bí mật dùng chung: %+v", r)
+	}
+
+	r = secretsCall(t, "", "unassign", "--config", cfg, "--name", "SENTRY_DSN", "--all-projects")
+	if r.code != 0 || json.Unmarshal([]byte(r.stdout), &item) != nil || item.AllProjects || len(item.Projects) != 0 {
+		t.Fatalf("unassign --all-projects: %+v", r)
+	}
+}
+
 // FR-009, FR-036: giá trị chỉ đi qua stdin, và không lỗi nào in lại nó, kể cả khi người dùng đưa nhầm vào tham số.
 func TestSecretsValueNeverEchoed(t *testing.T) {
 	cfg := secretsEnv(t)
@@ -224,6 +265,8 @@ func TestSecretsCLIFixtures(t *testing.T) {
 	run("", "assign", "--name", "DATABASE_URL", "--project", appLocalID)
 	run("", "assign", "--name", "DATABASE_URL", "--project", apiLocalID)
 	item := run(valueJSON(fakeValue2), "set", "--name", "STRIPE_TEST_KEY")
+	run(valueJSON(fakeValue), "set", "--name", "SENTRY_DSN")
+	run("", "assign", "--name", "SENTRY_DSN", "--all-projects")
 	reason := "Máy không có kho bí mật (Secret Service). Cài gnome-keyring hoặc KWallet rồi thử lại."
 	status, _ := json.Marshal(secretstore.Status{Backend: "secret-service", Reason: &reason})
 	fixtures := map[string]string{

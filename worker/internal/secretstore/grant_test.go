@@ -273,3 +273,41 @@ func TestGrantCancelledIsLocked(t *testing.T) {
 		t.Fatalf("kho treo phải báo store_locked, có %v", err)
 	}
 }
+
+// FR-066: dự án clone sau khi bật cờ chưa có gán nào vẫn nhận bí mật dùng chung, kèm che giá trị và nhật ký như bí mật
+// gán riêng.
+func TestGrantSharedSecretReachesNewProject(t *testing.T) {
+	store := &Store{kr: newSlowKeyring(0)}
+	for n, v := range map[string]string{"API_TOKEN": "tok-12345678", "SHARED_KEY": "shared-12345678"} {
+		if err := store.Set(n, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := grantFixture(t, "API_TOKEN")
+	if err := ModifyCatalog(CatalogPath(cfg), func(c *Catalog) error {
+		if _, err := c.Add("SHARED_KEY", "", t0); err != nil {
+			return err
+		}
+		_, err := c.SetAllProjects("SHARED_KEY", true)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	const newLocalID = "dddddddddddddddd"
+	g, err := Grant(t.Context(), GrantRequest{WorkerConfig: cfg, Kind: KindRun, SessionID: "run_2", LocalID: newLocalID, Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(g.Names, []string{"SHARED_KEY"}) || g.Env["SHARED_KEY"] != "shared-12345678" || !slices.Equal(g.Values, []string{"shared-12345678"}) {
+		t.Fatalf("dự án mới phải nhận đúng bí mật dùng chung: %v", g.Names)
+	}
+	g, err = Grant(t.Context(), GrantRequest{WorkerConfig: cfg, Kind: KindRun, SessionID: "run_3", LocalID: grantLocalID, Store: store})
+	if err != nil || !slices.Equal(g.Names, []string{"API_TOKEN", "SHARED_KEY"}) {
+		t.Fatalf("dự án có gán nhận cả hai, theo tên: %v %v", g.Names, err)
+	}
+	recs := grantLog(t, cfg)
+	if len(recs) != 2 || recs[0].Project != newLocalID || !slices.Equal(recs[0].Names, []string{"SHARED_KEY"}) || recs[0].Outcome != OutcomeGranted {
+		t.Fatalf("nhật ký phải ghi lần cấp bí mật dùng chung: %+v", recs)
+	}
+}

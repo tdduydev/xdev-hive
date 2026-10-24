@@ -44,6 +44,8 @@ const text: Dict<{
   valueMissingNote: string;
   valueRequired: string;
   valueProblem: Record<ValueProblem, string>;
+  shared: string;
+  sharedWarning: string;
   projects: string;
   noProjects: string;
   missingId: string;
@@ -75,6 +77,9 @@ const text: Dict<{
       long: "Giá trị dài quá 8 KiB.",
       nul: "Giá trị không được chứa ký tự NUL.",
     },
+    shared: "Dùng cho mọi dự án",
+    sharedWarning:
+      "Bí mật sẽ được đưa vào mọi lần chạy agent của mọi dự án trên máy này, kể cả repo clone sau này. Chỉ bật cho khoá thật sự dùng chung.",
     projects: "Dự án được dùng bí mật này",
     noProjects: "Chưa có dự án nào trên máy. Thêm dự án ở mục Dự án trên máy rồi gán sau.",
     missingId: "Worker của máy cần cập nhật mới gán được bí mật cho dự án.",
@@ -106,6 +111,9 @@ const text: Dict<{
       long: "The value is longer than 8 KiB.",
       nul: "The value must not contain a NUL character.",
     },
+    shared: "Use for every project",
+    sharedWarning:
+      "The secret will be put into every agent run of every project on this machine, including repos cloned later. Only turn this on for keys that are truly shared.",
     projects: "Projects that may use this secret",
     noProjects: "No projects on this machine yet. Add one under Projects on this machine, then assign.",
     missingId: "The worker on this machine needs an update before secrets can be assigned to projects.",
@@ -151,6 +159,7 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
   const [description, setDescription] = useState(secret?.description ?? "");
   const [value, setValue] = useState("");
   const [assigned, setAssigned] = useState<ReadonlySet<string>>(new Set(secret?.projects.map((p) => p.localId)));
+  const [shared, setShared] = useState(secret?.allProjects === true);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -196,7 +205,10 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
         name: checked.name,
         description: description.trim(),
         value: typed === "" ? undefined : typed,
-        projects: [...assigned],
+        // Dùng chung thì worker bỏ gán riêng; tắt cờ thì gán lại các dự án còn được chọn.
+        projects: shared ? [] : [...assigned],
+        // Chỉ gửi cờ khi bật hay vừa tắt, để lưu bí mật thường không tốn thêm một lần gọi worker.
+        allProjects: shared || secret?.allProjects ? shared : undefined,
       });
       onSaved();
       onClose();
@@ -274,27 +286,48 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
               {shownValueError ?? (!editing ? t.valueNote : needsValue ? t.valueMissingNote : t.valueEditNote)}
             </span>
           </div>
-          <fieldset className="flex min-w-0 flex-col gap-1.5 border-0 p-0">
-            <legend className="mb-1 text-sm font-medium">{t.projects}</legend>
-            {projects.length === 0 && <p className="text-xs text-muted-foreground">{t.noProjects}</p>}
-            {projects.length > 0 && selectable.length === 0 && (
-              <p className="text-xs text-muted-foreground">{t.missingId}</p>
+          <div className="flex flex-col gap-1.5">
+            <label className="flex min-h-8 cursor-pointer items-start gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 shrink-0 accent-primary"
+                checked={shared}
+                aria-describedby={shared ? `${id}-shared-note` : undefined}
+                onChange={(e) => setShared(e.target.checked)}
+              />
+              <span className="min-w-0">{t.shared}</span>
+            </label>
+            {shared && (
+              <p id={`${id}-shared-note`} className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+                {t.sharedWarning}
+              </p>
             )}
-            {selectable.map((p) => (
-              <label key={p.localId} className="flex min-h-8 cursor-pointer items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1 size-4 shrink-0 accent-primary"
-                  checked={assigned.has(p.localId)}
-                  onChange={(e) => toggle(p.localId, e.target.checked)}
-                />
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{p.name}</span>
-                  <span className="block truncate font-mono text-xs text-muted-foreground">{shortPath(p.folder)}</span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          </div>
+          {!shared && (
+            <fieldset className="flex min-w-0 flex-col gap-1.5 border-0 p-0">
+              <legend className="mb-1 text-sm font-medium">{t.projects}</legend>
+              {projects.length === 0 && <p className="text-xs text-muted-foreground">{t.noProjects}</p>}
+              {projects.length > 0 && selectable.length === 0 && (
+                <p className="text-xs text-muted-foreground">{t.missingId}</p>
+              )}
+              {selectable.map((p) => (
+                <label key={p.localId} className="flex min-h-8 cursor-pointer items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1 size-4 shrink-0 accent-primary"
+                    checked={assigned.has(p.localId)}
+                    onChange={(e) => toggle(p.localId, e.target.checked)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{p.name}</span>
+                    <span className="block truncate font-mono text-xs text-muted-foreground">
+                      {shortPath(p.folder)}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
           {error && (
             <p role="alert" className="rounded-lg bg-destructive-soft px-3 py-2 text-sm break-words text-destructive">
               {error}
