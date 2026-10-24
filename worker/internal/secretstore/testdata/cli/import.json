@@ -1,0 +1,36 @@
+{
+  "dryRun": false,
+  "items": [
+    {
+      "name": "DATABASE_URL",
+      "status": "same_name",
+      "action": "overwrite",
+      "allProjects": false,
+      "projects": [],
+      "unmatched": [
+        {
+          "name": "api"
+        }
+      ],
+      "limited": []
+    },
+    {
+      "name": "SENTRY_DSN",
+      "status": "same_value",
+      "action": "overwrite",
+      "allProjects": true,
+      "projects": [],
+      "unmatched": [],
+      "limited": []
+    },
+    {
+      "name": "STRIPE_TEST_KEY",
+      "status": "new",
+      "action": "create",
+      "allProjects": false,
+      "projects": [],
+      "unmatched": [],
+      "limited": []
+    }
+  ]
+}

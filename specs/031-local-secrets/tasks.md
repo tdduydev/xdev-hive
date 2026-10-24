@@ -527,6 +527,28 @@ không chứa giá trị.
 
 ---
 
+## Phase 14: Xuất, nhập và nhập `.env` (US10, FR-067 đến FR-070)
+
+- [x] T047 Điều phối·nhẹ — Spec: US10, FR-067 đến FR-070, Edge Cases, Out of Scope; `data-model.md` §4 (loại
+  `export`, `import`) và §9 (file `.hivesecrets`, `.env`); [contracts/sidecar-cli.md](contracts/sidecar-cli.md)
+  (`secrets export`, `secrets import`, `ImportResult`, mã lỗi); [contracts/tauri-commands.md](contracts/tauri-commands.md).
+- [x] T048 A·nặng — Worker, định dạng: `secretstore/transfer.go` (Argon2id, AES-256-GCM, vỏ ngoài làm AAD, kiểm `format`,
+  `version`, khoảng `kdf`) và `secretstore/dotenv.go` (bộ đọc `.env`). Test: khứ hồi, sai mật khẩu, sửa một byte, version
+  lạ, vỏ ngoài không có tên, cú pháp `.env`.
+- [x] T049 A·nặng — Worker, lệnh: `cmd/hive-worker/secrets_transfer.go` (`secrets export`, `secrets import --in|--env`),
+  khớp dự án theo remote rồi theo tên, giới hạn 64 từng gán, `--dry-run`, `--on-conflict`, nhật ký `export`/`import`.
+  Test: trùng tên, trùng giá trị, ghi đè, khớp dự án, giới hạn 64, mật khẩu không ra output; fixture
+  `testdata/cli/export.json`, `import-preview.json`, `import.json`, `import-env.json`.
+- [x] T050 B·nhẹ — `secrets.rs`: `secrets_export`, `secrets_import_preview`, `secrets_import`, `secrets_import_env`
+  (mật khẩu qua stdin rồi `wipe`); đăng ký ở `lib.rs`, `build.rs`, capability `app.json` (thêm `dialog:allow-save`).
+  Máy dev không có Rust, CI kiểm.
+- [x] T051 C·vừa — Desktop: `lib/secrets.ts` (kiểu, lệnh), `secret-export-dialog.tsx`, `secret-import-dialog.tsx`, nút
+  "Xuất" và "Nhập" ở `secrets-screen.tsx`, nhãn nhật ký `export`/`import`, chữ vi/en, Vitest.
+
+  Sau T047. T048 trước T049; T049 trước T050 và T051 (fixture chung).
+
+---
+
 ## Dependencies & Execution Order
 
 ```
@@ -543,6 +565,8 @@ D:        T002;  T026 ─▶ T027 ─▶ T033;  T026 ─▶ T025;  T040
 Cuối:     T041, T042
 FR-066:   T043 ─▶ T044 ─┬─▶ T045
                         └─▶ T046
+FR-067:   T047 ─▶ T048 ─▶ T049 ─┬─▶ T050
+                                └─▶ T051
 ```
 
 - User story phụ thuộc Phase 2. US2, US5 và US4 phải xong cùng nhau mới phát hành, vì đưa biến mà chưa che là không an
@@ -594,7 +618,7 @@ Gợi ý chia lượt:
 
 ## Tổng kết
 
-- **Số task**: 46 (T001–T046), T039 là tuỳ chọn.
+- **Số task**: 51 (T001–T051), T039 là tuỳ chọn.
   - Setup: 2.
   - Foundational: 4.
   - US1: 5.
@@ -608,6 +632,7 @@ Gợi ý chia lượt:
   - US8: 4.
   - Polish: 3.
   - Dùng cho mọi dự án (FR-066): 4.
+  - Xuất, nhập (US10): 5.
 - **[P]**: 17 task.
 - **Ước lượng**: khoảng 30 ngày-agent. Với năm luồng song song, khoảng 8–10 ngày lịch.
   **[Inference]** Ước theo spec 029 (25 ngày-agent, ba luồng).
