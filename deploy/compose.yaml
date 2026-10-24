@@ -1,12 +1,28 @@
 name: xdev-hive
 services:
   postgres:
-    image: ${HIVE_POSTGRES_IMAGE:-pgvector/pgvector:0.8.7-pg18-trixie}
+    # Image gốc cộng pgBackRest (ADR 0035). Không đặt `image:`: compose sẽ gắn tag image gốc cho bản tự build.
+    build:
+      context: ./postgres
+      args:
+        POSTGRES_IMAGE: ${HIVE_POSTGRES_IMAGE:-pgvector/pgvector:0.8.7-pg18-trixie}
     restart: unless-stopped
     environment:
       POSTGRES_DB: hive
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${HIVE_DB_ADMIN_PASSWORD:?Set HIVE_DB_ADMIN_PASSWORD}
+      # Trống: chỉ có pg_dump hằng ngày của backup.sh. Đặt kho ở máy khác thì đẩy WAL liên tục để khôi phục về thời
+      # điểm bất kỳ (deploy/pitr-restore.sh) và diễn tập (deploy/drill.sh); xem docs/self-hosting.md.
+      HIVE_BACKUP_REPO: ${HIVE_BACKUP_REPO:-}
+      HIVE_BACKUP_CIPHER_PASS: ${HIVE_BACKUP_CIPHER_PASS:-}
+      HIVE_BACKUP_RETENTION_DAYS: ${HIVE_BACKUP_RETENTION_DAYS:-14}
+      HIVE_BACKUP_S3_ENDPOINT: ${HIVE_BACKUP_S3_ENDPOINT:-}
+      HIVE_BACKUP_S3_REGION: ${HIVE_BACKUP_S3_REGION:-}
+      HIVE_BACKUP_S3_KEY: ${HIVE_BACKUP_S3_KEY:-}
+      HIVE_BACKUP_S3_KEY_SECRET: ${HIVE_BACKUP_S3_KEY_SECRET:-}
+      HIVE_BACKUP_S3_URI_STYLE: ${HIVE_BACKUP_S3_URI_STYLE:-}
+      HIVE_BACKUP_SFTP_KEY: ${HIVE_BACKUP_SFTP_KEY:-}
+      HIVE_BACKUP_SFTP_KNOWN_HOSTS: ${HIVE_BACKUP_SFTP_KNOWN_HOSTS:-}
     volumes:
       - hive-pgdata:/var/lib/postgresql
     healthcheck:
