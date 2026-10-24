@@ -209,13 +209,14 @@ Thư viện có nội dung mới và lịch sử phiên bản của TC."
   cùng kết quả (FR-005); lưu trữ và khôi phục
   (`apps/hub/src/modules/qa/doc-hooks.ts`, `qa/doc-hooks.db.test.ts`, `qa/index.ts`, `apps/hub/src/main.ts`)
   Còn thiếu: gọi `provideDocSaved(qaDocSaved)` ở `main.ts`. Hook và test đã xong; nhánh QA036A không được sửa `main.ts`.
-- [ ] T023 [US1] H — Route `projectSettings.get`, `projectSettings.update` (cần `projects.settings`; bật lần đầu gọi
+- [x] T023 [US1] H — Route `projectSettings.get`, `projectSettings.update` (cần `projects.settings`; bật lần đầu gọi
   `ensureProjectInclude`, trả `includeResult`), `areas.list` (gồm `parseErrors`), `areas.create` (cần
   `qa.cases.write`; tạo tài liệu từ `areaTemplate()` qua `saveDoc`; mã trùng trả 409 `QA_AREA_CODE_TAKEN`; trả
   `docKey`), `cases.list` (lọc `q`, `area`, `label`, `priority`, `kind`, `requirement`, `currentStatus`, `state`
   mặc định `active`, FR-009), `cases.get` (nội dung, `version`, các phiên bản cũ). Ghi audit FR-070 trong cùng tx
   (`apps/hub/src/modules/qa/routes/project-settings.ts`, `qa/routes/areas.ts`, `qa/routes/cases.ts`,
   `qa/library-routes.db.test.ts`)
+  `areas.create` đọc lại khu do hook lưu tạo, nên chỉ chạy được khi `main.ts` đã gọi `provideDocSaved(qaDocSaved)` (T022).
 - [ ] T024 [P] [US1] U — Trang "Kiểm thử" có năm tab: Tổng quan, Thư viện, Đợt test, Nguồn CI, Việc của tôi. Tab chưa
   làm hiện "Chưa có". Tab Thư viện có bộ lọc FR-009. Route lazy `/projects/$key/testing` và
   `/projects/$key/testing/cases/$code` như `CiCdPage`. Liên kết "Kiểm thử" ở thanh điều hướng dự án

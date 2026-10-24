@@ -223,20 +223,22 @@ describe("ensureProjectInclude (thư mục TC, specs/036 D3b)", () => {
     ).rows[0];
 
   it("dự án chưa có nhà thì báo no-home", async () => {
-    expect(await ensure(sdlcProject.projectId, "specs/test-cases/**")).toBe("no-home");
+    expect(await ensure(sdlcProject.projectId, "test-cases/")).toBe("no-home");
   });
 
   it("include đã phủ thì không đổi gì", async () => {
     await configureMain("tadmin", { include: ["docs/**"] });
     queued.length = 0;
-    expect(await ensure(project.projectId, "docs/test-cases/**")).toBe("covered");
+    expect(await ensure(project.projectId, "test-cases/")).toBe("covered");
     expect(queued).toHaveLength(0);
     expect((await included()).include).toEqual(["docs/**"]);
   });
 
   it("chưa phủ thì thêm glob vào nhà và settings.docs, ghi audit, xếp một lần kéo", async () => {
     queued.length = 0;
-    expect(await ensure(project.projectId, "kiem-thu/test-cases/**")).toBe("added");
+    // Thư mục TC tính từ root của nhà, nên root ngoài include là trường hợp include không phủ.
+    await admin.query("update hive.doc_homes set root = 'kiem-thu/' where project_id = $1", [project.projectId]);
+    expect(await ensure(project.projectId, "test-cases/")).toBe("added");
     expect(await included()).toEqual({
       include: ["docs/**", "kiem-thu/test-cases/**"],
       docs: ["docs/**", "kiem-thu/test-cases/**"],
@@ -247,7 +249,7 @@ describe("ensureProjectInclude (thư mục TC, specs/036 D3b)", () => {
       [org.orgId],
     );
     expect(audit.rows.map((r) => r.data)).toEqual([{ projectId: project.projectId, glob: "kiem-thu/test-cases/**" }]);
-    expect(await ensure(project.projectId, "kiem-thu/test-cases/**")).toBe("covered");
+    expect(await ensure(project.projectId, "test-cases/")).toBe("covered");
     await configureMain("tadmin");
   });
 });

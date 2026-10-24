@@ -175,7 +175,9 @@ const count = z.int().min(0);
 const rate = z.number().min(0).max(1).nullable();
 const at = z.iso.datetime();
 const date = z.iso.date("Ngày có dạng YYYY-MM-DD.");
-const userRef = z.object({ id, name: z.string() });
+// Mã người dùng do better-auth sinh, không phải uuid.
+const userId = z.string().min(1).max(200);
+const userRef = z.object({ id: userId, name: z.string() });
 
 /** Đường dẫn tương đối trong repo: không bắt đầu bằng `/`, không `..`, không `\` hay `:`. */
 const isRelativePath = (p: string) =>
@@ -542,7 +544,7 @@ export const testRoundAssignInput = z
     roundId: id,
     roundCaseIds: z.array(id).max(5000).optional(),
     areaCodes: z.array(testAreaCode).max(200).optional(),
-    userIds: z.array(id).max(100),
+    userIds: z.array(userId).max(100),
     mode: z.enum(["add", "replace"]),
   })
   .refine((a) => (a.roundCaseIds?.length ?? 0) + (a.areaCodes?.length ?? 0) > 0, {

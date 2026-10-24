@@ -313263,7 +313263,8 @@
                                   "properties": {
                                     "id": {
                                       "type": "string",
-                                      "format": "uuid"
+                                      "minLength": 1,
+                                      "maxLength": 200
                                     },
                                     "name": {
                                       "type": "string"
@@ -313919,7 +313920,8 @@
                                     "properties": {
                                       "id": {
                                         "type": "string",
-                                        "format": "uuid"
+                                        "minLength": 1,
+                                        "maxLength": 200
                                       },
                                       "name": {
                                         "type": "string"
@@ -318530,7 +318532,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
@@ -319220,7 +319223,8 @@
                           "properties": {
                             "id": {
                               "type": "string",
-                              "format": "uuid"
+                              "minLength": 1,
+                              "maxLength": 200
                             },
                             "name": {
                               "type": "string"
@@ -319385,7 +319389,8 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "format": "uuid"
+                                  "minLength": 1,
+                                  "maxLength": 200
                                 },
                                 "name": {
                                   "type": "string"
@@ -319404,7 +319409,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
@@ -319971,7 +319977,8 @@
                           "properties": {
                             "id": {
                               "type": "string",
-                              "format": "uuid"
+                              "minLength": 1,
+                              "maxLength": 200
                             },
                             "name": {
                               "type": "string"
@@ -320136,7 +320143,8 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "format": "uuid"
+                                  "minLength": 1,
+                                  "maxLength": 200
                                 },
                                 "name": {
                                   "type": "string"
@@ -320155,7 +320163,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
@@ -320784,7 +320793,8 @@
                           "properties": {
                             "id": {
                               "type": "string",
-                              "format": "uuid"
+                              "minLength": 1,
+                              "maxLength": 200
                             },
                             "name": {
                               "type": "string"
@@ -320949,7 +320959,8 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "format": "uuid"
+                                  "minLength": 1,
+                                  "maxLength": 200
                                 },
                                 "name": {
                                   "type": "string"
@@ -320968,7 +320979,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
@@ -321498,7 +321510,8 @@
                     "maxItems": 100,
                     "items": {
                       "type": "string",
-                      "format": "uuid"
+                      "minLength": 1,
+                      "maxLength": 200
                     }
                   },
                   "mode": {
@@ -321582,7 +321595,8 @@
                           "properties": {
                             "id": {
                               "type": "string",
-                              "format": "uuid"
+                              "minLength": 1,
+                              "maxLength": 200
                             },
                             "name": {
                               "type": "string"
@@ -321747,7 +321761,8 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "format": "uuid"
+                                  "minLength": 1,
+                                  "maxLength": 200
                                 },
                                 "name": {
                                   "type": "string"
@@ -321766,7 +321781,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
@@ -322419,7 +322435,8 @@
                         "properties": {
                           "id": {
                             "type": "string",
-                            "format": "uuid"
+                            "minLength": 1,
+                            "maxLength": 200
                           },
                           "name": {
                             "type": "string"
@@ -322438,7 +322455,8 @@
                           "properties": {
                             "id": {
                               "type": "string",
-                              "format": "uuid"
+                              "minLength": 1,
+                              "maxLength": 200
                             },
                             "name": {
                               "type": "string"
@@ -322935,7 +322953,8 @@
                                     "properties": {
                                       "id": {
                                         "type": "string",
-                                        "format": "uuid"
+                                        "minLength": 1,
+                                        "maxLength": 200
                                       },
                                       "name": {
                                         "type": "string"
@@ -322954,7 +322973,8 @@
                                       "properties": {
                                         "id": {
                                           "type": "string",
-                                          "format": "uuid"
+                                          "minLength": 1,
+                                          "maxLength": 200
                                         },
                                         "name": {
                                           "type": "string"
@@ -323154,7 +323174,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
@@ -323200,7 +323221,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
@@ -323717,7 +323739,8 @@
                           "properties": {
                             "id": {
                               "type": "string",
-                              "format": "uuid"
+                              "minLength": 1,
+                              "maxLength": 200
                             },
                             "name": {
                               "type": "string"
@@ -324311,7 +324334,8 @@
                           "properties": {
                             "id": {
                               "type": "string",
-                              "format": "uuid"
+                              "minLength": 1,
+                              "maxLength": 200
                             },
                             "name": {
                               "type": "string"
@@ -326543,7 +326567,8 @@
                                 "properties": {
                                   "id": {
                                     "type": "string",
-                                    "format": "uuid"
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   },
                                   "name": {
                                     "type": "string"
