@@ -43,10 +43,11 @@ description: "Task list: quản lý kiểm thử cấp dự án, vai trò Tester
 
 ## Phase 1: Chuẩn bị
 
-- [ ] T001 [P] D — ADR 0038 cho D2 (định dạng file khu), D3 (hook lưu tài liệu), D4 (quyền lưu theo thư mục). Ghi
+- [x] T001 [P] D — ADR 0038 cho D2 (định dạng file khu), D3 (hook lưu tài liệu), D4 (quyền lưu theo thư mục). Ghi
   phương án đã loại ở mục Complexity Tracking của plan.md. Thêm một dòng vào bảng ADR
   (`docs/adr/0038-tc-markdown-and-doc-hooks.md`, `docs/adr/README.md`)
-- [ ] T002 [P] H — Khung module `qa`: `index.ts` chưa export gì, `schema.ts` rỗng. Không sửa `.dependency-cruiser.cjs`
+  Số 0038 đã dùng cho `0038-local-secrets-keyring.md` trên `main`, nên ADR là `0039-tc-markdown-and-doc-hooks.md`.
+- [x] T002 [P] H — Khung module `qa`: `index.ts` chưa export gì, `schema.ts` rỗng. Không sửa `.dependency-cruiser.cjs`
   và `apps/hub/drizzle.config.ts`: cả hai đã nhận mọi `src/modules/*`. `pnpm deps` và typecheck phải qua
   (`apps/hub/src/modules/qa/index.ts`, `apps/hub/src/modules/qa/schema.ts`)
 

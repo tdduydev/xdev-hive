@@ -41,3 +41,4 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0036](0036-machine-sends-token-score.md) | Send the token score as a machine client event with an idempotency key, opt-in per machine, numbers only | Accepted |
 | [0037](0037-shared-context-local-files.md) | Share project context through one source written into local, untracked files, in a marked block | Proposed |
 | [0038](0038-local-secrets-keyring.md) | Keep local secrets in the OS keyring, owned by the worker, and send the hub only a count | Proposed |
+| [0039](0039-tc-markdown-and-doc-hooks.md) | Keep test cases as Markdown area files in the docs home, read through composable document hooks | Proposed |
