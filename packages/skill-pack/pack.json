@@ -1,7 +1,7 @@
 {
   "source": {
     "repo": "tdduydev/xdev-skills",
-    "commit": "f107d20fc80313d6cd8aa355fcce57b9252ed682",
+    "commit": "542d12359fc0f6fd7ed54a579ac43f89de204b9e",
     "path": "library"
   },
   "skills": [
@@ -85,10 +85,10 @@
         "path": "skills/web-design-guidelines",
         "url": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278/skills/web-design-guidelines"
       },
-      "hash": "fcceb3a48acf64bc424c0c3705404d36aa7a503d46a207d6a591232af439e82c",
-      "version": 1,
+      "hash": "ebc6a4378a13cff5f216ab0be7b3799d1e6f92aea176aed9b4b309f1859c9212",
+      "version": 2,
       "files": 5,
-      "bytes": 12921
+      "bytes": 12889
     },
     {
       "name": "vercel-react-best-practices",
@@ -123,6 +123,23 @@
       "version": 1,
       "files": 16,
       "bytes": 52404
+    },
+    {
+      "name": "design-taste-frontend",
+      "description": "tasteskill v2, the anti-slop frontend skill. Art direction for websites, distilled from a study of 247 curated gallery sites (One Page Love, Awwwards Sites of the Day). Deals researched directions (idea, composition, type, palette, photographs, section blueprints) from a library, enforces a strict no-slop house style with a real-browser inspector, and runs a look-and-fix loop on screenshots. Use this whenever you build, design, redesign, restyle, polish or review a landing page, marketing site, portfolio, product page, one-pager, hero or any public-facing web page, in any stack (HTML/CSS, React, Next.js, Vue, Svelte, Astro, Tailwind) — also when the user says a page looks generic, templated, \"AI-made\", sloppy, or asks to make it look designed, premium, award-level or less like every other site. Also for app screens: dashboards, admin and analytics views, settings, inboxes and other screens people work in, with their own run and rules.",
+      "group": "ui",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "Leonxlnx/taste-skill",
+        "commit": "6010f91a9935f1c167dfc500fb1a475681892e6b",
+        "path": "skills/taste-skill",
+        "url": "https://github.com/Leonxlnx/taste-skill/tree/6010f91a9935f1c167dfc500fb1a475681892e6b/skills/taste-skill"
+      },
+      "hash": "9f7a1a26fc35bf2cc90143ad0e4d628e1421aa94cb6f2ca6705deb8dba0b3cd1",
+      "version": 1,
+      "files": 39,
+      "bytes": 2413188
     },
     {
       "name": "shadcn",
@@ -276,6 +293,23 @@
       "version": 1,
       "files": 7,
       "bytes": 22858
+    },
+    {
+      "name": "playwright-cli",
+      "description": "Automate browser interactions, test web pages and work with Playwright tests.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "Apache-2.0",
+      "upstream": {
+        "repo": "microsoft/playwright-cli",
+        "commit": "b1a5903c5b633b8c9f843ad7b629c2a78437040c",
+        "path": "skills/playwright-cli",
+        "url": "https://github.com/microsoft/playwright-cli/tree/b1a5903c5b633b8c9f843ad7b629c2a78437040c/skills/playwright-cli"
+      },
+      "hash": "852b996fef2f01d7b6b1db9c29b346eb94fe8a5221ca9094737e772f90d54853",
+      "version": 1,
+      "files": 13,
+      "bytes": 80626
     },
     {
       "name": "differential-review",
@@ -533,6 +567,78 @@
       "version": 1,
       "files": 7,
       "bytes": 15075
+    },
+    {
+      "name": "test-case-writing",
+      "description": "Use when writing, editing, numbering or fixing test cases (TC) in a docs repo's `docs/test-cases/*.md` for xDev Hive, when a tester asks for a new \"TC\" or \"kịch bản test\", or when Hive reports a test-case file as skipped or invalid.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "c878894df825df23fbfb92e7aa38b05b5ac938345dfab3a3ffe69b8131f12931",
+      "version": 1,
+      "files": 3,
+      "bytes": 5865
+    },
+    {
+      "name": "manual-test-run",
+      "description": "Use when a tester runs test cases by hand in a test round (\"đợt test\", \"Milestone 3 lần 1\"), records pass or fail results, prepares a retest round, or exports round results to CSV for xDev Hive.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "172e0b29288700aef19d68dc94a2dd29881b25baf8bafb13b8b1c6056b7b7d02",
+      "version": 1,
+      "files": 3,
+      "bytes": 4995
+    },
+    {
+      "name": "test-automation",
+      "description": "Use when automating a written test case (TC-XXX-NNN) as a Playwright or other end-to-end test, linking automated test results to xDev Hive test cases, or when Hive does not match a CI test result to its test case.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "34de23c3920439c5f638e77b432f0d7172ee2233bec8c7ea5f006ba0fb13acd4",
+      "version": 1,
+      "files": 3,
+      "bytes": 4954
+    },
+    {
+      "name": "bug-report",
+      "description": "Use when a test case fails and a tester needs to file a bug, when writing or improving a bug or defect ticket (Jira, GitLab issue), or when a bug report lacks repro steps, environment or evidence.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "22340fdbc73e3ebde307dc6ae8b38fd008af2e6eaf78e1c3bd1aea38e619577d",
+      "version": 1,
+      "files": 3,
+      "bytes": 4040
+    },
+    {
+      "name": "test-coverage",
+      "description": "Use when asked which requirements have no test case, how much of a feature or SRS is covered by tests, how many test cases are automated, or to review or audit a `docs/test-cases/` library before a test round or release.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "2d275a0db99a232be66e97471406d1c887bcb84312541346595a2bf44f0de1dd",
+      "version": 1,
+      "files": 3,
+      "bytes": 4200
+    },
+    {
+      "name": "layout-review",
+      "description": "Use when asked to review a web app's layout or UI (\"rà soát bố cục\", \"giao diện ổn chưa\", \"check responsive\"), before a release that changes screens, or when users report overflow, overlap, cut-off text or broken mobile views.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "04e821114d9ba3190a01dd3bd2f97e6632b8f9173400a76f66769d333dea4d92",
+      "version": 1,
+      "files": 3,
+      "bytes": 4223
     }
   ]
 }
