@@ -43,7 +43,16 @@ Quy tắc:
       "description": "Khoá Stripe môi trường test, quyền đọc",
       "createdAt": "2026-10-23T08:00:00Z",
       "valueChangedAt": "2026-10-23T08:00:00Z",
-      "projects": ["3f9a1c0e7b2d4a55"]
+      "projects": ["3f9a1c0e7b2d4a55"],
+      "allProjects": false
+    },
+    {
+      "name": "SENTRY_DSN",
+      "description": "DSN Sentry dùng chung",
+      "createdAt": "2026-10-23T08:00:00Z",
+      "valueChangedAt": "2026-10-23T08:00:00Z",
+      "projects": [],
+      "allProjects": true
     }
   ]
 }
@@ -56,11 +65,20 @@ Quy tắc:
 | `secrets[].description` | string | ≤500 ký tự; `looksSecret` false (FR-021). Rỗng được |
 | `secrets[].createdAt` | RFC 3339 UTC | |
 | `secrets[].valueChangedAt` | RFC 3339 UTC | Đổi mỗi lần đặt giá trị |
-| `secrets[].projects` | string[] | `localId` của `projects.json`, không trùng (FR-010) |
+| `secrets[].projects` | string[] | `localId` của `projects.json`, không trùng (FR-010). Luôn `[]` khi `allProjects` |
+| `secrets[].allProjects` | bool | Dùng cho mọi dự án (FR-066). Thiếu trường (danh mục cũ) → `false` |
 
 Ràng buộc chéo:
 
-- Mỗi `localId` có tối đa 64 bí mật gán (FR-005). Gán thứ 65 bị từ chối với lỗi "Dự án đã có 64 bí mật".
+- Mỗi `localId` có tối đa 64 bí mật gán, tính cả bí mật `allProjects` (FR-005, FR-066). Gán thứ 65 bị từ chối với lỗi
+  "Dự án đã có 64 bí mật". Bật `allProjects` bị từ chối khi một dự án có gán đã đủ 64 (không tính dự án bí mật đó đã
+  gán sẵn), hoặc khi đã có 64 bí mật `allProjects`.
+- Bật `allProjects` xoá `projects` về `[]`; tắt thì `projects` vẫn rỗng tới khi người dùng gán lại. `assign` riêng cho
+  bí mật `allProjects` không làm gì.
+- Bí mật cho một job = các bí mật có `localId` trong `projects` cộng các bí mật `allProjects`, mỗi tên một lần, xếp
+  theo tên. Job có `localId` rỗng không nhận gì.
+- `version` giữ `1`: trường mới chỉ thêm, bản cũ đọc được. Bản worker cũ ghi lại file sẽ bỏ trường `allProjects`, bí
+  mật trở lại không gán dự án nào; lỗi này nghiêng về phía an toàn (bí mật không tới đâu cả), không làm lộ thêm.
 - **[Inference]** Tổng `len(name)+len(value)+2` của bí mật gán cho một dự án nên ≤ 24 KiB trên Windows. Khối env của
   Windows giới hạn 32 KiB, và cần chừa chỗ cho env của máy.
   - Khi gán, `secretstore` chỉ kiểm được tên, vì danh mục không có độ dài giá trị.

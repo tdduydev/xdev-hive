@@ -22,8 +22,8 @@ Gói Go: `worker/internal/secretstore` (logic) và `worker/cmd/hive-worker/secre
 | `secrets set --json --name <N> [--description-file <f>]` | `{"value"}` (bắt buộc khi tạo, tuỳ chọn khi sửa) | `SecretItem` |
 | `secrets rename --json --name <N> --to <M>` | | `SecretItem` (chuyển mọi khối sang tên mới rồi xoá khối cũ) |
 | `secrets describe --json --name <N> --description-file <f>` | | `SecretItem` hoặc lỗi `description_looks_secret` |
-| `secrets assign --json --name <N> --project <localId>` | | `SecretItem` |
-| `secrets unassign --json --name <N> --project <localId>` | | `SecretItem` |
+| `secrets assign --json --name <N> --project <localId>\|--all-projects` | | `SecretItem` |
+| `secrets unassign --json --name <N> --project <localId>\|--all-projects` | | `SecretItem` |
 | `secrets delete --json --name <N>` | | `{ deleted: N, inUse: boolean }` |
 | `secrets reveal --json --name <N> [--copy]` | | `{ value: string }` (ghi dòng `reveal`) |
 | `secrets log --json [--name <N>] [--project <localId>] [--limit 200]` | | `{ entries: GrantEntry[] }` |
@@ -36,6 +36,9 @@ Ghi chú:
 
 - Mô tả đi qua file tạm do Rust tạo và xoá, như 029. Mô tả không phải bí mật, nhưng có thể dài và có xuống dòng.
 - `secrets reveal` là lệnh duy nhất in giá trị ra stdout. Rust đọc rồi `wipe` chuỗi sau khi trả cho UI hay clipboard.
+- `assign --all-projects` bật cờ dùng cho mọi dự án (FR-066), `unassign --all-projects` tắt cờ. Phải có đúng một trong
+  `--project` và `--all-projects`; thiếu cả hai hay có cả hai thì thoát mã 2. Bật cờ có thể trả `too_many`.
+- `secrets list --project <localId>` trả cả bí mật dùng chung, vì chúng cũng tới dự án đó.
 
 ## Lệnh chạy (US3)
 
@@ -69,7 +72,8 @@ type SecretItem = {
   description: string;
   createdAt: string;
   valueChangedAt: string;
-  projects: { localId: string; name: string; folder: string }[];
+  projects: { localId: string; name: string; folder: string }[]; // allProjects: mọi dự án có localId trên máy
+  allProjects: boolean;          // dùng cho mọi dự án (FR-066)
   inUseBy: number;               // số phiên đang chạy dùng bí mật này (FR-016)
   missingInStore?: boolean;      // có trong danh mục mà kho thiếu mục (US9)
 };
@@ -97,7 +101,7 @@ type ApprovalRequest = {
 | `reserved_name` | FR-004 | "`PATH` là tên dành riêng, hãy đặt tên khác." |
 | `duplicate_name` | Trùng tên | "Đã có bí mật tên `X`." |
 | `invalid_value` | <8, >8 KiB, có NUL | "Giá trị phải dài từ 8 ký tự đến 8 KiB và không chứa ký tự NUL." |
-| `too_many` | >64 bí mật gán cho dự án | "Dự án đã có 64 bí mật." |
+| `too_many` | >64 bí mật gán cho dự án, kể cả khi bật `--all-projects` | "Dự án đã có 64 bí mật." |
 | `description_looks_secret` | FR-021 | "Mô tả có chuỗi giống bí mật. Hãy bỏ chuỗi đó trước khi lưu." |
 | `store_unavailable` | FR-062 | "Máy không có kho bí mật (Secret Service). Cài gnome-keyring hoặc KWallet rồi thử lại." |
 | `store_locked` | FR-060 | "Kho bí mật đang khoá. Mở khoá máy rồi chạy lại." |
