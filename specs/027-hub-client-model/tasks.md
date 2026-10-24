@@ -187,7 +187,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
   `worker/internal/outbox/epoch.go`
 - [x] T043 [US4] pgBackRest, diễn tập hằng tháng · `deploy/postgres/Dockerfile`, `deploy/pitr-restore.sh`,
   `deploy/drill.sh`
-- [ ] T044 [P] [US4] ADR 0035 · `docs/adr/0035-continuous-backup-with-pgbackrest.md`
+- [x] T044 [P] [US4] ADR 0035 · `docs/adr/0035-continuous-backup-with-pgbackrest.md`
 
 ## Phase 8: Polish
 
