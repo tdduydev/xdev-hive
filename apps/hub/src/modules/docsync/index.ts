@@ -1,4 +1,5 @@
 export { findDocAsset, handleAssetDownload, handleAssetUpload, listBrokenLinks } from "./assets.ts";
+export { ensureProjectInclude, type ProjectIncludeResult } from "./homes.ts";
 export {
   BLOB_GC_QUEUE,
   DOC_INDEX_QUEUE,

@@ -19,6 +19,7 @@ import {
   changeHomeState,
   configureOrgHome,
   configureProjectHome,
+  ensureProjectInclude,
   getHome,
   homeById,
   homeSecretContext,
@@ -207,6 +208,47 @@ describe("nhà tài liệu của dự án", () => {
       changeHomeState(tx, deps, actor("tadmin"), home.id, "acceptBranch", "develop"),
     );
     expect(accepted).toMatchObject({ branch: "develop", status: "active", lastCommit: null });
+  });
+});
+
+describe("ensureProjectInclude (thư mục TC, specs/036 D3b)", () => {
+  const ensure = (projectId: string, glob: string) =>
+    as("tadmin", (tx) => ensureProjectInclude(tx, actor("tadmin"), projectId, glob, { jobs }));
+  const included = async () =>
+    (
+      await admin.query(
+        "select h.include, p.settings->'docs'->'include' as docs from hive.doc_homes h join hive.projects p on p.id = h.project_id where h.project_id = $1",
+        [project.projectId],
+      )
+    ).rows[0];
+
+  it("dự án chưa có nhà thì báo no-home", async () => {
+    expect(await ensure(sdlcProject.projectId, "specs/test-cases/**")).toBe("no-home");
+  });
+
+  it("include đã phủ thì không đổi gì", async () => {
+    await configureMain("tadmin", { include: ["docs/**"] });
+    queued.length = 0;
+    expect(await ensure(project.projectId, "docs/test-cases/**")).toBe("covered");
+    expect(queued).toHaveLength(0);
+    expect((await included()).include).toEqual(["docs/**"]);
+  });
+
+  it("chưa phủ thì thêm glob vào nhà và settings.docs, ghi audit, xếp một lần kéo", async () => {
+    queued.length = 0;
+    expect(await ensure(project.projectId, "kiem-thu/test-cases/**")).toBe("added");
+    expect(await included()).toEqual({
+      include: ["docs/**", "kiem-thu/test-cases/**"],
+      docs: ["docs/**", "kiem-thu/test-cases/**"],
+    });
+    expect(queued.filter((job) => job.queue === DOCSYNC_PULL_QUEUE)).toHaveLength(1);
+    const audit = await admin.query(
+      "select data from hive.audit_log where org_id = $1 and action = 'doc.home_include_add'",
+      [org.orgId],
+    );
+    expect(audit.rows.map((r) => r.data)).toEqual([{ projectId: project.projectId, glob: "kiem-thu/test-cases/**" }]);
+    expect(await ensure(project.projectId, "kiem-thu/test-cases/**")).toBe("covered");
+    await configureMain("tadmin");
   });
 });
 

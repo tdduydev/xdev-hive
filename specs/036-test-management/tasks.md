@@ -144,11 +144,11 @@ Chặn mọi story. Không có nhãn story.
   các provider gộp bằng OR. `DocAccessGrant` thêm `save`, `Scope` thêm `saveGranted`. `authorize` cho `manage` khi
   `reader.kind === "user"` và `saveGranted`. Chạy lại test của `sdlc` và `docsync` đang dùng hai hook
   (`apps/hub/src/modules/knowledge/access.ts`, `knowledge/docs.ts`, `knowledge/index.ts`, test cùng thư mục)
-- [ ] T012 [P] H — Docsync (D3b): export `ensureProjectInclude(tx, actor, projectId, glob)` trả `"no-home"`,
+- [x] T012 [P] H — Docsync (D3b): export `ensureProjectInclude(tx, actor, projectId, glob)` trả `"no-home"`,
   `"covered"` hoặc `"added"`. `"added"` ghi include, ghi audit, gọi `queuePull`. So glob bằng `contracts/glob.ts`.
   Không gọi `configureProjectHome` (`apps/hub/src/modules/docsync/homes.ts`, `docsync/index.ts`,
   `docsync/homes.db.test.ts`)
-- [ ] T013 [P] H — Export `csvRow`, `csvCell` của `audit/csv.ts` qua `audit/index.ts` cho US7
+- [x] T013 [P] H — Export `csvRow`, `csvCell` của `audit/csv.ts` qua `audit/index.ts` cho US7
   (`apps/hub/src/modules/audit/index.ts`)
 - [ ] T014 H — Kiểm quyền chung: dự án ngoài đội trả 404; `requireTeamRole(..., "viewer")`, rồi
   `effectivePermissions().has(perm)`; thiếu quyền trả `ForbiddenError` "Cần quyền `<quyền>` ở đội của dự án này."
