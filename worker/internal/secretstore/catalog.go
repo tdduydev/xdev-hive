@@ -37,6 +37,9 @@ type Secret struct {
 	CreatedAt      time.Time `json:"createdAt"`
 	ValueChangedAt time.Time `json:"valueChangedAt"`
 	Projects       []string  `json:"projects"`
+	// AllProjects: bí mật dùng chung, đưa vào mọi dự án kể cả dự án thêm sau (FR-066). Danh mục cũ thiếu trường thì là
+	// false, giữ nguyên hành vi chỉ cấp theo gán.
+	AllProjects bool `json:"allProjects"`
 }
 
 type Catalog struct {
@@ -185,20 +188,64 @@ func (c *Catalog) Describe(name, description string) (*Secret, error) {
 	return s, nil
 }
 
-// Assign gán bí mật cho dự án. Gán lại là không làm gì, để desktop bấm hai lần không báo lỗi.
+// Assign gán bí mật cho dự án. Gán lại là không làm gì, để desktop bấm hai lần không báo lỗi. Bí mật dùng chung đã
+// tới mọi dự án nên gán riêng cũng không làm gì: Projects của nó luôn rỗng.
 func (c *Catalog) Assign(name, localID string) (*Secret, error) {
 	s, err := c.Get(name)
 	if err != nil {
 		return nil, err
 	}
-	if slices.Contains(s.Projects, localID) {
+	if s.AllProjects || slices.Contains(s.Projects, localID) {
 		return s, nil
 	}
+	// ForProject tính cả bí mật dùng chung: chúng chiếm chỗ trong giới hạn của từng dự án.
 	if len(c.ForProject(localID)) >= MaxPerProject {
-		return nil, &Error{Code: CodeTooMany, Message: fmt.Sprintf("Dự án đã có %d bí mật.", MaxPerProject), Names: []string{name}}
+		return nil, tooMany(name)
 	}
 	s.Projects = append(s.Projects, localID)
 	return s, nil
+}
+
+// SetAllProjects bật hay tắt cờ dùng cho mọi dự án (FR-066). Bật thì bỏ gán riêng: chúng đã nằm trong "mọi dự án", và
+// tắt cờ sau đó bắt đầu từ danh sách người dùng chọn lại, không khôi phục danh sách cũ đã bị ẩn khỏi giao diện.
+func (c *Catalog) SetAllProjects(name string, on bool) (*Secret, error) {
+	s, err := c.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if s.AllProjects == on {
+		return s, nil
+	}
+	if on {
+		if err := c.roomForShared(s); err != nil {
+			return nil, err
+		}
+		s.Projects = []string{}
+	}
+	s.AllProjects = on
+	return s, nil
+}
+
+// roomForShared kiểm giới hạn 64 trước khi s thành bí mật dùng chung: dự án chưa có gán nào chỉ nhận bí mật dùng chung,
+// dự án có gán thì cộng thêm, trừ dự án s đã gán sẵn.
+func (c *Catalog) roomForShared(s *Secret) error {
+	shared := 0
+	for _, o := range c.Secrets {
+		if o.AllProjects {
+			shared++
+		}
+	}
+	if shared >= MaxPerProject {
+		return &Error{Code: CodeTooMany, Message: fmt.Sprintf("Đã có %d bí mật dùng cho mọi dự án.", MaxPerProject), Names: []string{s.Name}}
+	}
+	for _, o := range c.Secrets {
+		for _, id := range o.Projects {
+			if !slices.Contains(s.Projects, id) && len(c.ForProject(id)) >= MaxPerProject {
+				return tooMany(s.Name)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Catalog) Unassign(name, localID string) (*Secret, error) {
@@ -221,14 +268,20 @@ func (c *Catalog) Remove(name string) error {
 	return nil
 }
 
-// ForProject trả các bí mật gán cho localId, theo thứ tự tên.
+// ForProject trả các bí mật gán cho localId và các bí mật dùng chung, mỗi bí mật một lần, theo thứ tự tên. localId rỗng
+// (job không thuộc dự án nào) không nhận gì, kể cả bí mật dùng chung (FR-018).
 func (c *Catalog) ForProject(localID string) []Secret {
+	if localID == "" {
+		return nil
+	}
 	var out []Secret
 	for _, s := range c.Secrets {
-		if slices.Contains(s.Projects, localID) {
+		if s.AllProjects || slices.Contains(s.Projects, localID) {
 			out = append(out, s)
 		}
 	}
+	// Danh mục sửa tay có thể không xếp theo tên; khối tên trong ngữ cảnh agent và nhật ký cần thứ tự ổn định.
+	slices.SortStableFunc(out, func(a, b Secret) int { return strings.Compare(a.Name, b.Name) })
 	return out
 }
 
@@ -259,6 +312,10 @@ func ValidDescription(d string) error {
 		return &Error{Code: CodeDescriptionSecret, Message: "Mô tả có chuỗi giống bí mật. Hãy bỏ chuỗi đó trước khi lưu."}
 	}
 	return nil
+}
+
+func tooMany(name string) *Error {
+	return &Error{Code: CodeTooMany, Message: fmt.Sprintf("Dự án đã có %d bí mật.", MaxPerProject), Names: []string{name}}
 }
 
 func duplicate(name string) *Error {

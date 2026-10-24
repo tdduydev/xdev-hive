@@ -125,6 +125,8 @@ dùng được giá trị và agent không hỏi người dùng; chạy run củ
    bộ biến của dự án; trên máy khác thì không (bí mật không rời máy).
 7. **Given** lệnh kiểm của run (`checks.go`) chạy sau khi agent xong, **Then** lệnh kiểm nhận bí mật gán cho dự án
    như agent, và vẫn không thừa kế biến nhạy cảm khác của máy.
+8. **Given** `SENTRY_DSN` bật "Dùng cho mọi dự án", **When** người dùng clone một repo mới rồi worker chạy run đầu tiên
+   của nó, **Then** run thấy biến `SENTRY_DSN` mà không cần gán, và nhật ký cấp ghi tên này cho run đó (FR-066).
 
 ---
 
@@ -378,6 +380,12 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
   không qua danh sách cho phép biến máy.
 - **FR-018**: Agent con (spec 028) chạy trên cùng máy và cùng dự án PHẢI nhận cùng bộ biến; agent chạy trên máy khác
   KHÔNG ĐƯỢC nhận, vì bí mật không rời máy.
+- **FR-066**: Mỗi bí mật PHẢI có cờ "Dùng cho mọi dự án" (`allProjects`). Khi bật, bí mật được đưa vào mọi run và mọi
+  phiên terminal/agent của desktop cho mọi dự án trên máy, kể cả dự án thêm sau, như bí mật được gán (FR-011 đến
+  FR-018). Bí mật dùng chung tính vào giới hạn 64 bí mật mỗi dự án (FR-005); bật cờ khi một dự án đã đủ 64 thì bị từ
+  chối. Bật cờ thì bỏ các gán riêng của bí mật; tắt cờ thì người dùng chọn lại dự án. Chưa có loại trừ từng dự án. Che
+  giá trị (FR-030 đến FR-038), nhật ký cấp (FR-040) và chính sách (FR-050 đến FR-053) áp dụng như bí mật được gán. Job
+  không thuộc dự án nào không nhận bí mật dùng chung. Màn Bí mật PHẢI hiện nhãn "Mọi dự án" và cảnh báo phạm vi khi bật.
 
 **Cho agent biết tên biến**
 
@@ -442,8 +450,8 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
 
 ### Key Entities
 
-- **LocalSecret**: `name` (tên biến, duy nhất), `description`, `createdAt`, `valueChangedAt`, `projectIds`. Giá trị KHÔNG
-  nằm trong thực thể này.
+- **LocalSecret**: `name` (tên biến, duy nhất), `description`, `createdAt`, `valueChangedAt`, `projectIds`,
+  `allProjects` (cờ dùng cho mọi dự án, FR-066). Giá trị KHÔNG nằm trong thực thể này.
 - **SecretAssignment**: `secretName`, `projectId` (định danh dự án trên máy).
 - **SecretGrantLog**: `at`, `kind` (`run` | `terminal` | `reveal`), `sessionId`, `projectId`, `secretNames[]`,
   `leakedInOutput` (cờ), `deleted` (nhãn cho tên đã xoá). Không có giá trị.
@@ -501,3 +509,4 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
 - Nhắc xoay định kỳ, tự xoay tại dịch vụ đích.
 - Công tắc theo dự án "tiếp tục không có bí mật khi kho lỗi" (A4).
 - Báo cáo tên bí mật lên hub cho quản trị (A1).
+- Loại trừ từng dự án khỏi bí mật dùng cho mọi dự án (FR-066).
