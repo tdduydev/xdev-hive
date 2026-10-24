@@ -4,6 +4,8 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 
 # Tasks: Chạy CI/CD và triển khai trên worker trong mạng nội bộ
 
+> `- [-]`: bỏ, ngoài phạm vi (lý do ghi trong từng task). Giữ task để ghi lại.
+
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.md),
 [contracts/](contracts/), [quickstart.md](quickstart.md)
 
@@ -50,8 +52,8 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
   (`worker/internal/delivery/jenkins.go`, `jenkins_test.go`)
 - [x] T005 [P] [US4] W — Client Argo CD: sync, trạng thái, history, rollback
   (`worker/internal/delivery/argocd.go`, `argocd_test.go`)
-- [ ] T006 [P] [US4] W — Client Kubernetes REST — **ngoài phạm vi** (phạm vi rút gọn 2026-10-23; đã gỡ `kube.go`)
-- [ ] T007 [P] [US2] W — Health HTTP — **ngoài phạm vi** (phạm vi rút gọn 2026-10-23; đã gỡ `health.go`)
+- [-] T006 [P] [US4] W — Client Kubernetes REST — **ngoài phạm vi** (phạm vi rút gọn 2026-10-23; đã gỡ `kube.go`)
+- [-] T007 [P] [US2] W — Health HTTP — **ngoài phạm vi** (phạm vi rút gọn 2026-10-23; đã gỡ `health.go`)
 
 ## Phase 4: Bộ chạy và chọn máy (US1)
 
@@ -62,16 +64,16 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 
 ## Phase 5: Hub giao việc, duyệt và web
 
-- [ ] T010 [US2] W — `ssh-script` từ worker — **ngoài phạm vi** (phạm vi rút gọn 2026-10-23; đã gỡ `ssh.go`)
+- [-] T010 [US2] W — `ssh-script` từ worker — **ngoài phạm vi** (phạm vi rút gọn 2026-10-23; đã gỡ `ssh.go`)
 - [x] T011 [US1] H — Bảng `delivery_jobs`, cột `runner` ở môi trường, cột `ran_on_worker_id`; thêm vào `rls.db.test.ts`
   (`schema.ts`, `delivery-jobs.db.test.ts`)
 - [x] T012 [US8] H — Nhận `deliveryEvent` (bỏ trùng `(jobId, seq)`), cập nhật lần triển khai, ngừng ghi `deploy_log_chunks`
 - [x] T013 [US5] H — Chỉ tạo việc khi đủ duyệt và môi trường không khoá; giao qua `runner-select`, chờ máy 15 phút rồi
   lỗi `no_runner`; huỷ thì huỷ việc (`dispatch.ts`, `dispatch.test.ts`, `dispatch.db.test.ts`)
-- [ ] T013b [US5] H — Chuyển Proceed/Abort của Jenkins input cho máy đã chạy — **ngoài phạm vi**
+- [-] T013b [US5] H — Chuyển Proceed/Abort của Jenkins input cho máy đã chạy — **ngoài phạm vi**
 - [x] T014 [US8] H — Cờ `HIVE_DELIVERY_OUTBOUND` chỉ cho đường `runner=legacy`; đổi `runner` từng môi trường
   (`runners.ts`, `routes/environments.ts`, `deploys/orchestrator.ts`)
-- [ ] T014b [US8] U — Trang "Chuyển sang worker" — **ngoài phạm vi** (thay bằng hộp "Máy chạy" ở T021)
+- [-] T014b [US8] U — Trang "Chuyển sang worker" — **ngoài phạm vi** (thay bằng hộp "Máy chạy" ở T021)
 - [x] T015 [US6] U — Cột "Máy chạy" ở lịch sử; trang lần triển khai: máy chạy, lý do đang chờ máy, người duyệt, thẻ
   "Log nằm trên máy X" thay khung log (`board-page.tsx`, `deploy-page.tsx`)
 - [x] T016 [US7] U — Tab "Credential triển khai" ở màn Bí mật desktop: tên và lúc đổi, thêm, thay giá trị, xoá có xác
@@ -83,17 +85,17 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 - [x] T022 [US5] H — Cổng duyệt: hàng chờ của tôi, duyệt, từ chối kèm lý do, hết hạn, audit (`approvals.ts`,
   `routes/approvals.ts`, `dispatch.db.test.ts`)
 - [x] T023 [US5] U — Trang "Duyệt triển khai" `/deploy-approvals` (`approvals-page.tsx`, `e2e/delivery-approvals.spec.ts`)
-- [ ] T024 U — Bảng deploy (dự án × môi trường) — **ngoài phạm vi**
-- [ ] T025 H — Gọi thẳng Kubernetes, `kubectl`, health từ hub hay worker — **ngoài phạm vi**
+- [-] T024 U — Bảng deploy (dự án × môi trường) — **ngoài phạm vi**
+- [-] T025 H — Gọi thẳng Kubernetes, `kubectl`, health từ hub hay worker — **ngoài phạm vi**
 - [x] T026 [US5] H+U — Khoá, mở khoá môi trường kèm lý do, cần `servers.manage`, ghi audit; trang Môi trường hiện người
   khoá và lý do (`environments.ts`, `deploys.db.test.ts`, `e2e/delivery-servers.spec.ts`; từ specs/020 T027, T030)
 - [x] T027 [US5] U — Tab CI/CD: "Duyệt deployment" và "Từ chối" cho deployment chờ duyệt của GitHub Actions
   (`cicd-run-detail.tsx`, `e2e/delivery-ci.spec.ts`; từ specs/020 T032)
 - [x] T028 [US5] H+U — Trang duyệt và lần triển khai so sánh commit giữa bản thành công trước và bản mới
   (`approvals.compare`, GitHub/GitLab, tối đa 100 commit, có trạng thái chưa đủ danh sách)
-- [ ] T029 H — Rollback (`deploys.rollback`, `rollbackInfo`) — **ngoài phạm vi** (chạy lệnh; muốn về bản cũ thì triển khai
+- [-] T029 H — Rollback (`deploys.rollback`, `rollbackInfo`) — **ngoài phạm vi** (chạy lệnh; muốn về bản cũ thì triển khai
   lại bản đó qua cổng duyệt; từ specs/020 T028)
-- [ ] T030 H — Bộ lọc theo hệ thống ở kênh thông báo — **ngoài phạm vi** (người duyệt đã nhận `deploy.approval_requested`;
+- [-] T030 H — Bộ lọc theo hệ thống ở kênh thông báo — **ngoài phạm vi** (người duyệt đã nhận `deploy.approval_requested`;
   từ specs/020 T029)
 - [ ] T020 [US1] X — Mỗi đăng ký một hàng việc, một outbox và một `Scope` truyền vào `delivery.Executor` (thuộc specs/034)
 - [ ] T017 [US1] X — Nối `channel`: nhận `deliveryJobSpec` qua lease, gửi `deliveryEvent` qua outbox, báo khả năng ở `hello`
