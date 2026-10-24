@@ -150,7 +150,7 @@ Chặn mọi story. Không có nhãn story.
   `docsync/homes.db.test.ts`)
 - [x] T013 [P] H — Export `csvRow`, `csvCell` của `audit/csv.ts` qua `audit/index.ts` cho US7
   (`apps/hub/src/modules/audit/index.ts`)
-- [ ] T014 H — Kiểm quyền chung: dự án ngoài đội trả 404; `requireTeamRole(..., "viewer")`, rồi
+- [x] T014 H — Kiểm quyền chung: dự án ngoài đội trả 404; `requireTeamRole(..., "viewer")`, rồi
   `effectivePermissions().has(perm)`; thiếu quyền trả `ForbiddenError` "Cần quyền `<quyền>` ở đội của dự án này."
   (FR-016); dự án chưa bật thư viện trả `QA_LIBRARY_DISABLED`, trừ route `projectSettings.*`. Sau T004, T007
   (`apps/hub/src/modules/qa/access.ts`, `apps/hub/src/modules/qa/access.db.test.ts`)
