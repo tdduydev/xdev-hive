@@ -2,8 +2,13 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { errorCode, seedOrg } from "../../../test/org-fixture.ts";
-import { createPool, withTenant } from "../platform/index.ts";
-import { qaError, qaProject } from "./access.ts";
+import { provideDocAccess, provideDocSaved } from "../knowledge/index.ts";
+import { createPool, type Tx, withTenant } from "../platform/index.ts";
+import { type QaPermission, qaError, qaProject } from "./access.ts";
+import { qaDocAccess, qaDocSaved } from "./doc-hooks.ts";
+import { createArea, listAreas } from "./routes/areas.ts";
+import { getCase, listCases } from "./routes/cases.ts";
+import { getProjectSettings, updateProjectSettings } from "./routes/project-settings.ts";
 
 const db = inject("db");
 const admin = new pg.Pool({ connectionString: db.adminUrl });
@@ -13,6 +18,7 @@ let orgId: string;
 let projectId: string;
 let user: (n: string) => string;
 let tester: string;
+let ba: string;
 
 const as = <T>(userId: string, run: Parameters<typeof withTenant<T>>[2]) => withTenant(app, { orgId, userId }, run);
 const check = (
@@ -24,13 +30,20 @@ beforeAll(async () => {
   const org = await seedOrg(admin, `qa-access-${randomUUID().slice(0, 8)}`);
   ({ orgId, user } = org);
   tester = `tester-${randomUUID().slice(0, 8)}`;
-  await admin.query(`insert into auth."user" (id, name, email) values ($1, $1, $1 || '@seed.test')`, [tester]);
-  await admin.query("insert into hive.org_members (org_id, user_id, role) values ($1, $2, 'member')", [orgId, tester]);
-  await admin.query("insert into hive.team_members (team_id, org_id, user_id, role) values ($1, $2, $3, 'tester')", [
-    org.teamId,
-    orgId,
-    tester,
-  ]);
+  ba = `ba-${randomUUID().slice(0, 8)}`;
+  for (const [id, role] of [
+    [tester, "tester"],
+    [ba, "ba"],
+  ]) {
+    await admin.query(`insert into auth."user" (id, name, email) values ($1, $1, $1 || '@seed.test')`, [id]);
+    await admin.query("insert into hive.org_members (org_id, user_id, role) values ($1, $2, 'member')", [orgId, id]);
+    await admin.query("insert into hive.team_members (team_id, org_id, user_id, role) values ($1, $2, $3, $4)", [
+      org.teamId,
+      orgId,
+      id,
+      role,
+    ]);
+  }
   const scm = randomUUID();
   await admin.query(
     "insert into hive.scm_connections (id, org_id, kind, name, secret_enc, created_by) values ($1, $2, 'gitlab', 'gl', 'fixture', $3)",
@@ -106,6 +119,84 @@ describe("qaProject (FR-015, FR-016)", () => {
         expect((await check(user(n), projectId, "projects.settings")).permissions.has("qa.rounds.manage"), n).toBe(
           true,
         );
+    });
+  });
+});
+
+describe("ma trận quyền FR-012, FR-014", () => {
+  const ALL: QaPermission[] = ["qa.read", "qa.cases.write", "qa.record", "qa.rounds.manage", "projects.settings"];
+  // owner, admin là vai trò tổ chức; còn lại là vai trò ở đội của dự án, cộng quyền của vai trò tổ chức `member` mà
+  // mọi người trong fixture đều có (như `effectivePermissions` ở mọi module), nên viewer và BA cũng ghi kết quả được.
+  const granted: Record<string, QaPermission[]> = {
+    owner: ALL,
+    admin: ALL,
+    tadmin: ALL,
+    tmember: ["qa.read", "qa.record"],
+    tviewer: ["qa.read", "qa.record"],
+    ba: ["qa.read", "qa.record"],
+    tester: ["qa.read", "qa.cases.write", "qa.record", "qa.rounds.manage"],
+  };
+  const who = (n: string) => (n === "tester" ? tester : n === "ba" ? ba : user(n));
+
+  it.each(Object.entries(granted))("%s có đúng các quyền kiểm thử", async (n, has) => {
+    for (const need of ALL) {
+      const got = await check(who(n), projectId, need).catch((e: Error & { code: string }) => e);
+      if (has.includes(need)) expect(got, `${n} ${need}`).toMatchObject({ project: { id: projectId } });
+      else
+        expect(got, `${n} ${need}`).toMatchObject({
+          code: "QA_PERMISSION_REQUIRED",
+          message: `Cần quyền \`${need}\` ở đội của dự án này.`,
+        });
+    }
+  });
+
+  describe("route testing.*", () => {
+    // Như main.ts: tester tạo khu nhờ quyền lưu file TC.
+    beforeAll(() => {
+      provideDocSaved(qaDocSaved);
+      provideDocAccess(qaDocAccess);
+    });
+    afterAll(() => {
+      provideDocSaved(undefined);
+      provideDocAccess(undefined);
+    });
+
+    let seq = 0;
+    const jobs = { send: async () => undefined } as never;
+    // Mỗi route gọi đúng hàm nghiệp vụ mà handler gọi; quyền cần là quyền route đó kiểm ở qaProject.
+    const routes: Array<[string, QaPermission[], (tx: Tx, userId: string) => Promise<unknown>]> = [
+      ["projectSettings.get", ["qa.read", "projects.settings"], (tx, u) => getProjectSettings(tx, u, "billing")],
+      [
+        "projectSettings.update",
+        ["projects.settings"],
+        (tx, u) => updateProjectSettings(tx, { jobs }, { userId: u, orgId }, { projectKey: "billing" }),
+      ],
+      ["areas.list", ["qa.read"], (tx, u) => listAreas(tx, u, "billing")],
+      [
+        "areas.create",
+        ["qa.cases.write"],
+        (tx, u) => createArea(tx, u, { projectKey: "billing", code: `QUYEN${++seq}`, name: "Kiểm quyền" }),
+      ],
+      [
+        "cases.list",
+        ["qa.read"],
+        (tx, u) => listCases(tx, u, { projectKey: "billing", state: "active", limit: 50 } as never),
+      ],
+      ["cases.get", ["qa.read"], (tx, u) => getCase(tx, u, { projectKey: "billing", code: "TC-QUYEN1-001" })],
+    ];
+
+    it.each(routes)("%s", async (_name, need, run) => {
+      for (const [n, has] of Object.entries(granted)) {
+        const got = await as(who(n), (tx) => run(tx, who(n))).catch((e: Error & { code: string }) => e);
+        if (need.some((p) => has.includes(p))) expect(got, n).not.toBeInstanceOf(Error);
+        else
+          expect(got, n).toMatchObject({
+            code: "QA_PERMISSION_REQUIRED",
+            message: `Cần quyền ${need.map((p) => `\`${p}\``).join(" hoặc ")} ở đội của dự án này.`,
+          });
+      }
+      for (const n of ["oadmin", "loner"])
+        expect(await errorCode(() => as(user(n), (tx) => run(tx, user(n)))), n).toBe("PROJECT_NOT_FOUND");
     });
   });
 });
