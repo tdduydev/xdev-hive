@@ -18,6 +18,7 @@ export {
   registerDocSync,
 } from "./jobs.ts";
 export { registerMcpTools } from "./mcp-tools.ts";
+export { keyFromPath } from "./paths.ts";
 export { docsyncRouter } from "./router.ts";
 export type { DocSyncDeps } from "./routes/deps.ts";
 export { handleDocsWebhook } from "./webhook.ts";

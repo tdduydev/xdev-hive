@@ -208,6 +208,7 @@ Thư viện có nội dung mới và lịch sử phiên bản của TC."
   T021 trong tx lưu, chỉ throw khi lỗi DB. Nối hook ở `main.ts`. Test: `saveDoc` trên web và `saveDocFromSync` cho
   cùng kết quả (FR-005); lưu trữ và khôi phục
   (`apps/hub/src/modules/qa/doc-hooks.ts`, `qa/doc-hooks.db.test.ts`, `qa/index.ts`, `apps/hub/src/main.ts`)
+  Còn thiếu: gọi `provideDocSaved(qaDocSaved)` ở `main.ts`. Hook và test đã xong; nhánh QA036A không được sửa `main.ts`.
 - [ ] T023 [US1] H — Route `projectSettings.get`, `projectSettings.update` (cần `projects.settings`; bật lần đầu gọi
   `ensureProjectInclude`, trả `includeResult`), `areas.list` (gồm `parseErrors`), `areas.create` (cần
   `qa.cases.write`; tạo tài liệu từ `areaTemplate()` qua `saveDoc`; mã trùng trả 409 `QA_AREA_CODE_TAKEN`; trả
