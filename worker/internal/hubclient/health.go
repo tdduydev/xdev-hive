@@ -22,6 +22,10 @@ type Health struct {
 	Time    time.Time
 	// CLIs là CLI hub giao run được; nil khi hub cũ không trả.
 	CLIs []string
+	// DBEpoch đổi mỗi lần hub khôi phục database; rỗng khi hub cũ hay hub không có database.
+	DBEpoch string
+	// DBRestoredTo là thời điểm dữ liệu của bản đã khôi phục; nil khi chưa khôi phục hay không rõ.
+	DBRestoredTo *time.Time
 }
 
 type HealthClient struct {
@@ -55,12 +59,14 @@ func (c *HealthClient) Health(ctx context.Context) (Health, error) {
 	if health.Status != "ok" {
 		return Health{}, fmt.Errorf("hub báo trạng thái %q", health.Status)
 	}
-	// generated.go sinh từ openapi.json trước khi health có `clis`, nên đọc trường này từ body.
+	// generated.go sinh từ openapi.json trước khi health có `clis` và mốc database, nên đọc các trường này từ body.
 	var extra struct {
-		CLIs []string `json:"clis"`
+		CLIs         []string   `json:"clis"`
+		DBEpoch      string     `json:"dbEpoch"`
+		DBRestoredTo *time.Time `json:"dbRestoredTo"`
 	}
 	if json.Unmarshal(response.Body, &extra) == nil {
-		health.CLIs = extra.CLIs
+		health.CLIs, health.DBEpoch, health.DBRestoredTo = extra.CLIs, extra.DBEpoch, extra.DBRestoredTo
 	}
 	return health, nil
 }

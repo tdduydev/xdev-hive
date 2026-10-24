@@ -56,8 +56,10 @@ type Outcome struct {
 }
 
 // FlushResult đếm theo kết quả: Retry là lần gửi hỏng sẽ thử lại, Waiting là mục chưa tới giờ thử lại hay bị chặn sau
-// mục đang giữ. Offline là lượt dừng vì không gọi được hub.
+// mục đang giữ. Offline là lượt dừng vì không gọi được hub. Requeued là việc đã gửi được đưa lại hàng đợi vì hub khôi
+// phục database.
 type FlushResult struct {
+	Requeued  int       `json:"requeued,omitempty"`
 	Accepted  int       `json:"accepted"`
 	Duplicate int       `json:"duplicate"`
 	Rejected  int       `json:"rejected"`
@@ -102,6 +104,9 @@ func (s Store) FlushWith(ctx context.Context, id Identity, send Dispatcher) (Flu
 	}
 	defer unlock()
 	s.cleanTemp(id)
+	if res.Requeued, err = s.checkEpoch(ctx, id); err != nil {
+		return res, err
+	}
 	items, _, err := s.load(id)
 	if err != nil {
 		return res, err
@@ -257,6 +262,10 @@ func (s Store) finish(id Identity, it Item, now time.Time) error {
 		}
 	}
 	if !exists {
+		// Bản nén trước dòng sent.jsonl: có dòng là có bản để gửi lại khi hub khôi phục database (epoch.go).
+		if err := s.archive(id, it); err != nil {
+			return err
+		}
 		e := SentEntry{Key: it.Key, Kind: it.Kind, Stream: it.Stream, Outcome: string(it.State), SentAt: now.UTC()}
 		if it.Result != nil {
 			e.ReceivedAt = it.Result.ReceivedAt

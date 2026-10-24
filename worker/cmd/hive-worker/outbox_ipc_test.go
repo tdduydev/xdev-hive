@@ -64,6 +64,11 @@ func newUserHub(t *testing.T) *userHub {
 			}
 			return
 		}
+		// Lượt gửi hỏi mốc database qua health; không tính là lần gửi mục.
+		if r.URL.Path == "/api/v1/health" {
+			http.NotFound(w, r)
+			return
+		}
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		call := userHubCall{Path: r.URL.Path, Header: r.Header.Clone()}
