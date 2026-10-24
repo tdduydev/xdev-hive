@@ -395,6 +395,7 @@ pub async fn secrets_list(app: AppHandle, project: Option<String>) -> Result<Val
 }
 
 /// Lưu bí mật. Bỏ trống `value` thì giữ giá trị cũ (chỉ sửa mô tả). `projects` là các dự án mới cần gán thêm.
+/// `all_projects` có giá trị thì bật hay tắt cờ dùng cho mọi dự án (FR-066); bỏ trống thì giữ nguyên.
 #[tauri::command]
 pub async fn secret_save(
     app: AppHandle,
@@ -402,6 +403,7 @@ pub async fn secret_save(
     description: String,
     value: Option<String>,
     projects: Option<Vec<String>>,
+    all_projects: Option<bool>,
 ) -> Result<Value, String> {
     let projects = projects.unwrap_or_default();
     // Kiểm hết trước khi ghi gì, để một mã dự án sai không để lại bí mật đã lưu mà chưa gán.
@@ -421,6 +423,13 @@ pub async fn secret_save(
     };
     let mut item = call_json(&app, args, input, RUN_TIMEOUT).await?;
     drop(description_file);
+    // Đổi cờ trước khi gán: tắt cờ rồi mới gán các dự án người dùng chọn lại, vì bật cờ thì worker bỏ gán riêng.
+    if let Some(on) = all_projects {
+        let mut args = base(&[if on { "assign" } else { "unassign" }]);
+        args.push(name_arg("name", &name)?);
+        args.push("--all-projects".into());
+        item = call_json(&app, args, None, RUN_TIMEOUT).await?;
+    }
     for project in project_args {
         let mut args = base(&["assign"]);
         args.push(name_arg("name", &name)?);

@@ -57,8 +57,11 @@ describe("kiểu theo fixture của worker", () => {
     const list = fixture<SecretsList>("list.json");
     const calls = fakeTauri(() => list);
     const got = await secretsList();
-    expect(got.secrets.map((s) => s.name)).toEqual(["DATABASE_URL", "STRIPE_TEST_KEY"]);
+    expect(got.secrets.map((s) => s.name)).toEqual(["DATABASE_URL", "SENTRY_DSN", "STRIPE_TEST_KEY"]);
     expect(got.secrets[0]?.projects.map((p) => p.localId)).toEqual(["1111111111111111", "2222222222222222"]);
+    expect(got.secrets.map((s) => s.allProjects)).toEqual([false, true, false]);
+    // Bí mật dùng chung liệt kê mọi dự án trên máy, dù danh mục không giữ gán riêng.
+    expect(got.secrets[1]?.projects.map((p) => p.localId)).toEqual(["1111111111111111", "2222222222222222"]);
     expect(got.reserved.exact).toContain("PATH");
     expect(got.reserved.prefixes).toContain("HIVE_");
     expect(calls).toEqual([{ command: "secrets_list", args: undefined }]);
@@ -103,6 +106,7 @@ describe("lệnh Tauri", () => {
   it("gửi đúng tên lệnh và tham số camelCase", async () => {
     const calls = fakeTauri(() => null);
     await secretAssign("DATABASE_URL", "1111", true);
+    await secretSave({ name: "SENTRY_DSN", description: "", projects: [], allProjects: true });
     await secretsPurge({ all: true });
     await secretsPurge({ project: "1111" });
     await secretsLogClear();
@@ -110,6 +114,7 @@ describe("lệnh Tauri", () => {
     await secretApprove("a1", false);
     expect(calls).toEqual([
       { command: "secret_assign", args: { name: "DATABASE_URL", project: "1111", assigned: true } },
+      { command: "secret_save", args: { name: "SENTRY_DSN", description: "", projects: [], allProjects: true } },
       { command: "secrets_purge", args: { all: true } },
       { command: "secrets_purge", args: { project: "1111" } },
       { command: "secrets_log_clear", args: undefined },
