@@ -39,7 +39,12 @@
     "externalBin": [
       "binaries/hive-worker",
       "binaries/hive"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {

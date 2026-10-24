@@ -217,7 +217,7 @@ describe("màn Bí mật: thêm và sửa", () => {
     expect(calls.some((c) => c.command === "secret_save")).toBe(false);
   });
 
-  it("worker từ chối: hiện lỗi, form giữ lại và ô giá trị đã được xoá", async () => {
+  it("worker từ chối: hiện lỗi, form và giá trị đã gõ được giữ lại để sửa tiếp", async () => {
     fakeApp({
       secrets: [],
       override: {
@@ -236,7 +236,7 @@ describe("màn Bí mật: thêm và sửa", () => {
     await user.type(value, "gia-tri-gia-12345678");
     await user.click(within(dialog).getByRole("button", { name: "Lưu" }));
     expect(await within(dialog).findByText(/trông giống một giá trị bí mật/)).toBeTruthy();
-    expect(value.value).toBe("");
+    expect(value.value).toBe("gia-tri-gia-12345678");
   });
 
   it("sửa: để trống giá trị thì không gửi giá trị; đổi tên thì đổi tên trước", async () => {
