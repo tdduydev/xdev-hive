@@ -183,7 +183,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 
 - [x] T041 [US4] Tách vai trò `api`/`jobs`, healthcheck `/api/v1/health/jobs` · `apps/hub/src/main.ts`,
   `deploy/compose.yaml`
-- [ ] T042 [US4] `db_epoch`, health trả `dbEpoch`, hộp thư đi gửi lại sau khôi phục · `apps/hub/src/modules/system/`,
+- [x] T042 [US4] `db_epoch`, health trả `dbEpoch`, hộp thư đi gửi lại sau khôi phục · `apps/hub/src/modules/system/`,
   `worker/internal/outbox/epoch.go`
 - [ ] T043 [US4] pgBackRest, diễn tập hằng tháng · `deploy/postgres/Dockerfile`, `deploy/pitr-restore.sh`,
   `deploy/drill.sh`

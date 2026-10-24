@@ -70,6 +70,8 @@ id=$(compose ps -aq hub)
 [ -n "$id" ] || fail "Không thấy container hub của bản triển khai."
 HIVE_VERSION=$($docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$id" | sed -n 's/^HIVE_VERSION=//p')
 export HIVE_VERSION
+# backup.sh đặt tên thư mục theo giờ bắt đầu dump, sớm hơn snapshot một chút: worker gửi lại dư chứ không thiếu.
+dumped_at=$(basename "$backup" | sed -n 's/^\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)T\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)Z$/\1-\2-\3T\4:\5:\6Z/p')
 sql_tmp=$(mktemp "$dir/.restore.XXXXXX")
 compose exec -T postgres pg_restore --clean --if-exists --file=- <"$backup/hive.dump" >"$sql_tmp"
 echo "Dừng hub và khôi phục database hive của project ${project}…"
@@ -80,6 +82,7 @@ stopped=1
 {
   printf 'BEGIN;\nSET LOCAL client_min_messages = warning;\nDROP SCHEMA IF EXISTS pgboss CASCADE;\n'
   cat "$sql_tmp"
+  db_epoch_sql "$dumped_at"
   printf '\nCOMMIT;\n'
 } | compose exec -T postgres psql -U postgres -d hive -v ON_ERROR_STOP=1 >/dev/null
 # Role postgres nằm ngoài dump. Đồng bộ mật khẩu với .env trước khi hub bootstrap các role còn lại.

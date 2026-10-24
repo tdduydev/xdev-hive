@@ -109,7 +109,7 @@ import {
   sdlcSyncQueue,
 } from "./modules/sdlc/index.ts";
 import { registerSkillLearningWorker, skillLearningPrQueue, skillLearningQueue } from "./modules/skilllearn/index.ts";
-import { jobsHeartbeat, jobsHeartbeatQueue, jobsOnlyFetch } from "./modules/system/index.ts";
+import { dbEpochCache, jobsHeartbeat, jobsHeartbeatQueue, jobsOnlyFetch, readDbEpoch } from "./modules/system/index.ts";
 import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
 import { attachTerminalGateway, createTerminalHandlers, withRemoteLive } from "./modules/terminal/index.ts";
 
@@ -119,6 +119,7 @@ if (!config.deliveryOutbound) console.warn("HIVE_DELIVERY_OUTBOUND chưa bật: 
 const roles = config.roles ?? ["api", "jobs"];
 const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
 if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
+if (pool) dbEpochCache.provide(readDbEpoch(pool));
 // Dò một lần cho cả health, route nhận file và job chuyển (FR-023). Thiếu công cụ thì hub vẫn chạy, chỉ tắt nhập Word
 // hoặc riêng `.doc`.
 if (config.wordImport) {

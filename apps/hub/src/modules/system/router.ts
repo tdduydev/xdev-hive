@@ -2,6 +2,7 @@ import { implement, ORPCError } from "@orpc/server";
 import { contract } from "@xdev-hive/contracts";
 import { cli } from "@xdev-hive/contracts/worker-protocol";
 import type { HubConfig, RequestContext } from "../platform/index.ts";
+import { type DbEpochCache, dbEpochCache } from "./db-epoch.ts";
 import { DesktopReleaseCache, findDesktopUpdate } from "./desktop-updates.ts";
 import { type JobsHeartbeat, jobsHeartbeat } from "./jobs-health.ts";
 
@@ -13,11 +14,12 @@ export function systemRouter(
   desktopReleases: DesktopReleaseCache = new DesktopReleaseCache(config.desktopReleases),
   wordImport: WordImportHealth = () => ({ wordImport: false, wordImportDoc: false }),
   heartbeat: JobsHeartbeat = jobsHeartbeat,
+  epoch: DbEpochCache = dbEpochCache,
 ) {
   const os = implement(contract.system).$context<RequestContext>();
   const roles = config.roles ?? ["api", "jobs"];
   return {
-    health: os.health.handler(() => ({
+    health: os.health.handler(async () => ({
       status: "ok" as const,
       version: config.version,
       time: new Date().toISOString(),
@@ -26,6 +28,7 @@ export function systemRouter(
       artifacts: true as const,
       ...wordImport(),
       roles: [...roles],
+      ...(await epoch.current()),
     })),
     healthJobs: os.healthJobs.handler(() => {
       const status = heartbeat.status();

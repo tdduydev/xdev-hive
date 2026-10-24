@@ -109,6 +109,13 @@ export const healthOutput = z.object({
   wordImportDoc: z.boolean().optional(),
   /** Vai trò của tiến trình trả lời (spec 027 FR-043); compose tách `api` và `jobs` thành hai service. Hub cũ không trả. */
   roles: z.array(z.enum(["api", "jobs"])).optional(),
+  /**
+   * Mốc database, đổi mỗi lần khôi phục (spec 027 FR-042). Worker thấy mốc khác lần trước thì gửi lại hộp thư đi.
+   * Hub không có database hoặc hub cũ không trả.
+   */
+  dbEpoch: z.uuid().optional(),
+  /** Thời điểm dữ liệu của bản đã khôi phục; null khi chưa khôi phục lần nào hoặc không rõ thời điểm. */
+  dbRestoredTo: z.iso.datetime({ offset: true }).nullable().optional(),
 });
 /**
  * Trạng thái vai trò `jobs`, cho healthcheck của service `hub-jobs`. Hub trả 503 khi tiến trình không chạy `jobs` hoặc

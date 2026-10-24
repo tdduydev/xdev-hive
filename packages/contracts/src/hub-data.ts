@@ -34,6 +34,14 @@ export const HUB_DATA_INVENTORY: readonly HubDataCategory[] = [
     false,
   ),
   category(
+    "db-epoch",
+    "Mốc khôi phục database",
+    "db_epoch",
+    "Script khôi phục ghi mã mới và thời điểm khôi phục; worker đọc qua health để gửi lại hộp thư đi.",
+    "Một dòng, ghi đè mỗi lần khôi phục.",
+    false,
+  ),
+  category(
     "identity",
     "Danh tính và xác thực hub",
     "user session account verification ssoProvider jwks oauthClient oauthResource oauthClientResource oauthRefreshToken oauthAccessToken oauthConsent oauthClientAssertion",

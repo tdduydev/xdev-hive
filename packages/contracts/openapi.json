@@ -70,6 +70,21 @@
                         ],
                         "type": "string"
                       }
+                    },
+                    "dbEpoch": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "dbRestoredTo": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [

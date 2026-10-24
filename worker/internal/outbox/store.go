@@ -118,11 +118,13 @@ type Error struct {
 func (e *Error) Error() string { return e.Message }
 
 // Store là hộp thư đi dưới Root (`~/.xdev-hive/outbox`). Now và hai giới hạn để test thay; bỏ trống thì dùng mặc định.
+// Epoch nil thì lượt gửi không hỏi mốc database, nên không gửi lại việc hub mất khi khôi phục.
 type Store struct {
 	Root          string
 	Now           func() time.Time
 	MaxItemBytes  int64
 	MaxTotalBytes int64
+	Epoch         EpochSource
 }
 
 func (s Store) now() time.Time {
@@ -476,7 +478,7 @@ func (s Store) appendSent(id Identity, e SentEntry) error {
 
 func (s Store) pruneSent(id Identity, now time.Time) error {
 	entries, err := s.Sent(id)
-	if err != nil || len(entries) == 0 {
+	if err != nil {
 		return err
 	}
 	var keep []byte
@@ -492,10 +494,12 @@ func (s Store) pruneSent(id Identity, now time.Time) error {
 		}
 		keep = append(append(keep, b...), '\n')
 	}
-	if !dropped {
-		return nil
+	if dropped {
+		if err := writeAtomic(s.sentPath(id), keep); err != nil {
+			return err
+		}
 	}
-	return writeAtomic(s.sentPath(id), keep)
+	return s.pruneArchive(id, entries, now)
 }
 
 // cleanTemp dọn file tạm do tiến trình bị giết giữa lúc ghi để lại; gọi khi đang giữ khoá nên không có lần ghi nào đang dở.
