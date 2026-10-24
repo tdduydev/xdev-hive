@@ -638,6 +638,20 @@
       "when": 1792764273487,
       "tag": "0090_delivery_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1792838296655,
+      "tag": "0091_team_role_tester",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1792838375200,
+      "tag": "0092_qa_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -88,7 +88,7 @@ Chặn mọi story. Không có nhãn story.
   `name` hoặc `message` bị từ chối (SC-003). Sửa kiểu Go `JobSpec`, `Event` cùng commit. Không sửa
   `fixtures/worker-protocol.json` (`packages/contracts/src/delivery-worker.ts`, `delivery-worker.test.ts`,
   `worker/internal/delivery/executor.go`)
-- [ ] T007 H — Enum `team_role` thêm `tester`. `TEAM_SYSTEM_ROLE.tester = "team-tester"`. `TEAM_RANK.tester = 2` ở cả
+- [x] T007 H — Enum `team_role` thêm `tester`. `TEAM_SYSTEM_ROLE.tester = "team-tester"`. `TEAM_RANK.tester = 2` ở cả
   ba chỗ. Nhãn "Tester" ở `TEAM_LABEL`, `knowledge/reviews.ts`, `knowledge/editor.ts`, `TEAM_ROLE_ID` của
   `sdlc/access.ts`. Test: `permissions.db.test.ts`, `roles.db.test.ts` thêm ca `tester`. Sau T005
   (`apps/hub/src/modules/tenancy/schema.ts`, `tenancy/roles.ts`, `tenancy/permissions.ts`, `artifacts/access.ts`,
@@ -164,10 +164,12 @@ Chặn mọi story. Không có nhãn story.
   không sửa `qa/router.ts` (`apps/hub/src/modules/qa/routes/*.ts`, `qa/router.ts`, `qa/index.ts`, `apps/hub/src/app.ts`)
 - [x] T017 [P] U — Fixture e2e `testingDefaults()` theo cách `delivery-ci-fixture.ts`, nạp ở fake-hub
   (`apps/web/e2e/testing-fixture.ts`, `apps/web/e2e/fake-hub.ts`)
-- [ ] T018 H — Migration enum: chỉ `ALTER TYPE hive.team_role ADD VALUE 'tester'`. Sinh bằng
+- [x] T018 H — Migration enum: chỉ `ALTER TYPE hive.team_role ADD VALUE 'tester'`. Sinh bằng
   `pnpm --filter @xdev-hive/hub db:generate` sau `git merge origin/main`, kiểm file SQL trước khi commit
   (`apps/hub/db/migrations/*.sql`)
-- [ ] T019 H — Migration bảng `qa_*` (T008–T010) và SQL viết tay: `FORCE ROW LEVEL SECURITY` mọi bảng, FK tới
+  Đã làm: drizzle-kit gộp enum và bảng vào một file, nên `0091_team_role_tester` sinh khi tạm thay
+  `qa/schema.ts` bằng file rỗng, rồi mới sinh `0092_qa_tables`.
+- [x] T019 H — Migration bảng `qa_*` (T008–T010) và SQL viết tay: `FORCE ROW LEVEL SECURITY` mọi bảng, FK tới
   `projects`, `docs`, `users`, `ON DELETE SET NULL (<cột>)`, GIN, policy của `qa_settings`. Chưa có FK tới
   `delivery_jobs` và chưa có `hive.purge_qa_data()` (`apps/hub/db/migrations/*.sql`)
 
@@ -515,7 +517,7 @@ Mỗi bước là một hoặc vài PR vào `main`. Mỗi PR cập nhật với 
 - [Unverified] Webhook của repo nguồn thứ hai tới được hub (T061).
 - [Unverified] Tải `reports:junit` qua `/jobs/:job_id/artifacts/*path` ở mode artifact (T050).
 - [Unverified] Tên trạng thái pipeline của GitLab khớp `CI_ACTIVE_STATUSES` và `pipeline_status` (T009, T056).
-- [Unverified] drizzle-kit sinh `ALTER TYPE ... ADD VALUE` thành migration riêng (T018).
+- Đã kiểm: drizzle-kit không tự tách `ALTER TYPE ... ADD VALUE` thành migration riêng (T018).
 - [Unverified] Tham số `updated_after`, `ref`, `per_page` của API list pipeline GitLab (T050, T055).
 - [Unverified] Các trường của `DocSaveInput` đủ cho `areas.create` (T023).
 - [Inference] `selectRunner` chưa có nơi gọi ngoài test (T053).
