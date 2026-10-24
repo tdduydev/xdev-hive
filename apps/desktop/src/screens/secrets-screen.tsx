@@ -12,10 +12,22 @@ import { Label } from "@xdev-hive/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
-import { ListIcon, LockIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
+import {
+  DownloadIcon,
+  ListIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  UploadIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { DeliveryCredentials } from "@/components/delivery-credentials.tsx";
+import { SecretExportDialog } from "@/components/secret-export-dialog.tsx";
 import { SecretFormDialog } from "@/components/secret-form-dialog.tsx";
+import { SecretImportDialog } from "@/components/secret-import-dialog.tsx";
 import { SecretValueActions } from "@/components/secret-value-actions.tsx";
 import { SecretsLog } from "@/components/secrets-log.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
@@ -45,6 +57,8 @@ const text: Dict<{
   tabDelivery: string;
   deliveryLead: string;
   add: string;
+  exportLabel: string;
+  importLabel: string;
   reserved: string;
   refresh: string;
   loading: string;
@@ -95,6 +109,8 @@ const text: Dict<{
       "Credential để worker gọi Jenkins hay Argo CD khi triển khai. Khác bí mật của dự án: không gán cho dự án, không vào biến môi trường của agent hay terminal, và đã lưu thì không xem lại được.",
     lead: "Bí mật của máy này (khoá API, chuỗi kết nối…). Giá trị nằm trong kho của hệ điều hành, không lên hub; agent nhận qua biến môi trường của dự án được gán.",
     add: "Thêm bí mật",
+    exportLabel: "Xuất",
+    importLabel: "Nhập",
     reserved: "Tên dành riêng",
     refresh: "Tải lại",
     loading: "Đang tải…",
@@ -152,6 +168,8 @@ const text: Dict<{
       "Credentials the worker uses to call Jenkins or Argo CD during delivery. Unlike project secrets they are never assigned to projects, never put in agent or terminal environments, and cannot be viewed once saved.",
     lead: "Secrets of this machine (API keys, connection strings…). Values live in the OS store, never on the hub; agents get them as environment variables of the assigned projects.",
     add: "Add secret",
+    exportLabel: "Export",
+    importLabel: "Import",
     reserved: "Reserved names",
     refresh: "Refresh",
     loading: "Loading…",
@@ -233,6 +251,7 @@ export function SecretsScreen() {
   const [form, setForm] = useState<{ secret: SecretItem | null } | null>(null);
   const [deleting, setDeleting] = useState<SecretItem | null>(null);
   const [showReserved, setShowReserved] = useState(false);
+  const [transfer, setTransfer] = useState<"export" | "import" | null>(null);
   const [tab, setTab] = useState<Tab>("list");
   const tabsId = useId();
 
@@ -278,6 +297,19 @@ export function SecretsScreen() {
             <Button variant="outline" onClick={() => setShowReserved(true)}>
               <ListIcon aria-hidden="true" />
               {t.reserved}
+            </Button>
+            {/* Xuất và nhập đều đọc hay ghi kho: kho khoá thì tắt như nút Thêm. */}
+            <Button
+              variant="outline"
+              disabled={!storeUsable(status) || !data || data.secrets.length === 0}
+              onClick={() => setTransfer("export")}
+            >
+              <UploadIcon aria-hidden="true" />
+              {t.exportLabel}
+            </Button>
+            <Button variant="outline" disabled={!storeUsable(status)} onClick={() => setTransfer("import")}>
+              <DownloadIcon aria-hidden="true" />
+              {t.importLabel}
             </Button>
             <Button disabled={!storeUsable(status)} onClick={() => setForm({ secret: null })}>
               <PlusIcon aria-hidden="true" />
@@ -500,6 +532,17 @@ export function SecretsScreen() {
           setDeleting(null);
           void load();
         }}
+      />
+      <SecretExportDialog
+        open={transfer === "export"}
+        names={(data?.secrets ?? []).map((s) => s.name)}
+        onClose={() => setTransfer(null)}
+      />
+      <SecretImportDialog
+        open={transfer === "import"}
+        projects={projects}
+        onClose={() => setTransfer(null)}
+        onImported={() => void load()}
       />
       <ReservedDialog open={showReserved} reserved={data?.reserved ?? null} onClose={() => setShowReserved(false)} />
     </div>

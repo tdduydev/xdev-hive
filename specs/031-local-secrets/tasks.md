@@ -542,7 +542,7 @@ không chứa giá trị.
 - [x] T050 B·nhẹ — `secrets.rs`: `secrets_export`, `secrets_import_preview`, `secrets_import`, `secrets_import_env`
   (mật khẩu qua stdin rồi `wipe`); đăng ký ở `lib.rs`, `build.rs`, capability `app.json` (thêm `dialog:allow-save`).
   Máy dev không có Rust, CI kiểm.
-- [ ] T051 C·vừa — Desktop: `lib/secrets.ts` (kiểu, lệnh), `secret-export-dialog.tsx`, `secret-import-dialog.tsx`, nút
+- [x] T051 C·vừa — Desktop: `lib/secrets.ts` (kiểu, lệnh), `secret-export-dialog.tsx`, `secret-import-dialog.tsx`, nút
   "Xuất" và "Nhập" ở `secrets-screen.tsx`, nhãn nhật ký `export`/`import`, chữ vi/en, Vitest.
 
   Sau T047. T048 trước T049; T049 trước T050 và T051 (fixture chung).
