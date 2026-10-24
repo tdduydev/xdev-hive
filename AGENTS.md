@@ -19,6 +19,8 @@ Bản viết lại của xDev Hive. Đọc [docs/architecture.md](docs/architect
 - Đổi `packages/contracts` thì chạy `pnpm openapi` và commit `openapi.json`. CI kiểm hai bên khớp nhau.
 - Database dev: `docker compose -f deploy/dev/compose.yaml up -d`, chép `apps/hub/.env.example` thành `.env`, rồi `pnpm --filter @xdev-hive/hub db:setup`.
 - Đổi bảng: sửa `src/modules/<tên>/schema.ts`, chạy `pnpm --filter @xdev-hive/hub db:generate`, commit cả file SQL trong `apps/hub/db/migrations`.
+- Biome kiểm cả JSON: file sinh ra (`db/migrations/meta/*.json`), fixture test (`testdata/**/*.json`, kể cả trong `worker/`)
+  phải qua `pnpm exec biome format --write <file>` trước khi commit, không thì CI đỏ ở bước lint.
 - Test có database (`*.db.test.ts`) cần Docker. Với Colima trên macOS, đặt trước khi chạy test:
   `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`.
   Bị Docker Hub giới hạn lượt tải (429) thì thêm `HIVE_TEST_POSTGRES_IMAGE=public.ecr.aws/docker/library/postgres:18-trixie`.
@@ -35,7 +37,9 @@ Bản viết lại của xDev Hive. Đọc [docs/architecture.md](docs/architect
   Hub giữ import tương đối vì Node chạy thẳng file `.ts`.
 - Comment giải thích vì sao, không giải thích cái gì.
 - Chữ trên giao diện và thông báo lỗi viết tiếng Việt.
-- Không commit secret, token, mật khẩu.
+- Không commit secret, token, mật khẩu. Cần giá trị bí mật để chạy thử thì dùng biến môi trường đã có, không in ra,
+  không ghi vào file trong repo; thiếu thì nhờ người dùng thêm ở màn Bí mật của desktop
+  ([docs/local-secrets.md](docs/local-secrets.md)), không xin dán vào chat.
 - Làm trên nhánh riêng, mở PR vào `main`. CI phải xanh mới merge.
 
 <!-- BEGIN:turborepo-agent-rules -->
