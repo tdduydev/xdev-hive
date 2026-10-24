@@ -133,6 +133,21 @@ export function checkSecretName(raw: string): { name: string; problem: NameProbl
   return { name, problem: null };
 }
 
+/** Giới hạn giá trị của worker (secretstore.MinValueLen, MaxValueLen): tối thiểu tính theo ký tự, tối đa theo byte. */
+export const SECRET_VALUE_MIN_LENGTH = 8;
+export const SECRET_VALUE_MAX_BYTES = 8 << 10;
+
+export type ValueProblem = "short" | "long" | "nul";
+
+/** Kiểm giá trị trước khi gửi để báo ngay trong form, thay vì đợi worker từ chối; worker vẫn kiểm lại. */
+export function checkSecretValue(value: string): ValueProblem | null {
+  // Đếm theo code point như utf8.RuneCountInString của Go, không theo UTF-16.
+  if ([...value].length < SECRET_VALUE_MIN_LENGTH) return "short";
+  if (new TextEncoder().encode(value).length > SECRET_VALUE_MAX_BYTES) return "long";
+  if (value.includes("\0")) return "nul";
+  return null;
+}
+
 /** Bí mật có tên trong danh mục nhưng không có giá trị trong kho: người dùng phải đặt lại. */
 export const isMissingValue = (s: SecretItem): boolean => s.missingInStore === true;
 
