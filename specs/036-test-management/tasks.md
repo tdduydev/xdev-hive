@@ -162,7 +162,7 @@ Chặn mọi story. Không có nhãn story.
   `areas`, `cases`, `sources`, `rounds`, `rounds-export`, `my-work`, `dashboard`. `qa/router.ts` ghép các nhóm. Export
   `qaRouter` ở `qa/index.ts`, thêm vào object router ở `app.ts` (dòng 272). Các story sau chỉ thay file nhóm của mình,
   không sửa `qa/router.ts` (`apps/hub/src/modules/qa/routes/*.ts`, `qa/router.ts`, `qa/index.ts`, `apps/hub/src/app.ts`)
-- [ ] T017 [P] U — Fixture e2e `testingDefaults()` theo cách `delivery-ci-fixture.ts`, nạp ở fake-hub
+- [x] T017 [P] U — Fixture e2e `testingDefaults()` theo cách `delivery-ci-fixture.ts`, nạp ở fake-hub
   (`apps/web/e2e/testing-fixture.ts`, `apps/web/e2e/fake-hub.ts`)
 - [ ] T018 H — Migration enum: chỉ `ALTER TYPE hive.team_role ADD VALUE 'tester'`. Sinh bằng
   `pnpm --filter @xdev-hive/hub db:generate` sau `git merge origin/main`, kiểm file SQL trước khi commit

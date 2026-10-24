@@ -48,6 +48,7 @@ import { docsyncDocsFixture } from "./docsync-docs-fixture.ts";
 import { docsyncImportFixture } from "./docsync-import-fixture.ts";
 import { docsyncReviewFixture } from "./docsync-review-fixture.ts";
 import { docsyncSettingsDefaults } from "./docsync-settings-fixture.ts";
+import { testingDefaults } from "./testing-fixture.ts";
 
 export { docsyncSettingsFixture } from "./docsync-settings-fixture.ts";
 export { wordImportFailure, wordImportScenario } from "./word-import-fixture.ts";
@@ -112,6 +113,7 @@ export async function fakeHub(
     ...deliveryServersDefaults(),
     ...deliveryDeploysDefaults(),
     ...deliveryApprovalsDefaults(),
+    ...testingDefaults(),
     ...opts.rpc,
   };
   // BuildInfo thử lại khi thiếu phiên bản; giữ trạng thái đó mà không để request chạm proxy tới hub không chạy.
