@@ -16,12 +16,15 @@ import { type Dict, useT } from "@/lib/i18n.ts";
 import type { LocalProject } from "@/lib/local-projects.ts";
 import {
   checkSecretName,
+  checkSecretValue,
   isMissingValue,
   type NameProblem,
   SECRET_NAME_MAX_LENGTH,
+  SECRET_VALUE_MIN_LENGTH,
   type SecretItem,
   secretRename,
   secretSave,
+  type ValueProblem,
 } from "@/lib/secrets.ts";
 import { errorText } from "@/lib/tauri.ts";
 
@@ -40,6 +43,7 @@ const text: Dict<{
   valueEditNote: string;
   valueMissingNote: string;
   valueRequired: string;
+  valueProblem: Record<ValueProblem, string>;
   projects: string;
   noProjects: string;
   missingId: string;
@@ -62,10 +66,15 @@ const text: Dict<{
     description: "Mô tả",
     descriptionNote: "Agent đọc được mô tả để biết dùng biến khi nào. Đừng ghi giá trị vào đây.",
     value: "Giá trị",
-    valueNote: "Sau khi lưu, ô này được xoá; chỉ xem lại được khi bấm Hiện.",
-    valueEditNote: "Để trống nếu giữ nguyên giá trị hiện tại.",
+    valueNote: `Tối thiểu ${SECRET_VALUE_MIN_LENGTH} ký tự. Sau khi lưu, ô này được xoá; chỉ xem lại được khi bấm Hiện.`,
+    valueEditNote: `Để trống nếu giữ nguyên giá trị hiện tại. Giá trị mới tối thiểu ${SECRET_VALUE_MIN_LENGTH} ký tự.`,
     valueMissingNote: "Kho không còn giá trị của bí mật này. Nhập lại giá trị để dùng tiếp.",
     valueRequired: "Nhập giá trị.",
+    valueProblem: {
+      short: `Giá trị cần tối thiểu ${SECRET_VALUE_MIN_LENGTH} ký tự.`,
+      long: "Giá trị dài quá 8 KiB.",
+      nul: "Giá trị không được chứa ký tự NUL.",
+    },
     projects: "Dự án được dùng bí mật này",
     noProjects: "Chưa có dự án nào trên máy. Thêm dự án ở mục Dự án trên máy rồi gán sau.",
     missingId: "Worker của máy cần cập nhật mới gán được bí mật cho dự án.",
@@ -88,10 +97,15 @@ const text: Dict<{
     description: "Description",
     descriptionNote: "Agents read the description to know when to use the variable. Do not write the value here.",
     value: "Value",
-    valueNote: "This field is cleared after saving; the value can only be viewed again with Show.",
-    valueEditNote: "Leave empty to keep the current value.",
+    valueNote: `At least ${SECRET_VALUE_MIN_LENGTH} characters. This field is cleared after saving; the value can only be viewed again with Show.`,
+    valueEditNote: `Leave empty to keep the current value. A new value needs at least ${SECRET_VALUE_MIN_LENGTH} characters.`,
     valueMissingNote: "The store no longer has this secret's value. Enter it again to keep using it.",
     valueRequired: "Enter a value.",
+    valueProblem: {
+      short: `The value needs at least ${SECRET_VALUE_MIN_LENGTH} characters.`,
+      long: "The value is longer than 8 KiB.",
+      nul: "The value must not contain a NUL character.",
+    },
     projects: "Projects that may use this secret",
     noProjects: "No projects on this machine yet. Add one under Projects on this machine, then assign.",
     missingId: "The worker on this machine needs an update before secrets can be assigned to projects.",
@@ -113,8 +127,8 @@ interface Props {
 }
 
 /**
- * Form thêm và sửa bí mật. Giá trị chỉ nằm trong state của form: xoá ngay khi bấm Lưu (dù thành công hay lỗi) và khi
- * đóng, để không còn trong bộ nhớ của giao diện lâu hơn cần (FR-007).
+ * Form thêm và sửa bí mật. Giá trị chỉ nằm trong state của form: xoá khi lưu xong và khi đóng, để không còn trong bộ
+ * nhớ của giao diện lâu hơn cần (FR-007). Lưu lỗi thì giữ lại, vì người dùng sẽ phải nhập lại đúng giá trị đó.
  */
 export function SecretFormDialog({ open, secret, projects, taken, onClose, onSaved }: Props) {
   // key theo bí mật: mở lại với bí mật khác thì form khởi tạo lại, không mang state cũ sang.
@@ -147,9 +161,11 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
   const nameError = checked.problem ? t.nameProblem[checked.problem] : duplicate ? t.duplicate(checked.name) : null;
   // Kho mất giá trị thì sửa cũng phải nhập lại: để trống sẽ chỉ "giữ" một giá trị không còn.
   const needsValue = !editing || (secret !== null && isMissingValue(secret));
-  const valueError = needsValue && value === "" ? t.valueRequired : null;
+  const valueProblem = value === "" ? null : checkSecretValue(value);
+  const valueError = valueProblem ? t.valueProblem[valueProblem] : needsValue && value === "" ? t.valueRequired : null;
   const shownNameError = touched ? nameError : null;
-  const shownValueError = touched ? valueError : null;
+  // Lỗi độ dài báo ngay khi gõ, không đợi bấm Lưu: worker từ chối thì người dùng đã phải gõ lại từ đầu.
+  const shownValueError = touched || valueProblem ? valueError : null;
   const selectable = projects.filter((p): p is LocalProject & { localId: string } => !!p.localId);
 
   function toggle(localId: string, on: boolean) {
@@ -172,7 +188,7 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
     const typed = value;
     setBusy(true);
     setError(null);
-    // Xoá trước khi chờ worker: kể cả khi lỗi, giá trị không nằm lại trong state của form.
+    // Xoá trong lúc chờ worker; lỗi thì trả lại để người dùng sửa tiếp thay vì gõ lại. Đóng form vẫn xoá hẳn (FR-007).
     setValue("");
     try {
       if (secret && secret.name !== checked.name) await secretRename(secret.name, checked.name);
@@ -185,6 +201,7 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
       onSaved();
       onClose();
     } catch (err) {
+      setValue(typed);
       setError(errorText(err));
     } finally {
       setBusy(false);
