@@ -32,6 +32,21 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
+test("Status: lỗi không do mạng thì không báo mất kết nối hub", async ({ page }) => {
+  await fakeHub(page, { signedIn: true });
+  await page.route("**/rpc/me/get**", (route) =>
+    route.fulfill({
+      status: 403,
+      json: { json: { defined: true, code: "FORBIDDEN", status: 403, message: "Không có quyền." } },
+    }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Màn hình gặp lỗi" })).toBeVisible();
+  await expect(page.getByText("503", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Không kết nối được hub" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Thử lại" })).toBeVisible();
+});
+
 test("Status: đang tải khi hub chưa trả lời, rồi mở trang", async ({ page }, testInfo) => {
   await fakeHub(page, { signedIn: true });
   let release!: () => void;

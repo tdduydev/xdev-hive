@@ -96,6 +96,18 @@ for (const scheme of ["light", "dark"] as const) {
   });
 }
 
+test("bảng AI SDLC ở 768 và 1280 px: các cột cuộn trong bảng, trang không tràn ngang", async ({ page }) => {
+  await setup(page);
+  await page.goto("/sdlc");
+  await expect(board(page)).toBeVisible();
+  for (const width of [768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth), { message: `${width}px` })
+      .toBeLessThanOrEqual(0);
+  }
+});
+
 test("sửa lỗi nhỏ (SC-003): từ bảng tới hạng mục Bugfix trong không quá 5 thao tác", async ({ page }) => {
   const { state } = await setup(page);
   await page.goto("/sdlc");

@@ -159,8 +159,12 @@ export function ItemBoard({ initialProjectId, initialModeRef, initialView = "boa
     body = <ItemList items={shownItems} match={projectId || undefined} />;
   } else {
     body = (
-      // Cột cố định 232 px như thiết kế; cuộn ngang trong vùng riêng để thanh lọc không trôi theo.
-      <section aria-label={t.board.boardAria} className="flex gap-3 max-sm:flex-col sm:overflow-x-auto sm:pb-2">
+      // Cột cố định 232 px như thiết kế; cuộn ngang trong vùng riêng để thanh lọc không trôi theo. `relative` giữ chữ
+      // sr-only (absolute) của thẻ trong vùng cuộn: thiếu nó chúng bám vào khối xa hơn và kéo giãn bề ngang trang.
+      <section
+        aria-label={t.board.boardAria}
+        className="relative flex gap-3 max-sm:flex-col sm:overflow-x-auto sm:pb-2"
+      >
         {SDLC_PHASE_KINDS.map((kind) => {
           const items = shown.find((c) => c.kind === kind)?.items ?? [];
           // Ở 360 px cột rỗng gập sẵn để danh sách dọc không dài vô ích; ở màn rộng mọi cột luôn mở.

@@ -680,6 +680,9 @@ for (const scheme of ["light", "dark"] as const) {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const container = page.locator('[data-slot="table-container"]');
     expect(await container.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    // Bảng vẫn cuộn ngang, nhưng trạng thái đứng ngay sau mã run nên thấy được mà không phải cuộn.
+    const status = await page.getByRole("columnheader", { name: "Trạng thái", exact: true }).boundingBox();
+    expect((status?.x ?? Number.POSITIVE_INFINITY) + (status?.width ?? 0)).toBeLessThanOrEqual(360);
     await page
       .locator('[data-slot="popover-trigger"]')
       .filter({ hasText: /^Agent$/ })

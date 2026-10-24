@@ -1,6 +1,6 @@
 import { ORPCError } from "@orpc/client";
 import { describe, expect, it } from "vitest";
-import { apiErrorMessage, formError, shouldRetry } from "@/lib/api-errors.ts";
+import { apiErrorMessage, formError, isHubUnreachable, shouldRetry } from "@/lib/api-errors.ts";
 
 // Lỗi client nhận khi hub trả lỗi đã khai báo trong hợp đồng (packages/contracts/src/tenancy.ts).
 const defined = (code: string, message: string, data?: unknown) =>
@@ -71,5 +71,25 @@ describe("shouldRetry", () => {
     expect(shouldRetry(0, new ORPCError("INTERNAL_SERVER_ERROR"))).toBe(true);
     expect(shouldRetry(1, new TypeError("x"))).toBe(true);
     expect(shouldRetry(2, new TypeError("x"))).toBe(false);
+  });
+});
+
+describe("isHubUnreachable", () => {
+  it.each([
+    "Failed to fetch",
+    "fetch failed",
+    "NetworkError when attempting to fetch resource.",
+    "Load failed",
+    "Failed to fetch dynamically imported module: /assets/runs-page.js",
+    "Importing a module script failed.",
+  ])("fetch hoặc chunk hỏng: %s", (message) => expect(isHubUnreachable(new TypeError(message))).toBe(true));
+  it("hub hoặc proxy trả 5xx", () => {
+    expect(isHubUnreachable(new ORPCError("INTERNAL_SERVER_ERROR"))).toBe(true);
+    expect(isHubUnreachable(new ORPCError("BAD_GATEWAY", { status: 502 }))).toBe(true);
+  });
+  it("lỗi của chính trang không phải mất kết nối", () => {
+    expect(isHubUnreachable(new TypeError("Cannot read properties of undefined (reading 'name')"))).toBe(false);
+    expect(isHubUnreachable(new Error("boom"))).toBe(false);
+    expect(isHubUnreachable(new ORPCError("FORBIDDEN"))).toBe(false);
   });
 });

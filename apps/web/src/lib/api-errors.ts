@@ -85,6 +85,17 @@ export function apiErrorCode(error: unknown): string | undefined {
   return isRecord(data) && typeof data.code === "string" ? data.code : undefined;
 }
 
+// oRPC để nguyên TypeError của fetch, mà lỗi vẽ trang cũng hay là TypeError: phân biệt bằng câu báo của từng trình duyệt
+// (Chromium, Firefox, Safari/WebKit, Node) cho fetch hỏng và cho chunk trang không tải được.
+const FETCH_FAILED =
+  /failed to fetch|fetch failed|networkerror when attempting|^load failed$|dynamically imported module|importing a module script failed/i;
+
+/** Không tới được hub hoặc hub (hay proxy trước nó) đang lỗi: thử lại sau là đúng cách, khác với lỗi của chính trang. */
+export function isHubUnreachable(error: unknown): boolean {
+  if (error instanceof ORPCError) return error.status >= 500;
+  return error instanceof TypeError && FETCH_FAILED.test(error.message);
+}
+
 /** Không thử lại lỗi 4xx (quyền, dữ liệu sai): kết quả không đổi, chỉ làm người dùng chờ lâu hơn mới thấy lỗi. */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (error instanceof ORPCError && error.status < 500) return false;

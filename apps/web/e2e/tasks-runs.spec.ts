@@ -532,6 +532,14 @@ for (const scheme of ["light", "dark"] as const) {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow, `${path} cuộn ngang ở 360px`).toBeLessThanOrEqual(0);
     }
+    // Bảng việc rộng 860 px để cột trạng thái ngoài màn điện thoại: ở đây mỗi việc là một thẻ, không thẻ nào bị cắt.
+    await page.goto("/tasks");
+    const cards = page.getByRole("list", { name: "Danh sách việc" });
+    await expect(cards.getByRole("listitem").first()).toBeVisible();
+    await expect(page.getByRole("table", { name: "Danh sách việc" })).toHaveCount(0);
+    expect(
+      await cards.getByRole("listitem").evaluateAll((items) => items.every((li) => li.scrollWidth <= li.clientWidth)),
+    ).toBe(true);
   });
 }
 
