@@ -107,6 +107,17 @@ export const healthOutput = z.object({
   wordImport: z.boolean().optional(),
   /** Có LibreOffice để nhận `.doc`; false thì chỉ nhận `.docx`, `.odt`. Hub cũ không trả. */
   wordImportDoc: z.boolean().optional(),
+  /** Vai trò của tiến trình trả lời (spec 027 FR-043); compose tách `api` và `jobs` thành hai service. Hub cũ không trả. */
+  roles: z.array(z.enum(["api", "jobs"])).optional(),
+});
+/**
+ * Trạng thái vai trò `jobs`, cho healthcheck của service `hub-jobs`. Hub trả 503 khi tiến trình không chạy `jobs` hoặc
+ * nhịp hàng đợi quá hạn, nên healthcheck chỉ cần xem mã HTTP.
+ */
+export const jobsHealthOutput = z.object({
+  ok: z.literal(true),
+  /** Lần cuối tiến trình nhận job nhịp từ pg-boss; null khi vừa khởi động chưa tới nhịp đầu. */
+  lastTickAt: z.iso.datetime().nullable(),
 });
 export const desktopUpdateOutput = z.object({
   version: z.string(),
@@ -131,6 +142,9 @@ export const contract = {
     health: oc
       .route({ method: "GET", path: "/v1/health", summary: "Trạng thái hub", tags: ["system"] })
       .output(healthOutput),
+    healthJobs: oc
+      .route({ method: "GET", path: "/v1/health/jobs", summary: "Trạng thái vai trò jobs", tags: ["system"] })
+      .output(jobsHealthOutput),
     desktopUpdate: oc
       .route({
         method: "GET",

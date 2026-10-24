@@ -109,6 +109,7 @@ import {
   sdlcSyncQueue,
 } from "./modules/sdlc/index.ts";
 import { registerSkillLearningWorker, skillLearningPrQueue, skillLearningQueue } from "./modules/skilllearn/index.ts";
+import { jobsHeartbeat, jobsHeartbeatQueue, jobsOnlyFetch } from "./modules/system/index.ts";
 import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
 import { attachTerminalGateway, createTerminalHandlers, withRemoteLive } from "./modules/terminal/index.ts";
 
@@ -202,6 +203,7 @@ jobs = config.jobsDatabaseUrl
         sdlcQuestionsQueue,
         sdlcSyncQueue,
         sdlcPullQueue,
+        jobsHeartbeatQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
@@ -211,7 +213,8 @@ if (!jobs) console.warn("Chưa cấu hình HIVE_DATABASE_JOBS_URL: hub chạy kh
 await jobs?.start();
 
 // Gateway và lõi giao run chạy cùng tiến trình: gói job_offer, lease chỉ gửi được qua kết nối WSS mà tiến trình này
-// giữ. Chạy nhiều tiến trình api thì cần chuyển gói qua NOTIFY (chưa làm).
+// giữ, nên hẹn giờ của run thuộc vai trò api (specs/027 R13). Chạy nhiều tiến trình api thì cần chuyển gói qua NOTIFY
+// (chưa làm).
 const runs =
   pool && config.authSecret
     ? createRunsEngine({
@@ -227,6 +230,7 @@ const runs =
     : undefined;
 if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");
 if (runs) registerRunHandlers(runs.handlers);
+if (roles.includes("api") && runs && jobs) await runs.registerTimers(jobs);
 // Một instance cho cả route HTTP và cổng WSS: nonce đã dùng và giới hạn tần suất nằm trong bộ nhớ của nó.
 const machineAuth =
   pool && config.authSecret
@@ -256,6 +260,7 @@ provideSdlcFleetRuns(sdlcFleetRuns);
 installChatHooks(pool ? { jobs, publicUrl: config.publicUrl ?? `http://localhost:${config.port}` } : undefined);
 
 if (roles.includes("jobs") && jobs) {
+  await jobsHeartbeat.register(jobs);
   if (runs) await runs.registerJobs(jobs);
   if (!pool || !config.masterKey) {
     console.warn("Vai trò jobs cần HIVE_DATABASE_URL và HIVE_MASTER_KEY; bỏ qua saga khởi tạo dự án và hàng merge.");
@@ -415,6 +420,11 @@ if (roles.includes("api")) {
       remoteEnabled: config.remoteTerminal ?? false,
     });
   }
+} else {
+  // Tiến trình chỉ có vai trò jobs vẫn nghe cổng để healthcheck của compose gọi /api/v1/health/jobs.
+  serve({ fetch: jobsOnlyFetch(config), port: config.port }, (info) => {
+    console.log(`xDev Hive hub ${config.version} (vai trò ${roles.join(",")}) lắng nghe health ở :${info.port}`);
+  });
 }
 
 // pg-boss nhả job đang giữ khi dừng êm, để tiến trình khác nhận lại ngay thay vì chờ hết hạn.

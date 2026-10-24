@@ -23,7 +23,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
+    environment: &hub-env
       HIVE_PORT: 3000
       # deploy/remote.sh đặt commit đang chạy để /api/v1/health báo đúng bản.
       HIVE_VERSION: ${HIVE_VERSION:-}
@@ -46,7 +46,8 @@ services:
       HIVE_DELIVERY_OUTBOUND: ${HIVE_DELIVERY_OUTBOUND:-0}
       HIVE_ALLOW_EMAIL_SIGNUP: ${HIVE_ALLOW_EMAIL_SIGNUP:-0}
       HIVE_ORG_CREATORS: ${HIVE_ORG_CREATORS:-}
-      HIVE_ROLES: ${HIVE_ROLES:-api,jobs}
+      # Hàng đợi chạy ở hub-jobs; dừng hub-jobs thì hub vẫn nhận request và giao run. Một tiến trình: api,jobs.
+      HIVE_ROLES: ${HIVE_ROLES:-api}
       # Giới hạn kho tài liệu theo byte; cùng mặc định với platform/config.ts.
       HIVE_DOC_ASSET_MAX_BYTES: ${HIVE_DOC_ASSET_MAX_BYTES:-52428800}
       HIVE_DOC_ORG_STORAGE_BYTES: ${HIVE_DOC_ORG_STORAGE_BYTES:-5368709120}
@@ -79,6 +80,26 @@ services:
       interval: 10s
       timeout: 3s
       retries: 12
+  hub-jobs:
+    build:
+      context: ..
+      args:
+        NODE_IMAGE: ${HIVE_NODE_IMAGE:-node:24.21-bookworm-slim}
+    restart: unless-stopped
+    # Chờ hub bootstrap và migrate xong; bỏ hai bước đó để hai container không chạy migrate cùng lúc.
+    depends_on:
+      hub:
+        condition: service_healthy
+    command: ["node", "src/main.ts"]
+    environment:
+      <<: *hub-env
+      HIVE_ROLES: jobs
+    # Không mở cổng ra ngoài: cổng 3000 trong container chỉ phục vụ healthcheck.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health/jobs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 6
   caddy:
     # auto: image caddy gốc. dns-cloudflare: thêm module DNS để lấy chứng chỉ Let's Encrypt cho tên miền trỏ về IP nội bộ.
     build:
