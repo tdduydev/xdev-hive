@@ -251,7 +251,7 @@ bị cấm trả lỗi 403 kèm thông báo tiếng Việt."
   Còn thiếu: gọi `provideDocAccess(qaDocAccess)` ở `main.ts`. Provider và test đã xong; nhánh QA036A không được sửa `main.ts`.
 - [x] T030 [US2] H — Ma trận FR-012 cho route `testing.*`: mỗi quyền được cho chạy được; thiếu quyền trả 403 với tên
   quyền thiếu (FR-016); người ngoài đội nhận 404 (FR-015) (`apps/hub/src/modules/qa/access.db.test.ts`)
-- [ ] T031 [P] [US2] H — Ma trận FR-013 (SC-007): thành viên `team-tester` bị từ chối mọi quyền cấm, gọi qua hàm kiểm
+- [x] T031 [P] [US2] H — Ma trận FR-013 (SC-007): thành viên `team-tester` bị từ chối mọi quyền cấm, gọi qua hàm kiểm
   quyền mà route tương ứng dùng (`apps/hub/src/modules/tenancy/tester-role.db.test.ts`)
 - [ ] T032 [P] [US2] U — Nhãn "Tester" và chọn được vai trò ở đội, thành viên, mời; nhóm quyền "Kiểm thử" có bốn quyền
   (`apps/web/src/lib/roles.ts`, `lib/permissions.ts`, `pages/teams-page.tsx`, `pages/members-page.tsx`,
