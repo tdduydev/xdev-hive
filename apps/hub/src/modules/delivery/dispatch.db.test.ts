@@ -201,7 +201,12 @@ describe("giao lần triển khai cho máy chạy", () => {
     expect((await jobsOf(deploy.id))[0]?.wait_reason).toContain("credential");
 
     await withTenant(app, { orgId: org.orgId }, (tx) =>
-      recordDeliveryCapability(tx, machine, { methods: ["jenkins-job"], credentials: ["jenkins-ci"], kinds: [] }, h.at()),
+      recordDeliveryCapability(
+        tx,
+        machine,
+        { methods: ["jenkins-job"], credentials: ["jenkins-ci"], kinds: [] },
+        h.at(),
+      ),
     );
     h.advance(30_000);
     await h.check(String(waiting?.id));
