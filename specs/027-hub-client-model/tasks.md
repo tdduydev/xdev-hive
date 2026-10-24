@@ -191,7 +191,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 
 ## Phase 8: Polish
 
-- [ ] T045 SRS mã `HCM-*`; bỏ **[Chưa làm]** ở `docs/architecture.md` §6, §10 khi xong · `docs/srs.md`,
+- [x] T045 SRS mã `HCM-*`; bỏ **[Chưa làm]** ở `docs/architecture.md` §6, §10 khi xong · `docs/srs.md`,
   `docs/architecture.md`
 - [ ] T046 Chạy quickstart.md trên Linux, macOS, Windows
 

@@ -13,7 +13,7 @@ Hệ thống có bốn khối:
 
 | Khối | Là gì | Viết bằng |
 |---|---|---|
-| **Hub** | Một modular monolith. Một image, hai vai trò tiến trình: `api` (HTTP, MCP, SSE và cổng WSS cho worker) và `jobs` (pg-boss). **[Chưa làm]** tách `gateway` riêng, vai trò `collab` | TypeScript (Node) |
+| **Hub** | Một modular monolith. Một image, hai vai trò tiến trình (`HIVE_ROLES`): `api` (HTTP, MCP, SSE và cổng WSS cho worker) và `jobs` (pg-boss), chạy thành hai container `hub` và `hub-jobs`. **[Chưa làm]** tách `gateway` riêng, vai trò `collab` | TypeScript (Node) |
 | **Worker** | Daemon trên máy dev. Gọi ra hub, chạy CLI trong git worktree tạm | Go |
 | **Runner host** | Cùng binary Go ở chế độ `host`, trên server nội bộ. Chạy mỗi run trong một container gVisor dùng một lần | Go |
 | **Dữ liệu** | PostgreSQL (dữ liệu, hàng đợi pg-boss, NOTIFY, vector, log run). **[Chưa làm]** kho blob tương thích S3 cho log đã lưu trữ và artifact | — |
@@ -522,11 +522,11 @@ máy, máy dùng chung hay không) và `policy.totpFallback`.
 |---|---|---|---|
 | Phiên người dùng | Trình duyệt, app desktop | Theo phiên | Better Auth |
 | Registration token | Lần cài worker hoặc runner host đầu tiên | Một lần, khoảng 1 giờ | Admin đội tạo trên web |
-| Machine token | Worker, runner host | Đến khi thu hồi | `hwm_…`, hub trả một lần lúc đăng ký và chỉ lưu băm |
-| Khoá máy, access token máy | Worker, runner host | Ngắn (khoảng 15 phút) | **[Chưa làm]** Máy tạo cặp khoá lúc đăng ký, ký challenge bằng khoá máy để đổi lấy access token |
+| Machine token | Worker, runner host | Đến khi máy gửi khoá máy hoặc bị thu hồi | `hwm_…`, hub trả một lần lúc đăng ký và chỉ lưu băm. Máy gửi khoá công khai xong thì hub đánh dấu `superseded_at` và từ chối `hwm_` đó |
+| Khoá máy, access token máy | Worker, runner host | Ngắn (15 phút) | Máy tạo cặp khoá Ed25519 lúc đăng ký (khoá riêng trong keychain, không có thì file 0600), ký challenge để đổi lấy JWT `aud=<URL>/worker`; gia hạn bằng `reauth` trên kết nối đang mở, hết hạn thì hub đóng `4401` ([ADR 0033](adr/0033-machine-keys-and-run-git-tokens.md)) |
 | Run token | Một run | Hết hạn theo thời gian chờ của run | Hub cấp cùng `lease`. JWT HS256 có `run_id`, `task_id`, `org_id`, `attempt`, `aud`; khoá suy ra từ `HIVE_AUTH_SECRET` bằng HKDF |
 | Token MCP | CLI agent trong run | Như run token | Agent dùng run token với `aud=/mcp`; người dùng ngoài run dùng OAuth (Better Auth + CIMD) |
-| Token git | Push nhánh trong run | Ngắn, chỉ repo của dự án | **[Chưa làm]** Hub đổi từ GitHub App installation token hoặc GitLab project token. Hiện run clone và push bằng thông tin đăng nhập git sẵn có trên máy |
+| Token git | Push nhánh trong run | Ngắn, chỉ repo của dự án | Hub cấp trong `lease.git`: GitHub App installation token (1 giờ, xin lại bằng `git_token_request`) hoặc GitLab project token (thu hồi khi run xong). Kết nối PAT không cấp được thì run dùng thông tin đăng nhập git sẵn có trên máy, trừ khi chính sách bật `git.requireRunGitToken` ([ADR 0033](adr/0033-machine-keys-and-run-git-tokens.md)) |
 | Token cá nhân của `hive` | CLI `hive` (`attach`, `ls --all`, tra task) | Đến khi thu hồi | `hive login`: loopback PKCE `desktop-connect` với `purpose: cli`, hoặc đọc từ stdin. Lưu trong keychain (`dev.xdev.hive`), không có keychain thì file 0600 |
 | Vé `/ws/terminal` | Một kết nối WS trình duyệt hay `hive attach` | Một lần, 60 giây | `terminal.ticket` (Leader) hoặc `remote.ticket` (máy cá nhân), 256 bit, gắn người, phiên và loại; bị đốt ngay lần dùng đầu |
 | Bí mật ghép | Một lần ghép thiết bị | Một lần, 10 phút | Máy sinh, chỉ nằm trong mã QR (`#s=` của URL), không qua hub. Web tính `tag` HMAC trên khoá passkey mới |
@@ -602,10 +602,10 @@ sequenceDiagram
 
 ## 10. Vận hành
 
-- **Triển khai:** Docker Compose trên một server (`deploy/compose.yaml`): `postgres`, `hub` (một container, vai trò `api,jobs`), `caddy` (profile `https`, tuỳ chọn). `deploy/remote.sh` triển khai qua SSH. Runner host cài worker bằng script cài rồi chạy `hive-worker host`. **[Chưa làm]** tách `hub-api` (2 bản), `hub-gateway`, `hub-jobs`, `hub-collab`; `blob` (Garage hoặc S3 ngoài); `cloudflared`; `otel-collector`; cài runner host thành dịch vụ bằng một lệnh.
+- **Triển khai:** Docker Compose trên một server (`deploy/compose.yaml`): `postgres` (image dự án build từ `deploy/postgres`, thêm pgBackRest), `hub` (vai trò `api`), `hub-jobs` (vai trò `jobs`, healthcheck `/api/v1/health/jobs` hỏng khi hàng đợi không chạy quá ba phút), `caddy` (profile `https`, tuỳ chọn). `deploy/remote.sh` triển khai qua SSH. Runner host cài worker bằng script cài rồi chạy `hive-worker host`. **[Chưa làm]** `hub-api` 2 bản, `hub-gateway`, `hub-collab`; `blob` (Garage hoặc S3 ngoài); `cloudflared`; `otel-collector`; cài runner host thành dịch vụ bằng một lệnh.
   - Không dùng Kubernetes. Gitpod đã rời K8s cho tải có nhiều trạng thái. [25] [Suy luận cho quy mô này]
-- **Nâng cấp:** migration kiểu expand rồi contract; test `migrations-upgrade.db.test.ts` nâng cấp một database đã migrate tới ngay trước mỗi migration có `ALTER TYPE ... ADD VALUE`, để bắt lỗi chỉ hiện khi nâng cấp. Hiện chỉ có một container hub nên nâng cấp gián đoạn ngắn lúc container khởi động lại; worker tự nối lại theo giao thức ở mục 5. **[Chưa làm]** đổi lần lượt hai bản `hub-api` để không gián đoạn. [Suy luận]
-- **Backup:** `deploy/backup.sh` (pg_dump kèm `meta` và `SHA256SUMS`, giữ theo `HIVE_BACKUP_KEEP`; không chép `.env`, quản trị cất riêng), `deploy/restore.sh` kiểm khoá theo `meta` rồi khôi phục trong một transaction. **[Chưa làm]** pgBackRest (full + incremental, khôi phục theo thời điểm) lên kho blob; diễn tập khôi phục hằng tháng. [26]
+- **Nâng cấp:** migration kiểu expand rồi contract; test `migrations-upgrade.db.test.ts` nâng cấp một database đã migrate tới ngay trước mỗi migration có `ALTER TYPE ... ADD VALUE`, để bắt lỗi chỉ hiện khi nâng cấp. Hiện chỉ có một container `hub` (vai trò `api`) nên nâng cấp gián đoạn ngắn lúc container khởi động lại; worker tự nối lại theo giao thức ở mục 5, việc chưa gửi nằm trong hộp thư đi của máy. **[Chưa làm]** đổi lần lượt hai bản `hub-api` để không gián đoạn. [Suy luận]
+- **Backup:** `deploy/backup.sh` (pg_dump kèm `meta` và `SHA256SUMS`, giữ theo `HIVE_BACKUP_KEEP`; không chép `.env`, quản trị cất riêng), `deploy/restore.sh` kiểm khoá theo `meta` rồi khôi phục trong một transaction. Đặt `HIVE_BACKUP_REPO` (S3 hoặc SFTP) thì thêm pgBackRest ([ADR 0035](adr/0035-continuous-backup-with-pgbackrest.md)): Postgres đẩy WAL lên kho ít nhất 5 phút một lần, `backup.sh` thêm bản full mỗi Chủ nhật và incremental các ngày khác, kho mã hoá và giữ 14 ngày. `deploy/pitr-restore.sh` khôi phục về một thời điểm; `deploy/drill.sh` diễn tập khôi phục vào container tạm, so số dòng và checksum, ghi biên bản vào `backups/drills/`. Mỗi lần khôi phục đặt `db_epoch` mới; worker thấy mốc đổi thì gửi lại việc hub đã nhận sau thời điểm khôi phục. **[Chưa làm]** trang admin báo "Chưa có backup liên tục"; `welcome` chưa mang mốc database. [26]
 - **Quan sát:** hub ghi log ra stdout, `GET /api/v1/health` báo trạng thái và commit đang chạy. **[Chưa làm]** OpenTelemetry cho hub (HTTP, pg) và worker; span của run theo quy ước GenAI (`invoke_agent`, `gen_ai.usage.*`). [27]
 
 ## 11. Rủi ro và cách tránh
