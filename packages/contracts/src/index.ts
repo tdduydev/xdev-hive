@@ -45,6 +45,7 @@ import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
 import { remoteContract, terminalContract } from "./terminal.ts";
+import { testingContract } from "./testing.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./artifacts.ts";
@@ -85,6 +86,8 @@ export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
 export * from "./terminal.ts";
+export * from "./test-library.ts";
+export * from "./testing.ts";
 export * from "./version.ts";
 export * from "./workflows.ts";
 
@@ -224,6 +227,7 @@ export const contract = {
   environments: environmentsContract,
   deployTargets: targetsContract,
   deploys: deploysContract,
+  testing: testingContract,
 };
 
 export type Contract = typeof contract;

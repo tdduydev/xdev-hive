@@ -44,7 +44,7 @@ const text: Dict<{
       `Link chỉ hiện một lần. Chép và gửi cho từng người ngay bây giờ. Mỗi link dùng được một lần${expiry ? `, hết hạn ngày ${expiry}` : ""}.`,
     inviteLink: (email) => `Link mời cho ${email}`,
     orgRoles: { owner: "Chủ sở hữu", admin: "Quản trị", member: "Thành viên" },
-    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
+    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO", tester: "Tester" },
   },
   en: {
     emailsHint: "Separate emails with commas or new lines.",
@@ -60,7 +60,7 @@ const text: Dict<{
       `Links are shown only once. Copy and send them to each person now. Each link can be used once${expiry ? `, expires on ${expiry}` : ""}.`,
     inviteLink: (email) => `Invite link for ${email}`,
     orgRoles: { owner: "Owner", admin: "Admin", member: "Member" },
-    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
+    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO", tester: "Tester" },
   },
 };
 

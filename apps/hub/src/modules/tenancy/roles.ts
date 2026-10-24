@@ -26,6 +26,7 @@ const TEAM_SYSTEM_ROLE: Record<TeamRole, SystemRoleId> = {
   member: "team-member",
   viewer: "team-viewer",
   ba: "team-ba",
+  tester: "team-tester",
 };
 
 /**
@@ -180,6 +181,7 @@ async function systemRoles(tx: Tx) {
     role("team-member", "team", teamN("member")),
     role("team-viewer", "team", teamN("viewer")),
     role("team-ba", "team", teamN("ba")),
+    role("team-tester", "team", teamN("tester")),
   ];
 }
 

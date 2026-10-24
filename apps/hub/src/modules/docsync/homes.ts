@@ -3,6 +3,7 @@ import {
   type DocHome,
   docHome,
   docHomeConfigureOrgInput,
+  matchGlob,
   type ProjectDocsSettings,
   projectDocsSettings,
 } from "@xdev-hive/contracts";
@@ -251,6 +252,45 @@ export async function configureProjectHome(
     data: { scope: "project", projectId: project.id, settings },
   });
   return saved as HomeRow;
+}
+
+export type ProjectIncludeResult = "no-home" | "covered" | "added";
+
+/**
+ * Bảo đảm include của docs home dự án phủ `<root><dir>**` (`dir` là thư mục TC của qa, specs/036 D3b). `dir` tính từ
+ * `root` như key tài liệu, nên qa khỏi phải đọc `root` của nhà. Không gọi `configureProjectHome`: hàm đó gọi provider git và đòi quyền quản trị docs home, còn người bật thư viện chỉ cần
+ * `projects.settings` mà route của qa đã kiểm.
+ */
+export async function ensureProjectInclude(
+  tx: Tx,
+  actor: Actor,
+  projectId: string,
+  dir: string,
+  deps: Pick<DocSyncDeps, "jobs"> = {},
+): Promise<ProjectIncludeResult> {
+  await lockHomes(tx, actor.orgId);
+  const [home] = await tx.select().from(docHomes).where(eq(docHomes.projectId, projectId));
+  if (!home) return "no-home";
+  const root = home.root.replace(/\/+$/, "");
+  const glob = `${root ? `${root}/` : ""}${dir.replace(/\/*$/, "/")}**`;
+  // So glob với glob không làm được bằng matchGlob, nên thử bằng một file mẫu trong thư mục.
+  const probe = glob.replace(/\*\*$/, "probe.md");
+  if (home.include.some((pattern) => matchGlob(pattern, probe))) return "covered";
+  const include = projectDocsSettings.shape.include.parse([...home.include, glob]);
+  await tx.update(docHomes).set({ include, updatedAt: new Date() }).where(eq(docHomes.id, home.id));
+  // Cấu hình docs của dự án là nguồn cho form cài đặt; không ghi cùng thì lần lưu form sau xoá mất glob.
+  await tx.execute(
+    sql`update hive.projects set settings = jsonb_set(settings, '{docs,include}', ${JSON.stringify(include)}::jsonb), updated_at = now() where id = ${projectId} and settings ? 'docs'`,
+  );
+  await recordAudit(tx, {
+    action: "doc.home_include_add",
+    targetType: "doc_home",
+    targetId: home.id,
+    data: { projectId, glob },
+  });
+  if (deps.jobs && home.status === "active" && home.mode !== "off")
+    await queuePull(deps.jobs, { orgId: actor.orgId, homeId: home.id }, { tx });
+  return "added";
 }
 
 export async function configureOrgHome(tx: Tx, deps: DocSyncDeps, actor: Actor, raw: OrgInput): Promise<HomeRow> {

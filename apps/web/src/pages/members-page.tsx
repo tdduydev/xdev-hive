@@ -174,7 +174,7 @@ const memberText: Dict<{
     joinedOn: (day) => `Tham gia ${day}`,
     teamCount: (n) => `${n} đội`,
     orgRoles: { owner: "Chủ sở hữu", admin: "Quản trị", member: "Thành viên" },
-    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
+    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO", tester: "Tester" },
     invitationStatus: { pending: "Chờ nhận", accepted: "Đã nhận", expired: "Hết hạn" },
   },
   en: {
@@ -244,7 +244,7 @@ const memberText: Dict<{
     joinedOn: (day) => `Joined ${day}`,
     teamCount: (n) => `${n} ${n === 1 ? "team" : "teams"}`,
     orgRoles: { owner: "Owner", admin: "Admin", member: "Member" },
-    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
+    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO", tester: "Tester" },
     invitationStatus: { pending: "Pending", accepted: "Accepted", expired: "Expired" },
   },
 };

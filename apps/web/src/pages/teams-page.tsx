@@ -207,7 +207,7 @@ const text: Dict<{
     inviteByEmail: "mời bằng email",
     chooseMember: "Chọn trong những người đã vào tổ chức.",
     newPeople: "Người chưa vào tổ chức thì",
-    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
+    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO", tester: "Tester" },
   },
   en: {
     teamsSystems: "Teams & systems",
@@ -292,7 +292,7 @@ const text: Dict<{
     inviteByEmail: "invite by email",
     chooseMember: "Choose an existing organization member.",
     newPeople: "For new people,",
-    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
+    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO", tester: "Tester" },
   },
 };
 
@@ -1372,7 +1372,7 @@ function TeamBulkDialog({
       removeTitle: "Gỡ khỏi đội",
       count: (n, team) => `Áp dụng cho ${n} người đã chọn trong đội ${team}.`,
       role: "Vai trò trong đội",
-      roles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
+      roles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO", tester: "Tester" },
       cancel: "Huỷ",
       apply: "Xác nhận",
       busy: "Đang cập nhật…",
@@ -1382,7 +1382,7 @@ function TeamBulkDialog({
       removeTitle: "Remove from team",
       count: (n, team) => `Apply to ${n} selected people in ${team}.`,
       role: "Team role",
-      roles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
+      roles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO", tester: "Tester" },
       cancel: "Cancel",
       apply: "Confirm",
       busy: "Updating…",

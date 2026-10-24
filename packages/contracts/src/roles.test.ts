@@ -52,6 +52,10 @@ describe("quyền CI/CD và triển khai (specs/020 FR-030)", () => {
     expect(deliveryOf("admin")).toEqual([...DELIVERY].sort());
   });
 
+  it("Tester không có quyền CI/CD nào ngoài ci.view", () => {
+    expect(deliveryOf("team-tester")).toEqual(["ci.view"]);
+  });
+
   it("khoá quyền không trùng nhau, kể cả với khoá nhánh", () => {
     const keys: string[] = [];
     const walk = (nodes: typeof PERMISSION_TREE) => {
@@ -62,5 +66,57 @@ describe("quyền CI/CD và triển khai (specs/020 FR-030)", () => {
     };
     walk(PERMISSION_TREE);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+const QA = ["qa.read", "qa.cases.write", "qa.record", "qa.rounds.manage"];
+const qaOf = (role: SystemRoleId) => SYSTEM_ROLE_PERMISSIONS[role].filter((k) => QA.includes(k)).sort();
+
+describe("quyền kiểm thử (specs/036 FR-010…FR-014)", () => {
+  it("nhánh testing có đủ bốn quyền, không quyền nào nguy hiểm", () => {
+    expect(PERMISSION_TREE.find((n) => n.key === "testing")).toBeDefined();
+    for (const key of QA) {
+      expect(PERMISSIONS).toContain(key);
+      expect(DANGEROUS_PERMISSIONS).not.toContain(key);
+    }
+  });
+
+  it("Tester có đúng bộ quyền của FR-012", () => {
+    expect([...SYSTEM_ROLE_PERMISSIONS["team-tester"]].sort()).toEqual(
+      [...QA, "docs.read", "proposals.create", "tasks.read", "runs.read", "ci.view"].sort(),
+    );
+  });
+
+  it("Tester không có quyền nào ở FR-013", () => {
+    const forbidden = [
+      "tasks.create",
+      "tasks.assign",
+      "tasks.delete",
+      "runs.retry",
+      "runs.cancel",
+      "merge.enqueue",
+      "merge.force",
+      "deploy.run",
+      "deploy.approve",
+      "ci.operate",
+      "servers.manage",
+      "machines.register",
+      "machines.remove",
+      "leader.terminal",
+      "members.invite",
+      "members.lock",
+      "members.role",
+      "teams.manage",
+      "sdlc.override",
+      "docs.write",
+    ];
+    for (const key of forbidden) expect(SYSTEM_ROLE_PERMISSIONS["team-tester"], key).not.toContain(key);
+  });
+
+  it("vai trò có sẵn nhận quyền kiểm thử theo FR-014", () => {
+    for (const role of ["owner", "admin", "team-admin"] as const) expect(qaOf(role), role).toEqual([...QA].sort());
+    for (const role of ["member", "team-member"] as const) expect(qaOf(role), role).toEqual(["qa.read", "qa.record"]);
+    expect(qaOf("team-viewer")).toEqual(["qa.read"]);
+    expect(qaOf("team-ba")).toEqual(["qa.read"]);
   });
 });

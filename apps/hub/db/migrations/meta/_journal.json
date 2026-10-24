@@ -645,6 +645,20 @@
       "when": 1792835641634,
       "tag": "0091_db_epoch",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1792838296655,
+      "tag": "0092_team_role_tester",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1792838375200,
+      "tag": "0093_qa_tables",
+      "breakpoints": true
     }
   ]
 }

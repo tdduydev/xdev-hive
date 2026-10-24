@@ -50,6 +50,7 @@ import {
   embedQueue,
   provideDocAccess,
   provideDocIndexJobs,
+  provideDocSaved,
   provideProposalApproved,
   provideReviewHooks,
   registerDocIndexWorker,
@@ -78,6 +79,7 @@ import {
   registerBlobGc,
   registerClientEventRetentionWorker,
 } from "./modules/platform/index.ts";
+import { qaDocAccess, qaDocSaved } from "./modules/qa/index.ts";
 import {
   createRunsEngine,
   registerRunLogRetentionWorker,
@@ -253,6 +255,9 @@ const sdlcDeps: SdlcDeps = runs?.sdlcDeps ?? {
 provideReviewHooks(sdlcReviewHooks(sdlcDeps));
 provideProposalApproved(wordProposalApproved(jobs));
 provideDocAccess(docAccessFor);
+// QA đọc thư mục TC khi tài liệu được lưu và cho người có qa.cases.write lưu ở đó (spec 036 D3, D4).
+provideDocAccess(qaDocAccess);
+provideDocSaved(qaDocSaved);
 provideDocIndexJobs(jobs);
 provideSdlcFleetRuns(sdlcFleetRuns);
 

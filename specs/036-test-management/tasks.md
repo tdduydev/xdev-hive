@@ -43,10 +43,11 @@ description: "Task list: quản lý kiểm thử cấp dự án, vai trò Tester
 
 ## Phase 1: Chuẩn bị
 
-- [ ] T001 [P] D — ADR 0038 cho D2 (định dạng file khu), D3 (hook lưu tài liệu), D4 (quyền lưu theo thư mục). Ghi
+- [x] T001 [P] D — ADR 0038 cho D2 (định dạng file khu), D3 (hook lưu tài liệu), D4 (quyền lưu theo thư mục). Ghi
   phương án đã loại ở mục Complexity Tracking của plan.md. Thêm một dòng vào bảng ADR
   (`docs/adr/0038-tc-markdown-and-doc-hooks.md`, `docs/adr/README.md`)
-- [ ] T002 [P] H — Khung module `qa`: `index.ts` chưa export gì, `schema.ts` rỗng. Không sửa `.dependency-cruiser.cjs`
+  Số 0038 đã dùng cho `0038-local-secrets-keyring.md` trên `main`, nên ADR là `0039-tc-markdown-and-doc-hooks.md`.
+- [x] T002 [P] H — Khung module `qa`: `index.ts` chưa export gì, `schema.ts` rỗng. Không sửa `.dependency-cruiser.cjs`
   và `apps/hub/drizzle.config.ts`: cả hai đã nhận mọi `src/modules/*`. `pnpm deps` và typecheck phải qua
   (`apps/hub/src/modules/qa/index.ts`, `apps/hub/src/modules/qa/schema.ts`)
 
@@ -56,7 +57,7 @@ description: "Task list: quản lý kiểm thử cấp dự án, vai trò Tester
 
 Chặn mọi story. Không có nhãn story.
 
-- [ ] T003 C — `testing.ts`: hằng D11 (`QA_READ_WAIT_HOURS` 24, `QA_REFETCH_DAYS` 7, `QA_BACKFILL_PIPELINES` 20,
+- [x] T003 C — `testing.ts`: hằng D11 (`QA_READ_WAIT_HOURS` 24, `QA_REFETCH_DAYS` 7, `QA_BACKFILL_PIPELINES` 20,
   `QA_TREND_DAYS` 90, `QA_FLAKY_WINDOW` 10, `QA_FLAKY_FLIPS` 3, `QA_UNKNOWN_CODES_MAX` 200, `QA_NOTE_MAX` 500,
   `QA_LINKS_MAX` 5, `QA_RETENTION_DAYS_DEFAULT` 365, `QA_RETENTION_DAYS_MIN` 90); enum trạng thái CI
   (`passed`, `flaky`, `failed`, `skipped`), trạng thái tay (`passed`, `failed`, `untested`, `not-applicable`,
@@ -67,11 +68,11 @@ Chặn mọi story. Không có nhãn story.
   `QA_ERRORS` đủ 12 mã và thông báo ở contracts/hub-api.md; nhãn tiếng Việt của trạng thái ở data-model.md. Dùng lại
   `qaPriority` của `qa.ts`, không sửa `qa.ts`. Thêm `export *` ở `index.ts`
   (`packages/contracts/src/testing.ts`, `testing.test.ts`, `index.ts`)
-- [ ] T004 C — `testingContract` đủ route của contracts/hub-api.md: `settings`, `projectSettings`, `areas`, `cases`,
+- [x] T004 C — `testingContract` đủ route của contracts/hub-api.md: `settings`, `projectSettings`, `areas`, `cases`,
   `sources`, `rounds` (gồm `export`), `myWork`, `dashboard`. Mọi route là `orgRoute` dưới `/v1/testing/...`. Phân trang
   `cursor` tối đa 2000, `limit` 1–100, mặc định 20. Thêm `testing: testingContract` vào object contract. Chạy
   `pnpm openapi` (`packages/contracts/src/testing.ts`, `testing.test.ts`, `index.ts`, `packages/contracts/openapi.json`)
-- [ ] T005 [P] C — Quyền `qa.read`, `qa.cases.write`, `qa.record`, `qa.rounds.manage` ở nhánh `testing` nhãn
+- [x] T005 [P] C — Quyền `qa.read`, `qa.cases.write`, `qa.record`, `qa.rounds.manage` ở nhánh `testing` nhãn
   "Kiểm thử" (FR-010). Vai trò `team-tester` trong `systemRoleId`, tập `TEAM_TESTER` liệt kê đủ quyền như `TEAM_BA`
   (FR-012). Gán quyền cho vai trò có sẵn theo FR-014 và research.md D5. Test: `team-tester` không có quyền nào ở
   FR-013 (`packages/contracts/src/roles.ts`, `roles.test.ts`)
@@ -87,13 +88,13 @@ Chặn mọi story. Không có nhãn story.
   `name` hoặc `message` bị từ chối (SC-003). Sửa kiểu Go `JobSpec`, `Event` cùng commit. Không sửa
   `fixtures/worker-protocol.json` (`packages/contracts/src/delivery-worker.ts`, `delivery-worker.test.ts`,
   `worker/internal/delivery/executor.go`)
-- [ ] T007 H — Enum `team_role` thêm `tester`. `TEAM_SYSTEM_ROLE.tester = "team-tester"`. `TEAM_RANK.tester = 2` ở cả
+- [x] T007 H — Enum `team_role` thêm `tester`. `TEAM_SYSTEM_ROLE.tester = "team-tester"`. `TEAM_RANK.tester = 2` ở cả
   ba chỗ. Nhãn "Tester" ở `TEAM_LABEL`, `knowledge/reviews.ts`, `knowledge/editor.ts`, `TEAM_ROLE_ID` của
   `sdlc/access.ts`. Test: `permissions.db.test.ts`, `roles.db.test.ts` thêm ca `tester`. Sau T005
   (`apps/hub/src/modules/tenancy/schema.ts`, `tenancy/roles.ts`, `tenancy/permissions.ts`, `artifacts/access.ts`,
   `artifacts/service.ts`, `knowledge/reviews.ts`, `knowledge/editor.ts`, `sdlc/access.ts`,
   `tenancy/permissions.db.test.ts`, `tenancy/roles.db.test.ts`)
-- [ ] T008 H — Bảng thư viện. Quy tắc chung của data-model.md (FR-071): `org_id uuid not null`, `orgScoped(<tên bảng>)`,
+- [x] T008 H — Bảng thư viện. Quy tắc chung của data-model.md (FR-071): `org_id uuid not null`, `orgScoped(<tên bảng>)`,
   `.enableRLS()`, FK con `(parent_id, org_id) → (id, org_id)`, bảng cha có `unique("<bảng>_id_org")`. FK tới
   `projects`, `docs`, `users` chỉ viết trong migration tay (T019). Ràng buộc:
   - `qa_settings`: `retention_days int not null default 365`, check `BETWEEN 90 AND 3650`; policy như
@@ -113,7 +114,7 @@ Chặn mọi story. Không có nhãn story.
     `(project_id, current_status)`, `(project_id, area_id)`.
 
   Thêm sáu bảng vào `rls.db.test.ts` (`apps/hub/src/modules/qa/schema.ts`, `apps/hub/src/modules/qa/rls.db.test.ts`)
-- [ ] T009 H — Bảng CI, cùng quy tắc chung:
+- [x] T009 H — Bảng CI, cùng quy tắc chung:
   - `qa_ci_sources`: `label` tối đa 80, `repo_web_url` chỉ `https`, `branch_filter` và `job_filter` text[] (rỗng là
     mọi), `mode` `pipeline-report`/`junit-artifact`/`playwright-artifact`, `artifact_path` "bắt buộc với hai mode
     artifact; đường dẫn tương đối, không `..`", `backfill_state` `pending`/`listing`/`done`/`error`; unique
@@ -126,7 +127,7 @@ Chặn mọi story. Không có nhãn story.
   - `qa_ci_run_cases`: pk `(run_id, case_id)`, index `(case_id, run_id)`, FK `run_id` CASCADE.
 
   Thêm ba bảng vào `rls.db.test.ts` (`apps/hub/src/modules/qa/schema.ts`, `apps/hub/src/modules/qa/rls.db.test.ts`)
-- [ ] T010 H — Bảng đợt test, cùng quy tắc chung:
+- [x] T010 H — Bảng đợt test, cùng quy tắc chung:
   - `qa_rounds`: `name` 1–120, `environment` tối đa 80, `build` tối đa 80, `planned_end_date >= start_date`,
     `state` `open`/`closed`, `previous_round_id` `ON DELETE SET NULL (previous_round_id)`, `reopen_reason` 10–500,
     `open_recording bool not null default false`; index `(project_id, state)`;
@@ -139,34 +140,36 @@ Chặn mọi story. Không có nhãn story.
   - `qa_result_history`: pk `(round_case_id, revision)`, `note_deleted` mặc định `false`.
 
   Thêm bốn bảng vào `rls.db.test.ts` (`apps/hub/src/modules/qa/schema.ts`, `apps/hub/src/modules/qa/rls.db.test.ts`)
-- [ ] T011 [P] H — Knowledge (D3, D4): `provideDocSaved` và `provideDocAccess` nhận nhiều hàm thay vì một. Quyền của
+- [x] T011 [P] H — Knowledge (D3, D4): `provideDocSaved` và `provideDocAccess` nhận nhiều hàm thay vì một. Quyền của
   các provider gộp bằng OR. `DocAccessGrant` thêm `save`, `Scope` thêm `saveGranted`. `authorize` cho `manage` khi
   `reader.kind === "user"` và `saveGranted`. Chạy lại test của `sdlc` và `docsync` đang dùng hai hook
   (`apps/hub/src/modules/knowledge/access.ts`, `knowledge/docs.ts`, `knowledge/index.ts`, test cùng thư mục)
-- [ ] T012 [P] H — Docsync (D3b): export `ensureProjectInclude(tx, actor, projectId, glob)` trả `"no-home"`,
+- [x] T012 [P] H — Docsync (D3b): export `ensureProjectInclude(tx, actor, projectId, glob)` trả `"no-home"`,
   `"covered"` hoặc `"added"`. `"added"` ghi include, ghi audit, gọi `queuePull`. So glob bằng `contracts/glob.ts`.
   Không gọi `configureProjectHome` (`apps/hub/src/modules/docsync/homes.ts`, `docsync/index.ts`,
   `docsync/homes.db.test.ts`)
-- [ ] T013 [P] H — Export `csvRow`, `csvCell` của `audit/csv.ts` qua `audit/index.ts` cho US7
+- [x] T013 [P] H — Export `csvRow`, `csvCell` của `audit/csv.ts` qua `audit/index.ts` cho US7
   (`apps/hub/src/modules/audit/index.ts`)
-- [ ] T014 H — Kiểm quyền chung: dự án ngoài đội trả 404; `requireTeamRole(..., "viewer")`, rồi
+- [x] T014 H — Kiểm quyền chung: dự án ngoài đội trả 404; `requireTeamRole(..., "viewer")`, rồi
   `effectivePermissions().has(perm)`; thiếu quyền trả `ForbiddenError` "Cần quyền `<quyền>` ở đội của dự án này."
   (FR-016); dự án chưa bật thư viện trả `QA_LIBRARY_DISABLED`, trừ route `projectSettings.*`. Sau T004, T007
   (`apps/hub/src/modules/qa/access.ts`, `apps/hub/src/modules/qa/access.db.test.ts`)
-- [ ] T015 H — Bảng chiếu `qa_case_status` (D12, FR-052): bên mới hơn thắng, bằng giờ thì kết quả tay thắng, không có dữ liệu
+- [x] T015 H — Bảng chiếu `qa_case_status` (D12, FR-052): bên mới hơn thắng, bằng giờ thì kết quả tay thắng, không có dữ liệu
   là null; thứ tự xấu nhất `failed` > `other` > `flaky` > `skipped` > `passed`; CI `skipped` tính là có kết quả. Hàm
   cập nhật cho: run `done` trên nhánh tham chiếu, gửi lại, đổi `reference_branch`, lưu kết quả tay, xoá nguồn hoặc
   dọn dữ liệu, TC mới (thêm hàng rỗng) (`apps/hub/src/modules/qa/status.ts`, `apps/hub/src/modules/qa/status.db.test.ts`)
-- [ ] T016 H — Mọi nhóm route ở dạng chờ, trả lỗi tiếng Việt "Chức năng chưa có.": `settings`, `project-settings`,
+- [x] T016 H — Mọi nhóm route ở dạng chờ, trả lỗi tiếng Việt "Chức năng chưa có.": `settings`, `project-settings`,
   `areas`, `cases`, `sources`, `rounds`, `rounds-export`, `my-work`, `dashboard`. `qa/router.ts` ghép các nhóm. Export
   `qaRouter` ở `qa/index.ts`, thêm vào object router ở `app.ts` (dòng 272). Các story sau chỉ thay file nhóm của mình,
   không sửa `qa/router.ts` (`apps/hub/src/modules/qa/routes/*.ts`, `qa/router.ts`, `qa/index.ts`, `apps/hub/src/app.ts`)
-- [ ] T017 [P] U — Fixture e2e `testingDefaults()` theo cách `delivery-ci-fixture.ts`, nạp ở fake-hub
+- [x] T017 [P] U — Fixture e2e `testingDefaults()` theo cách `delivery-ci-fixture.ts`, nạp ở fake-hub
   (`apps/web/e2e/testing-fixture.ts`, `apps/web/e2e/fake-hub.ts`)
-- [ ] T018 H — Migration enum: chỉ `ALTER TYPE hive.team_role ADD VALUE 'tester'`. Sinh bằng
+- [x] T018 H — Migration enum: chỉ `ALTER TYPE hive.team_role ADD VALUE 'tester'`. Sinh bằng
   `pnpm --filter @xdev-hive/hub db:generate` sau `git merge origin/main`, kiểm file SQL trước khi commit
   (`apps/hub/db/migrations/*.sql`)
-- [ ] T019 H — Migration bảng `qa_*` (T008–T010) và SQL viết tay: `FORCE ROW LEVEL SECURITY` mọi bảng, FK tới
+  Đã làm: drizzle-kit gộp enum và bảng vào một file, nên `0091_team_role_tester` sinh khi tạm thay
+  `qa/schema.ts` bằng file rỗng, rồi mới sinh `0092_qa_tables`.
+- [x] T019 H — Migration bảng `qa_*` (T008–T010) và SQL viết tay: `FORCE ROW LEVEL SECURITY` mọi bảng, FK tới
   `projects`, `docs`, `users`, `ON DELETE SET NULL (<cột>)`, GIN, policy của `qa_settings`. Chưa có FK tới
   `delivery_jobs` và chưa có `hive.purge_qa_data()` (`apps/hub/db/migrations/*.sql`)
 
@@ -181,7 +184,7 @@ Chặn mọi story. Không có nhãn story.
 **Kiểm độc lập**: "tạo một khu có 3 TC hợp lệ. Thư viện hiện 3 TC đủ trường. Sửa một TC trong repo docs, đợi đồng bộ.
 Thư viện có nội dung mới và lịch sử phiên bản của TC."
 
-- [ ] T020 [P] [US1] C — Bộ đọc file khu theo contracts/tc-markdown.md: `# <KHU> <tên>`, `### TC-<KHU>-<SỐ> <tên>`,
+- [x] T020 [P] [US1] C — Bộ đọc file khu theo contracts/tc-markdown.md: `# <KHU> <tên>`, `### TC-<KHU>-<SỐ> <tên>`,
   trường `- <Trường>: <giá trị>`, bảng `| # | Thao tác | Kết quả mong đợi |`. Trả `ParsedArea`
   (`area`, `cases`, `errors` có `line`, `message`), tối đa 100 lỗi. Kiểm trường bắt buộc (FR-002), mã TC (FR-003) và mã
   yêu cầu theo thứ tự ở contracts/tc-markdown.md. Hàm chuẩn hoá TC bỏ `line` để hub băm. Hàm
@@ -189,7 +192,7 @@ Thư viện có nội dung mới và lịch sử phiên bản của TC."
   không có bước, quá 100 lỗi, `automated` thiếu `script`, mã yêu cầu `FR-001`, `036/AC-012.2`, `OPD02`, `OPD02P00108`,
   `USR01` được nhận, `FR001` và `NFR` báo lỗi mã spec sai dạng, `opd02` và `OPD-02` báo lỗi sai mẫu
   (`packages/contracts/src/test-library.ts`, `test-library.test.ts`, `index.ts`)
-- [ ] T021 [US1] H — Áp dụng file khu trong tx lưu tài liệu. `content_hash` là SHA-256 của JSON đã chuẩn hoá. Sáu quy
+- [x] T021 [US1] H — Áp dụng file khu trong tx lưu tài liệu. `content_hash` là SHA-256 của JSON đã chuẩn hoá. Sáu quy
   tắc của data-model.md (quy tắc 3–5 là FR-006):
   1. mã mới: thêm, `version = 1`;
   2. cùng khu: cập nhật; hash đổi thì `version + 1` và thêm hàng `qa_case_versions`;
@@ -205,13 +208,15 @@ Thư viện có nội dung mới và lịch sử phiên bản của TC."
   T021 trong tx lưu, chỉ throw khi lỗi DB. Nối hook ở `main.ts`. Test: `saveDoc` trên web và `saveDocFromSync` cho
   cùng kết quả (FR-005); lưu trữ và khôi phục
   (`apps/hub/src/modules/qa/doc-hooks.ts`, `qa/doc-hooks.db.test.ts`, `qa/index.ts`, `apps/hub/src/main.ts`)
-- [ ] T023 [US1] H — Route `projectSettings.get`, `projectSettings.update` (cần `projects.settings`; bật lần đầu gọi
+  Còn thiếu: gọi `provideDocSaved(qaDocSaved)` ở `main.ts`. Hook và test đã xong; nhánh QA036A không được sửa `main.ts`.
+- [x] T023 [US1] H — Route `projectSettings.get`, `projectSettings.update` (cần `projects.settings`; bật lần đầu gọi
   `ensureProjectInclude`, trả `includeResult`), `areas.list` (gồm `parseErrors`), `areas.create` (cần
   `qa.cases.write`; tạo tài liệu từ `areaTemplate()` qua `saveDoc`; mã trùng trả 409 `QA_AREA_CODE_TAKEN`; trả
   `docKey`), `cases.list` (lọc `q`, `area`, `label`, `priority`, `kind`, `requirement`, `currentStatus`, `state`
   mặc định `active`, FR-009), `cases.get` (nội dung, `version`, các phiên bản cũ). Ghi audit FR-070 trong cùng tx
   (`apps/hub/src/modules/qa/routes/project-settings.ts`, `qa/routes/areas.ts`, `qa/routes/cases.ts`,
   `qa/library-routes.db.test.ts`)
+  `areas.create` đọc lại khu do hook lưu tạo, nên chỉ chạy được khi `main.ts` đã gọi `provideDocSaved(qaDocSaved)` (T022).
 - [ ] T024 [P] [US1] U — Trang "Kiểm thử" có năm tab: Tổng quan, Thư viện, Đợt test, Nguồn CI, Việc của tôi. Tab chưa
   làm hiện "Chưa có". Tab Thư viện có bộ lọc FR-009. Route lazy `/projects/$key/testing` và
   `/projects/$key/testing/cases/$code` như `CiCdPage`. Liên kết "Kiểm thử" ở thanh điều hướng dự án
@@ -243,9 +248,10 @@ bị cấm trả lỗi 403 kèm thông báo tiếng Việt."
   `qa.cases.write`. Nối ở `main.ts`. Test: tester lưu được file TC; lưu tài liệu khác bị từ chối nếu không có
   `docs.write` (FR-011). Sau T022 (`apps/hub/src/modules/qa/doc-hooks.ts`, `qa/doc-hooks.db.test.ts`,
   `qa/index.ts`, `apps/hub/src/main.ts`)
-- [ ] T030 [US2] H — Ma trận FR-012 cho route `testing.*`: mỗi quyền được cho chạy được; thiếu quyền trả 403 với tên
+  Còn thiếu: gọi `provideDocAccess(qaDocAccess)` ở `main.ts`. Provider và test đã xong; nhánh QA036A không được sửa `main.ts`.
+- [x] T030 [US2] H — Ma trận FR-012 cho route `testing.*`: mỗi quyền được cho chạy được; thiếu quyền trả 403 với tên
   quyền thiếu (FR-016); người ngoài đội nhận 404 (FR-015) (`apps/hub/src/modules/qa/access.db.test.ts`)
-- [ ] T031 [P] [US2] H — Ma trận FR-013 (SC-007): thành viên `team-tester` bị từ chối mọi quyền cấm, gọi qua hàm kiểm
+- [x] T031 [P] [US2] H — Ma trận FR-013 (SC-007): thành viên `team-tester` bị từ chối mọi quyền cấm, gọi qua hàm kiểm
   quyền mà route tương ứng dùng (`apps/hub/src/modules/tenancy/tester-role.db.test.ts`)
 - [ ] T032 [P] [US2] U — Nhãn "Tester" và chọn được vai trò ở đội, thành viên, mời; nhóm quyền "Kiểm thử" có bốn quyền
   (`apps/web/src/lib/roles.ts`, `lib/permissions.ts`, `pages/teams-page.tsx`, `pages/members-page.tsx`,
@@ -514,7 +520,7 @@ Mỗi bước là một hoặc vài PR vào `main`. Mỗi PR cập nhật với 
 - [Unverified] Webhook của repo nguồn thứ hai tới được hub (T061).
 - [Unverified] Tải `reports:junit` qua `/jobs/:job_id/artifacts/*path` ở mode artifact (T050).
 - [Unverified] Tên trạng thái pipeline của GitLab khớp `CI_ACTIVE_STATUSES` và `pipeline_status` (T009, T056).
-- [Unverified] drizzle-kit sinh `ALTER TYPE ... ADD VALUE` thành migration riêng (T018).
+- Đã kiểm: drizzle-kit không tự tách `ALTER TYPE ... ADD VALUE` thành migration riêng (T018).
 - [Unverified] Tham số `updated_after`, `ref`, `per_page` của API list pipeline GitLab (T050, T055).
 - [Unverified] Các trường của `DocSaveInput` đủ cho `areas.create` (T023).
 - [Inference] `selectRunner` chưa có nơi gọi ngoài test (T053).
