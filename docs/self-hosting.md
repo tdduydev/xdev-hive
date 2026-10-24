@@ -51,6 +51,17 @@ HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com dep
 
 Health check: `GET /api/v1/health` returns the running commit.
 
+The stack runs the hub as two containers from the same image. `hub` has the `api` role (HTTP, MCP and the worker
+connections) and is the only one that bootstraps roles and runs migrations. `hub-jobs` has the `jobs` role (the pg-boss
+queue) and starts once `hub` is healthy. It publishes no port. Its healthcheck calls `/api/v1/health/jobs`, which fails
+when the queue heartbeat has not run for three minutes, so Docker restarts a stuck `hub-jobs` without stopping the API.
+For a single process when running Compose by hand, set `HIVE_ROLES=api,jobs` and start only `postgres` and `hub`
+(`docker compose up -d postgres hub`). `deploy/remote.sh` always starts `hub-jobs`.
+
+`postgres` is built from `deploy/postgres` on top of `HIVE_POSTGRES_IMAGE`, adding pgBackRest for
+[continuous backup](#continuous-backup-and-point-in-time-restore). The first deploy after this change builds that
+image (it needs apt access) and recreates the Postgres container.
+
 ### HTTPS, LAN servers and MCP over HTTP
 
 - With a public DNS name, keep the default `HIVE_BIND`, deploy with `HIVE_TLS=auto` and add the Compose profile
@@ -160,7 +171,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build
 Add `COMPOSE_PROFILES=https` to the env file for Caddy. For an internal domain, also set `HIVE_TLS=dns-cloudflare` and
 `CF_API_TOKEN` there (see the section above).
 
-The hub bootstraps its database roles (including `hive_jobs` for the job queue), runs migrations and starts the API.
+The `hub` container bootstraps its database roles (including `hive_jobs` for the job queue), runs migrations and starts
+the API; `hub-jobs` then starts the job queue.
 
 ## The first administrator
 
@@ -499,6 +511,75 @@ HIVE_REMOTE_DIR=/opt/xdev-hive deploy/remote-backup.sh user@server --cron "0 3 *
 the server's time zone and logs to `<dir>/backups/cron.log` (mode 600). Dumps and `.env` are never downloaded.
 `sh deploy/test-backup.sh` tests the failure paths, the key check, older backups with `.env` and cron handling with fake
 Docker and SSH.
+
+### Continuous backup and point-in-time restore
+
+A daily `pg_dump` can lose up to a day of data and stays on the same server. With `HIVE_BACKUP_REPO` set, Postgres also
+sends its write-ahead log to a repository on another machine with pgBackRest
+([ADR 0035](adr/0035-continuous-backup-with-pgbackrest.md)). You can then restore the database to any moment in the
+retention window. At most about 5 minutes of data is lost if the server dies.
+
+Set these in `<dir>/.env` (placeholders are in `deploy/.env.example`), then run `deploy/remote.sh` again or
+`docker compose up -d` so Postgres restarts with archiving on:
+
+| Variable | Meaning |
+|---|---|
+| `HIVE_BACKUP_REPO` | `s3://<bucket>/<path>` (S3 or MinIO) or `sftp://<user>@<host>[:<port>]/<path>`. Empty: only `pg_dump` |
+| `HIVE_BACKUP_CIPHER_PASS` | Required. Encrypts the repository (`aes-256-cbc`). Generate with `openssl rand -base64 48` |
+| `HIVE_BACKUP_RETENTION_DAYS` | Days of full backups kept, default 14 |
+| `HIVE_BACKUP_S3_ENDPOINT`, `HIVE_BACKUP_S3_REGION` | S3 endpoint (`host[:port]`) and region (default `us-east-1`) |
+| `HIVE_BACKUP_S3_KEY`, `HIVE_BACKUP_S3_KEY_SECRET` | S3 access key |
+| `HIVE_BACKUP_S3_URI_STYLE` | `host` (default, AWS) or `path` (usually MinIO) |
+| `HIVE_BACKUP_SFTP_KEY` | SFTP private key as one line of base64 (`base64 -w0 <key file>`) |
+| `HIVE_BACKUP_SFTP_KNOWN_HOSTS` | The repository host's `known_hosts` line (`ssh-keyscan`); the host key is checked strictly |
+
+- **Keep `HIVE_BACKUP_CIPHER_PASS` with your copy of `.env`.** Without it no continuous backup can be read. Postgres
+  refuses to start when the repository is set without it.
+- Put the repository on another machine or provider, so that losing the database server does not lose the backups.
+- `deploy/backup.sh` (and its cron) also takes a pgBackRest backup after the dump: full on Sunday (UTC), incremental on
+  other days. The first one is always full. Keep the daily cron: WAL alone cannot be restored without a base backup.
+- If the repository cannot be reached, WAL accumulates in Postgres until the disk fills. Watch
+  `docker compose logs postgres` and the free disk space.
+- `docker compose exec postgres hive-pgbackrest info` lists the backups and the WAL range in the repository.
+
+Restore to a moment in time (on the server):
+
+```sh
+cd <dir>/src
+deploy/pitr-restore.sh 2026-10-24T03:00:00Z
+deploy/pitr-restore.sh '2026-10-24 10:00:00+07' --yes   # non-interactive
+```
+
+- The time must carry a time zone. The script checks that the repository can be read before stopping anything, then
+  stops `hub`, `hub-jobs` and `postgres`, restores with `--delta` and replays WAL up to that time. It sets a new
+  database epoch, resets the `postgres` password to the one in `.env` and starts the hub again. A time after the last
+  WAL in the repository fails; the hub then stays stopped until you run it again with an earlier time.
+- Every transaction committed after that time is lost on the hub. Machines see the new epoch in `/api/v1/health` and
+  send again, with the same keys, the outbox items the hub had accepted after that time.
+- After a restore, run `deploy/backup.sh` so the new timeline has a backup.
+
+### Restore drill
+
+`deploy/drill.sh` checks that the repository can actually be restored, without stopping the hub:
+
+```sh
+cd <dir>/src
+deploy/drill.sh
+HIVE_DRILL_TIMEOUT=7200 deploy/drill.sh   # seconds, default 3600
+```
+
+It locks the main tables against writes for a few seconds while it computes row counts and checksums, then creates a
+restore point. It restores that point into a temporary container and volume of the same image, compares the tables,
+writes a report to `<dir>/backups/drills/<date>.md`, and removes the temporary container and volume. The report has the
+restore duration, the point restored to and the result per table. The script exits non-zero when anything differs.
+The temporary copy never writes to the repository. It needs free disk space about the size of the database; run it at
+a quiet time.
+
+Run it once a month, for example with a crontab line on the server:
+
+```sh
+0 4 1 * * cd <dir>/src && deploy/drill.sh >> <dir>/backups/drill.log 2>&1
+```
 
 ## Importing knowledge from an older hub
 
