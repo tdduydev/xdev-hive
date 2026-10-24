@@ -158,7 +158,7 @@ Chặn mọi story. Không có nhãn story.
   là null; thứ tự xấu nhất `failed` > `other` > `flaky` > `skipped` > `passed`; CI `skipped` tính là có kết quả. Hàm
   cập nhật cho: run `done` trên nhánh tham chiếu, gửi lại, đổi `reference_branch`, lưu kết quả tay, xoá nguồn hoặc
   dọn dữ liệu, TC mới (thêm hàng rỗng) (`apps/hub/src/modules/qa/status.ts`, `apps/hub/src/modules/qa/status.db.test.ts`)
-- [ ] T016 H — Mọi nhóm route ở dạng chờ, trả lỗi tiếng Việt "Chức năng chưa có.": `settings`, `project-settings`,
+- [x] T016 H — Mọi nhóm route ở dạng chờ, trả lỗi tiếng Việt "Chức năng chưa có.": `settings`, `project-settings`,
   `areas`, `cases`, `sources`, `rounds`, `rounds-export`, `my-work`, `dashboard`. `qa/router.ts` ghép các nhóm. Export
   `qaRouter` ở `qa/index.ts`, thêm vào object router ở `app.ts` (dòng 272). Các story sau chỉ thay file nhóm của mình,
   không sửa `qa/router.ts` (`apps/hub/src/modules/qa/routes/*.ts`, `qa/router.ts`, `qa/index.ts`, `apps/hub/src/app.ts`)

@@ -87,6 +87,7 @@ import {
   socketAddress,
   type Tx,
 } from "./modules/platform/index.ts";
+import { qaRouter } from "./modules/qa/index.ts";
 import {
   createRunLinkTarget,
   RunNotifier,
@@ -365,6 +366,7 @@ export function createApp({
     terminal: terminalRouter({ auth, pool, terminal }),
     remote: remoteRouter({ auth, pool, remote: { enabled: terminal.enabled, publicUrl } }),
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
+    testing: qaRouter({ auth, pool, jobs }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   // ResponseHeadersPlugin để thủ tục có ghi trả `Hive-Client-Event` (specs/027), kể cả khi trả lỗi.
