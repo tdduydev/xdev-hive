@@ -185,6 +185,13 @@ export const HUB_DATA_INVENTORY: readonly HubDataCategory[] = [
     "Log deploy theo chính sách giữ log; cấu hình và lịch sử tới khi xoá hoặc thu hồi.",
   ),
   category(
+    "qa",
+    "Kiểm thử",
+    "qa_settings qa_project_settings qa_areas qa_cases qa_case_versions qa_case_status qa_ci_sources qa_ci_runs qa_ci_run_cases qa_rounds qa_round_cases qa_round_assignees qa_result_history",
+    "Test case đọc từ docs home, kết quả test của CI (chỉ mã TC và số liệu, không có tên test hay thông báo lỗi) và kết quả tay của tester.",
+    "Thư viện test case tới khi xoá dự án; kết quả CI và kết quả tay theo thời hạn giữ của tổ chức, mặc định 365 ngày.",
+  ),
+  category(
     "sandbox",
     "Cấu hình sandbox",
     "sandbox_org_settings egress_allowlists env_images",

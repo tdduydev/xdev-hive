@@ -94,7 +94,7 @@ Chặn mọi story. Không có nhãn story.
   (`apps/hub/src/modules/tenancy/schema.ts`, `tenancy/roles.ts`, `tenancy/permissions.ts`, `artifacts/access.ts`,
   `artifacts/service.ts`, `knowledge/reviews.ts`, `knowledge/editor.ts`, `sdlc/access.ts`,
   `tenancy/permissions.db.test.ts`, `tenancy/roles.db.test.ts`)
-- [ ] T008 H — Bảng thư viện. Quy tắc chung của data-model.md (FR-071): `org_id uuid not null`, `orgScoped(<tên bảng>)`,
+- [x] T008 H — Bảng thư viện. Quy tắc chung của data-model.md (FR-071): `org_id uuid not null`, `orgScoped(<tên bảng>)`,
   `.enableRLS()`, FK con `(parent_id, org_id) → (id, org_id)`, bảng cha có `unique("<bảng>_id_org")`. FK tới
   `projects`, `docs`, `users` chỉ viết trong migration tay (T019). Ràng buộc:
   - `qa_settings`: `retention_days int not null default 365`, check `BETWEEN 90 AND 3650`; policy như
@@ -114,7 +114,7 @@ Chặn mọi story. Không có nhãn story.
     `(project_id, current_status)`, `(project_id, area_id)`.
 
   Thêm sáu bảng vào `rls.db.test.ts` (`apps/hub/src/modules/qa/schema.ts`, `apps/hub/src/modules/qa/rls.db.test.ts`)
-- [ ] T009 H — Bảng CI, cùng quy tắc chung:
+- [x] T009 H — Bảng CI, cùng quy tắc chung:
   - `qa_ci_sources`: `label` tối đa 80, `repo_web_url` chỉ `https`, `branch_filter` và `job_filter` text[] (rỗng là
     mọi), `mode` `pipeline-report`/`junit-artifact`/`playwright-artifact`, `artifact_path` "bắt buộc với hai mode
     artifact; đường dẫn tương đối, không `..`", `backfill_state` `pending`/`listing`/`done`/`error`; unique
@@ -127,7 +127,7 @@ Chặn mọi story. Không có nhãn story.
   - `qa_ci_run_cases`: pk `(run_id, case_id)`, index `(case_id, run_id)`, FK `run_id` CASCADE.
 
   Thêm ba bảng vào `rls.db.test.ts` (`apps/hub/src/modules/qa/schema.ts`, `apps/hub/src/modules/qa/rls.db.test.ts`)
-- [ ] T010 H — Bảng đợt test, cùng quy tắc chung:
+- [x] T010 H — Bảng đợt test, cùng quy tắc chung:
   - `qa_rounds`: `name` 1–120, `environment` tối đa 80, `build` tối đa 80, `planned_end_date >= start_date`,
     `state` `open`/`closed`, `previous_round_id` `ON DELETE SET NULL (previous_round_id)`, `reopen_reason` 10–500,
     `open_recording bool not null default false`; index `(project_id, state)`;
