@@ -72,7 +72,7 @@ Chặn mọi story. Không có nhãn story.
   `sources`, `rounds` (gồm `export`), `myWork`, `dashboard`. Mọi route là `orgRoute` dưới `/v1/testing/...`. Phân trang
   `cursor` tối đa 2000, `limit` 1–100, mặc định 20. Thêm `testing: testingContract` vào object contract. Chạy
   `pnpm openapi` (`packages/contracts/src/testing.ts`, `testing.test.ts`, `index.ts`, `packages/contracts/openapi.json`)
-- [ ] T005 [P] C — Quyền `qa.read`, `qa.cases.write`, `qa.record`, `qa.rounds.manage` ở nhánh `testing` nhãn
+- [x] T005 [P] C — Quyền `qa.read`, `qa.cases.write`, `qa.record`, `qa.rounds.manage` ở nhánh `testing` nhãn
   "Kiểm thử" (FR-010). Vai trò `team-tester` trong `systemRoleId`, tập `TEAM_TESTER` liệt kê đủ quyền như `TEAM_BA`
   (FR-012). Gán quyền cho vai trò có sẵn theo FR-014 và research.md D5. Test: `team-tester` không có quyền nào ở
   FR-013 (`packages/contracts/src/roles.ts`, `roles.test.ts`)

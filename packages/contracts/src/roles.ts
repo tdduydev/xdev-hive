@@ -49,6 +49,10 @@ export const PERMISSION_TREE: readonly PermissionNode[] = [
     branch("ci", [leaf("ci.view"), leaf("ci.operate"), leaf("ci.connections.manage", true)]),
     branch("deploy", [leaf("deploy.run"), leaf("deploy.approve"), leaf("servers.manage", true)]),
   ]),
+  // Quản lý kiểm thử (specs/036 FR-010). `qa.cases.write` chỉ sửa file trong thư mục test case, không thay `docs.write`.
+  branch("testing", [
+    branch("qa", [leaf("qa.read"), leaf("qa.cases.write"), leaf("qa.record"), leaf("qa.rounds.manage")]),
+  ]),
   branch("agents", [
     branch("mcp", [leaf("mcp.tokens"), leaf("mcp.servers")]),
     branch("policy", [leaf("policies.write"), leaf("policies.fullaccess", true)]),
@@ -94,6 +98,7 @@ const MEMBER_EXTRA = new Set([
   "mcp.tokens",
   "machines.read",
   "sdlc.write",
+  "qa.record",
 ]);
 const member = (k: string) => viewer(k) || MEMBER_EXTRA.has(k);
 // Quyền của vai trò tổ chức được cộng bất kể đội, nên thao tác CI và triển khai chỉ cấp qua vai trò đội: thành viên tổ
@@ -121,6 +126,8 @@ const TEAM_ADMIN_EXTRA = new Set([
   "leader.terminal",
   "deploy.approve",
   "servers.manage",
+  "qa.cases.write",
+  "qa.rounds.manage",
 ]);
 /**
  * BA/PO (specs/011 FR-061): soạn, đề xuất và duyệt tài liệu AI SDLC; không tạo task, không chạy run, không quản trị máy.
@@ -134,9 +141,34 @@ const TEAM_BA = new Set([
   "tasks.read",
   "runs.read",
   "leader.terminal",
+  "qa.read",
+]);
+/**
+ * Tester (specs/036 FR-012): ghi kết quả, sửa test case, quản lý đợt test; không tạo task, không chạy run, không merge,
+ * không triển khai (FR-013). Liệt kê đủ như `TEAM_BA`.
+ */
+const TEAM_TESTER = new Set([
+  "qa.read",
+  "qa.cases.write",
+  "qa.record",
+  "qa.rounds.manage",
+  "docs.read",
+  "proposals.create",
+  "tasks.read",
+  "runs.read",
+  "ci.view",
 ]);
 
-export const systemRoleId = z.enum(["owner", "admin", "member", "team-admin", "team-member", "team-viewer", "team-ba"]);
+export const systemRoleId = z.enum([
+  "owner",
+  "admin",
+  "member",
+  "team-admin",
+  "team-member",
+  "team-viewer",
+  "team-ba",
+  "team-tester",
+]);
 export type SystemRoleId = z.infer<typeof systemRoleId>;
 
 /** Quyền của vai trò hệ thống. Vai trò hệ thống không sửa được; quản trị nhân bản thành vai trò tự tạo nếu cần. */
@@ -148,6 +180,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleId, readonly string[]> = 
   "team-member": PERMISSIONS.filter(teamMember),
   "team-viewer": PERMISSIONS.filter(viewer),
   "team-ba": PERMISSIONS.filter((k) => TEAM_BA.has(k)),
+  "team-tester": PERMISSIONS.filter((k) => TEAM_TESTER.has(k)),
 };
 
 const id = z.uuid();

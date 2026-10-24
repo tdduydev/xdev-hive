@@ -80,6 +80,12 @@ export const PERMISSION_LABEL: Record<string, Dict<string>> = {
     vi: "Quản lý máy chủ, môi trường và đích triển khai",
     en: "Manage servers, environments and deploy targets",
   },
+  testing: { vi: "Kiểm thử", en: "Testing" },
+  qa: { vi: "Test case và đợt test", en: "Test cases and rounds" },
+  "qa.read": { vi: "Xem thư viện, đợt test và dashboard", en: "View library, rounds and dashboard" },
+  "qa.cases.write": { vi: "Sửa file test case", en: "Edit test case files" },
+  "qa.record": { vi: "Ghi kết quả test tay", en: "Record manual results" },
+  "qa.rounds.manage": { vi: "Tạo, giao, đóng và mở lại đợt test", en: "Create, assign, close and reopen rounds" },
   agents: { vi: "Quản trị agent", en: "Agent governance" },
   mcp: { vi: "MCP và công cụ", en: "MCP & tools" },
   "mcp.tokens": { vi: "Cấp token MCP cho mình", en: "Issue own MCP tokens" },
@@ -145,6 +151,13 @@ export const SYSTEM_ROLE_TEXT: Record<SystemRoleId, { name: Dict<string>; desc: 
     desc: {
       vi: "Tạo hạng mục AI SDLC, soạn và duyệt tài liệu; không chạy agent.",
       en: "Creates AI SDLC items, drafts and reviews docs; does not run agents.",
+    },
+  },
+  "team-tester": {
+    name: { vi: "Tester", en: "Tester" },
+    desc: {
+      vi: "Sửa test case, quản lý đợt test và ghi kết quả; không tạo task, không chạy agent.",
+      en: "Edits test cases, manages rounds and records results; does not create tasks or run agents.",
     },
   },
 };

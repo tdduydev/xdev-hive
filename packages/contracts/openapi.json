@@ -127283,7 +127283,8 @@
                               "team-admin",
                               "team-member",
                               "team-viewer",
-                              "team-ba"
+                              "team-ba",
+                              "team-tester"
                             ],
                             "type": "string"
                           },
@@ -127789,7 +127790,7 @@
                   },
                   "permissions": {
                     "type": "array",
-                    "maxItems": 61,
+                    "maxItems": 65,
                     "items": {
                       "enum": [
                         "tasks.read",
@@ -127837,6 +127838,10 @@
                         "deploy.run",
                         "deploy.approve",
                         "servers.manage",
+                        "qa.read",
+                        "qa.cases.write",
+                        "qa.record",
+                        "qa.rounds.manage",
                         "mcp.tokens",
                         "mcp.servers",
                         "policies.write",
@@ -127865,7 +127870,8 @@
                       "team-admin",
                       "team-member",
                       "team-viewer",
-                      "team-ba"
+                      "team-ba",
+                      "team-tester"
                     ],
                     "type": "string"
                   }
@@ -128363,7 +128369,7 @@
                   },
                   "permissions": {
                     "type": "array",
-                    "maxItems": 61,
+                    "maxItems": 65,
                     "items": {
                       "enum": [
                         "tasks.read",
@@ -128411,6 +128417,10 @@
                         "deploy.run",
                         "deploy.approve",
                         "servers.manage",
+                        "qa.read",
+                        "qa.cases.write",
+                        "qa.record",
+                        "qa.rounds.manage",
                         "mcp.tokens",
                         "mcp.servers",
                         "policies.write",
