@@ -8,6 +8,8 @@ import { invoke } from "@/lib/tauri.ts";
  * projects`. Mục có `projectId` rỗng là repo trên máy chưa có dự án trên hub (nhập từ app v1).
  */
 export interface LocalProject {
+  /** Id của mục trên máy này, không đổi khi gắn dự án hay dời thư mục; bí mật gán theo id này. Worker cũ chưa trả. */
+  localId?: string | undefined;
   projectId: string;
   name: string;
   folder: string;

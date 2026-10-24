@@ -37,6 +37,8 @@ const text: Dict<{
   play: (name: string) => string;
   proceed: string;
   abort: string;
+  approveDeployment: string;
+  rejectDeployment: string;
   noToken: string;
   addToken: string;
   openOrigin: string;
@@ -67,6 +69,8 @@ const text: Dict<{
     play: (n) => `Chạy ${n}`,
     proceed: "Tiếp tục",
     abort: "Dừng ở bước này",
+    approveDeployment: "Duyệt deployment",
+    rejectDeployment: "Từ chối",
     noToken: "Thêm token Jenkins của bạn ở Cài đặt cá nhân",
     addToken: "Thêm token",
     openOrigin: "Mở trên nguồn",
@@ -97,6 +101,8 @@ const text: Dict<{
     play: (n) => `Run ${n}`,
     proceed: "Proceed",
     abort: "Stop at this step",
+    approveDeployment: "Approve deployment",
+    rejectDeployment: "Reject",
     noToken: "Add your Jenkins token in Personal settings",
     addToken: "Add token",
     openOrigin: "Open at source",
@@ -251,6 +257,15 @@ export function CiRunDetailView({
     onError: failed,
   });
 
+  const review = useMutation({
+    mutationFn: (v: { environment: string; decision: "approve" | "reject" }) =>
+      run(() =>
+        api.ci.approveDeployment.call({ projectId, runId, environments: [v.environment], decision: v.decision }),
+      ),
+    onSuccess: done,
+    onError: failed,
+  });
+
   if (detail.isPending)
     return (
       <PageBody>
@@ -269,7 +284,15 @@ export function CiRunDetailView({
   const active = isCiActive(info.status);
   const jenkins = info.source === "jenkins";
   const blocked = jenkins && tokenMissing;
-  const busy = retryRun.isPending || cancelRun.isPending || stopRun.isPending || playStep.isPending || answer.isPending;
+  // Với GitHub, ô chờ là deployment chờ duyệt (id là tên environment), không phải bước input của Jenkins.
+  const github = info.source === "github";
+  const busy =
+    retryRun.isPending ||
+    cancelRun.isPending ||
+    stopRun.isPending ||
+    playStep.isPending ||
+    answer.isPending ||
+    review.isPending;
   const href = safeHref(info.url);
   const selected = steps.find((s) => s.id === stepId);
   const describedBy = blocked ? reasonId : undefined;
@@ -349,7 +372,26 @@ export function CiRunDetailView({
                 {pendingInputs.map((p) => (
                   <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2.5">
                     <span className="min-w-0 flex-1 text-sm break-words">{p.message}</span>
-                    {canOperate && (
+                    {canOperate && github && (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => review.mutate({ environment: p.id, decision: "approve" })}
+                        >
+                          {t.approveDeployment}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => review.mutate({ environment: p.id, decision: "reject" })}
+                        >
+                          {t.rejectDeployment}
+                        </Button>
+                      </>
+                    )}
+                    {canOperate && !github && (
                       <>
                         <Button
                           size="sm"

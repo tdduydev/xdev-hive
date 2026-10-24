@@ -310,7 +310,7 @@ const text: Dict<{
     notePlaceholder: "Ví dụ: cập nhật theo code nhánh feat/proxy, thêm mục kênh tới hub.",
     cancel: "Huỷ",
     sendProposal: "Gửi đề xuất",
-    sent: (id) => `Đã gửi đề xuất ${id.slice(0, 8)}; tài liệu đổi khi được duyệt.`,
+    sent: (id) => `Đã xếp đề xuất ${id.slice(0, 8)} vào Hộp thư đi; tài liệu đổi khi hub nhận và duyệt.`,
     needAccount: "Kết nối Hive để gửi đề xuất.",
     pickFile: "Chọn file ở cột trái để xem code hay sửa tài liệu trong thư mục, hoặc chọn tài liệu trên hub.",
     pickFileNoAccount:
@@ -465,7 +465,7 @@ const text: Dict<{
     notePlaceholder: "E.g. updated from the feat/proxy branch, added the hub channel section.",
     cancel: "Cancel",
     sendProposal: "Send proposal",
-    sent: (id) => `Proposal ${id.slice(0, 8)} sent; the doc changes once it is approved.`,
+    sent: (id) => `Proposal ${id.slice(0, 8)} is in the outbox; the doc changes once the hub receives and approves it.`,
     needAccount: "Connect to Hive to send proposals.",
     pickFile: "Pick a file on the left to view code or edit a doc in the folder, or pick a doc on the hub.",
     pickFileNoAccount:
@@ -1997,7 +1997,7 @@ function ProposeDialog({
     setError(null);
     try {
       const r = await proposeDoc({ key: docKey, baseVersion: base, content, note: note.trim() });
-      setSent(r.proposalId);
+      setSent(r.key);
       setNote("");
     } catch (err) {
       setError(errorText(err));

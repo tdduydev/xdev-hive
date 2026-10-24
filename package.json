@@ -21,7 +21,8 @@
     "check": "pnpm lint && pnpm typecheck && pnpm deps && pnpm test",
     "openapi": "pnpm --filter @xdev-hive/contracts openapi",
     "e2e:smoke": "node scripts/e2e-smoke.ts",
-    "e2e:sandbox": "node scripts/e2e-sandbox.ts"
+    "e2e:sandbox": "node scripts/e2e-sandbox.ts",
+    "e2e:remote": "node scripts/e2e-remote.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

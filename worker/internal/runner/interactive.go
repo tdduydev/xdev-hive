@@ -32,6 +32,7 @@ type InteractiveSpec struct {
 	FullAllowed    bool
 	MCPToken       string
 	SystemPrompt   string
+	SecretContext  string
 	TokenSaving    *TokenSavingJob
 	// Projects là projects.json của máy; dự án đã gắn thì worktree tạo từ repo đó.
 	Projects []projects.Project
@@ -143,7 +144,7 @@ func (r Runner) PrepareInteractive(ctx context.Context, spec InteractiveSpec) (_
 		if err := os.MkdirAll(filepath.Dir(src.dir), 0700); err != nil {
 			return nil, err
 		}
-		if err := cloneOnce(ctx, r.DataDir, spec.RepoURL, src.dir); err != nil {
+		if err := cloneOnce(ctx, gitAuth{}, r.DataDir, spec.RepoURL, src.dir); err != nil {
 			return nil, fmt.Errorf("không clone được repo của dự án: %w", err)
 		}
 	}
@@ -227,6 +228,9 @@ func (r Runner) PrepareInteractive(ctx context.Context, spec InteractiveSpec) (_
 // interactiveArgs là cờ của `claude` tương tác. Không có -p, --tools, --max-turns hay --max-budget-usd của run: người mở
 // điều khiển phiên, Claude hỏi duyệt ngay trong terminal khi cần.
 func interactiveArgs(job Job, savingCfg TokenSavingConfig, mcpFile string, spec InteractiveSpec, perm string) []string {
+	if spec.SecretContext != "" {
+		spec.SystemPrompt = strings.TrimSpace(spec.SystemPrompt + "\n\n" + spec.SecretContext)
+	}
 	args := []string{"--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
 	if spec.SystemPrompt != "" {
 		args = append(args, "--append-system-prompt", spec.SystemPrompt)

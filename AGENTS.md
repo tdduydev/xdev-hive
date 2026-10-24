@@ -22,6 +22,7 @@ Bản viết lại của xDev Hive. Đọc [docs/architecture.md](docs/architect
 - Test có database (`*.db.test.ts`) cần Docker. Với Colima trên macOS, đặt trước khi chạy test:
   `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock`.
   Bị Docker Hub giới hạn lượt tải (429) thì thêm `HIVE_TEST_POSTGRES_IMAGE=public.ecr.aws/docker/library/postgres:18-trixie`.
+- Nhập Word: cài pandoc 3.12 trở lên ở máy dev (`winget install JohnMacFarlane.Pandoc` hoặc `brew install pandoc`); thiếu thì test nhập Word bị bỏ qua tại máy nhưng fail trong CI.
 - Worker: trong `worker/` chạy `gofmt -l .`, `go vet ./...`, `go test ./...`.
 - Desktop: `pnpm --filter @xdev-hive/desktop app:dev` (cần Rust).
 

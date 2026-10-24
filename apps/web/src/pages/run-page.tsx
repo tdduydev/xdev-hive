@@ -7,7 +7,6 @@ import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } 
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { LogCard } from "@/components/log-card.tsx";
 import { TaskHistory } from "@/components/task-history.tsx";
 import { TreeLinks } from "@/components/tree-links.tsx";
 import { Card } from "@/components/ui/card.tsx";
@@ -38,6 +37,7 @@ import {
 } from "@/lib/run-view.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { useRunStream } from "@/lib/use-run-stream.ts";
+import { LinkedArtifactsSection, useCanWriteTeam } from "@/pages/artifacts/linked-section.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -52,6 +52,7 @@ export function RunPage() {
   const project = useQuery(
     api.projects.get.queryOptions({ input: { id: run.data?.projectId ?? "" }, enabled: !!run.data }),
   );
+  const canLinkArtifacts = useCanWriteTeam(run.data?.teamId);
   // Sự kiện `state` qua SSE nghĩa là trạng thái, kết quả hay chi phí trong runs.get đã đổi.
   const stream = useRunStream(org.id, id, () => {
     void queryClient.invalidateQueries({ queryKey: api.runs.get.key({ input: { id } }) });
@@ -116,7 +117,12 @@ export function RunPage() {
         <Steps label="Các pha của run" steps={runPhases(r, stream.events, now)} />
         <div className="grid items-start gap-5 app:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
           <div className="grid min-w-0 gap-5">
-            <LogCard log={stream.log} status={stream.status} onRetry={stream.retry} />
+            <SectionCard title="Log trên máy">
+              <p className="break-words text-muted-foreground">
+                Log nằm trên máy {r.machineName ?? r.machineId ?? "chưa được giao run"}. Mở app desktop trên máy đã chạy
+                run hoặc dùng <code>hive runs log {r.id}</code> để đọc log còn trong thời hạn giữ.
+              </p>
+            </SectionCard>
             <EventsCard events={stream.events} />
             {/* Chưa có trang task riêng: trang run là nơi người xem mở từ bảng việc. */}
             {task.data && <TaskHistory taskId={task.data.id} />}
@@ -127,6 +133,7 @@ export function RunPage() {
             <CostCard run={r} capUsd={project.data?.settings.budget?.perRunUsd} />
             {r.explore && <ExploreCard explore={r.explore} />}
             <PolicyCard run={r} />
+            <LinkedArtifactsSection target={{ kind: "run", id: r.id }} canLink={canLinkArtifacts} />
           </aside>
         </div>
       </PageBody>
@@ -400,6 +407,9 @@ function PolicyCard({ run }: { run: Run }) {
             </li>
           ))}
         </ul>
+      )}
+      {run.result?.secretsInjected !== undefined && run.result.secretsInjected > 0 && (
+        <p className="text-xs text-muted-foreground">Dùng {formatInt(run.result.secretsInjected)} bí mật tại máy</p>
       )}
       {run.result && run.result.reasons.length > 0 && (
         <Alert variant="destructive">

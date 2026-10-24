@@ -8,7 +8,7 @@ import (
 // CredentialReader đọc giá trị credential theo tên tham chiếu. Bản thật bọc kho bí mật của hệ điều hành, không gian tên
 // riêng cho delivery (FR-062); bản thử là MapCredentials. Giá trị chỉ nằm trong bộ nhớ (FR-063).
 //
-// Quy ước giá trị: Jenkins "user:token"; Argo CD và Kubernetes là token trần.
+// Quy ước giá trị: Jenkins "user:token"; Argo CD là token trần.
 type CredentialReader interface {
 	// Read trả ErrCredentialNotFound khi không có tên đó.
 	Read(name string) ([]byte, error)
@@ -42,6 +42,11 @@ func readCredential(r CredentialReader, name string) ([]byte, error) {
 	if err != nil {
 		if errors.Is(err, ErrCredentialNotFound) {
 			return nil, newError(CodeMissingCredential, 0, "Máy này chưa có credential %q. Thêm ở màn Bí mật.", name)
+		}
+		// KeyringCredentials đã chọn mã (kho khoá, kho hỏng); giữ mã đó và thêm tên để người đọc biết credential nào.
+		var e *Error
+		if errors.As(err, &e) {
+			return nil, newError(e.Code, 0, "Không đọc được credential %q: %s", name, e.Message)
 		}
 		return nil, newError(CodeUnavailable, 0, "Không đọc được credential %q từ kho bí mật.", name)
 	}

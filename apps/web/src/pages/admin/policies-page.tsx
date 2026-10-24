@@ -50,6 +50,7 @@ import { cx } from "@/lib/cx.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { ArtifactsPolicySection } from "@/pages/admin/policies/artifacts-section.tsx";
 import { SdlcPolicyStats } from "@/pages/admin/policies-sdlc-stats.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -80,6 +81,8 @@ const EVENTS: HookEvent[] = ["PreToolUse", "PostToolUse", "Stop"];
 const SECTIONS = {
   model: ["allowedModels", "neverAutoUpgrade"],
   perm: ["defaultPermissionMode", "allowFullPermission", "requireSandbox"],
+  git: ["git"],
+  secrets: ["secretInjection"],
   memory: ["agentMemory"],
   learning: ["skillLearning"],
   hooks: ["hooks", "managedHooksOnly"],
@@ -124,6 +127,10 @@ const text: Dict<{
   cf2: string;
   cfKeep: string;
   cfGo: string;
+  gitTitle: string;
+  gitHint: string;
+  gitRequire: string;
+  gitRequireHint: string;
   memTitle: string;
   memHint: string;
   memMode: string;
@@ -140,6 +147,15 @@ const text: Dict<{
   learnEnabledHint: string;
   learnMax: string;
   learnMaxHint: string;
+  secretsTitle: string;
+  secretsHint: string;
+  secretsLabel: string;
+  secretsAllow: string;
+  secretsAllowHint: string;
+  secretsApprove: string;
+  secretsApproveHint: string;
+  secretsDeny: string;
+  secretsDenyHint: string;
   outOfRange: string;
   sdlcHint: string;
   sdlcAllow: string;
@@ -247,6 +263,12 @@ const text: Dict<{
     cf2: "Agent chạy được mọi lệnh, kể cả lệnh mạng.",
     cfKeep: "Giữ trong worktree",
     cfGo: "Chọn toàn quyền",
+    gitTitle: "Token Git theo run",
+    gitHint:
+      "Dự án kết nối bằng GitHub App hoặc GitLab: hub cấp cho mỗi run một token Git chỉ dùng cho repo của dự án. Máy nhận việc chỉ đưa token cho git, không cho agent.",
+    gitRequire: "Bắt buộc token Git theo run",
+    gitRequireHint:
+      "Run chỉ giao cho máy dùng được token theo run. Dự án kết nối bằng PAT sẽ chờ, không chạy bằng thông tin Git có sẵn trên máy.",
     memTitle: "Memory do agent ghi",
     memHint: "Agent chạy code và review ghi lại điều đã học cho các run sau qua memory_write.",
     memMode: "Chế độ ghi",
@@ -268,6 +290,17 @@ const text: Dict<{
     learnEnabledHint: "Tắt thì không lô nào chạy và không tốn token. Đề xuất đã có vẫn duyệt được.",
     learnMax: "Số đề xuất tối đa mỗi ngày",
     learnMaxHint: "Từ 1 đến 50 cho cả tổ chức (UTC). Hết hạn mức thì ngày đó không chạy thêm lô.",
+    secretsTitle: "Bí mật tại máy",
+    secretsHint:
+      "Bí mật (khoá API, token) nằm trong kho của hệ điều hành trên máy dev và được gán theo dự án. Hub chỉ lưu lựa chọn này và gửi cho máy; hub không nhận tên hay giá trị bí mật.",
+    secretsLabel: "Đưa bí mật vào agent",
+    secretsAllow: "Cho phép",
+    secretsAllowHint: "Agent nhận bí mật đã gán cho dự án, không hỏi.",
+    secretsApprove: "Hỏi trước",
+    secretsApproveHint:
+      "Người dùng duyệt tại máy mỗi lần agent cần bí mật. Không trả lời thì run chạy không có bí mật.",
+    secretsDeny: "Không cho",
+    secretsDenyHint: "Không đưa bí mật nào vào agent, kể cả khi đã gán.",
     outOfRange: "Nhập số nguyên từ 1 đến 50. Ô giữ số hợp lệ gần nhất cho tới khi sửa xong.",
     sdlcHint:
       'Tự duyệt AI ở giai đoạn rủi ro thấp ("Continue automatically" của AI-DLC). Chế độ nói giai đoạn nào được tự duyệt; dự án chỉ siết thêm được so với chế độ và mục này.',
@@ -388,6 +421,12 @@ const text: Dict<{
     cf2: "The agent can run any command, network commands included.",
     cfKeep: "Keep in the worktree",
     cfGo: "Choose full access",
+    gitTitle: "Per-run Git tokens",
+    gitHint:
+      "For projects connected through a GitHub App or GitLab, the hub issues each run a Git token limited to the project's repository. The run machine hands it to git only, never to the agent.",
+    gitRequire: "Require per-run Git tokens",
+    gitRequireHint:
+      "Runs only go to machines that can use per-run tokens. Projects connected with a PAT wait instead of running with the machine's own Git credentials.",
     memTitle: "Agent-written memory",
     memHint: "Code and review agents save what they learned for later runs through memory_write.",
     memMode: "Write mode",
@@ -409,6 +448,17 @@ const text: Dict<{
     learnEnabledHint: "When off no batch runs and no tokens are spent. Existing proposals can still be decided.",
     learnMax: "Max proposals per day",
     learnMaxHint: "1 to 50 for the whole organization (UTC). Once used up no more batches run that day.",
+    secretsTitle: "Local secrets",
+    secretsHint:
+      "Secrets (API keys, tokens) live in the operating system keystore on the dev machine and are assigned per project. The hub only stores this choice and sends it to the machine; it never receives secret names or values.",
+    secretsLabel: "Give secrets to agents",
+    secretsAllow: "Allow",
+    secretsAllowHint: "Agents receive the secrets assigned to the project, without asking.",
+    secretsApprove: "Ask first",
+    secretsApproveHint:
+      "The user approves at the machine each time an agent needs secrets. No answer means the run goes without secrets.",
+    secretsDeny: "Deny",
+    secretsDenyHint: "No secret is given to any agent, even when assigned.",
     outOfRange: "Enter a whole number from 1 to 50. The last valid number is kept until then.",
     sdlcHint:
       'AI auto-approval for low-risk phases (AI-DLC "Continue automatically"). The mode says which phases qualify; projects may only tighten the mode and this section.',
@@ -510,6 +560,8 @@ const formOf = (p: AgentPolicy): Form => ({
   // Hub cũ chưa có mục này thì giữ mặc định của hợp đồng, như chính sách lưu trước ADR 0022.
   agentMemory: p.agentMemory ?? { ...DEFAULT_AGENT_MEMORY_POLICY },
   skillLearning: p.skillLearning ?? { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
+  // Hub cũ chưa có mục này thì `allow`, đúng hành vi trước specs/031.
+  secretInjection: p.secretInjection ?? "allow",
   remote: p.remote ?? { ...DEFAULT_AGENT_REMOTE_POLICY },
   git: p.git ?? { ...DEFAULT_AGENT_GIT_POLICY },
   sdlc: p.sdlc ?? DEFAULT_ORG_SDLC_POLICY,
@@ -668,7 +720,7 @@ function FloorInput({
 }
 
 /**
- * /admin/policies: chính sách agent của tổ chức (admin-layout.md § Settings forms). Tám mục, mỗi mục lưu riêng; thanh
+ * /admin/policies: chính sách agent của tổ chức (admin-layout.md § Settings forms). Mỗi mục lưu riêng; thanh
  * mục dính trên form để nhảy nhanh; rời trang khi còn mục chưa lưu thì hỏi lại.
  */
 export function PoliciesPage() {
@@ -725,7 +777,7 @@ function PolicyEditor({
   const [adding, setAdding] = useState<Cli | null>(null);
   const [newModel, setNewModel] = useState("");
   const [confirmFull, setConfirmFull] = useState(false);
-  const ids = { defaultPerm: useId(), memMode: useId(), retention: useId() };
+  const ids = { defaultPerm: useId(), memMode: useId(), retention: useId(), secrets: useId() };
 
   const save = useMutation({
     mutationFn: ({ section }: { section: SectionId }) => {
@@ -801,12 +853,15 @@ function PolicyEditor({
     () => [
       { id: "model", label: "Model" },
       { id: "perm", label: t.perm },
+      { id: "git", label: t.gitTitle },
+      { id: "secrets", label: t.secretsTitle },
       { id: "memory", label: t.memTitle },
       { id: "learning", label: t.learnTitle },
       { id: "hooks", label: "Hooks" },
       { id: "templates", label: t.instr },
       { id: "limits", label: t.limits },
       { id: "sdlc", label: "AI SDLC" },
+      { id: "artifacts", label: "Artifact" },
     ],
     [t],
   );
@@ -942,6 +997,33 @@ function PolicyEditor({
             onChange={(v) => update("perm", { requireSandbox: v })}
             disabled={disabled}
           />
+        </SettingsSection>
+
+        <SettingsSection id="git" title={t.gitTitle} description={t.gitHint} save={sectionSave("git")}>
+          <SwitchRow
+            label={t.gitRequire}
+            hint={t.gitRequireHint}
+            checked={form.git.requireRunGitToken}
+            onChange={(requireRunGitToken) => update("git", { git: { ...form.git, requireRunGitToken } })}
+            disabled={disabled}
+          />
+        </SettingsSection>
+
+        <SettingsSection id="secrets" title={t.secretsTitle} description={t.secretsHint} save={sectionSave("secrets")}>
+          <FormRow label={t.secretsLabel}>
+            <RadioCards
+              name={ids.secrets}
+              label={t.secretsLabel}
+              value={form.secretInjection}
+              disabled={disabled}
+              onChange={(secretInjection) => update("secrets", { secretInjection })}
+              options={[
+                { value: "allow", title: t.secretsAllow, description: t.secretsAllowHint },
+                { value: "approve", title: t.secretsApprove, description: t.secretsApproveHint },
+                { value: "deny", title: t.secretsDeny, description: t.secretsDenyHint },
+              ]}
+            />
+          </FormRow>
         </SettingsSection>
 
         <SettingsSection id="memory" title={t.memTitle} description={t.memHint} save={sectionSave("memory")}>
@@ -1300,6 +1382,8 @@ function PolicyEditor({
           </div>
           <SdlcPolicyStats />
         </SettingsSection>
+
+        <ArtifactsPolicySection policy={policy} canWrite={canWrite} />
       </SettingsLayout>
 
       <Dialog open={confirmFull} onOpenChange={setConfirmFull}>

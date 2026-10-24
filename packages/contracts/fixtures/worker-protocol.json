@@ -139,7 +139,8 @@
       "exit": 0,
       "headSha": "0123456789abcdef0123456789abcdef01234567",
       "report": {
-        "summary": "xong"
+        "summary": "xong",
+        "secretsInjected": 2
       },
       "diffStats": {
         "addedLines": 7,
@@ -315,7 +316,8 @@
         "shared": false
       },
       "policy": {
-        "totpFallback": true
+        "totpFallback": true,
+        "secretInjection": "approve"
       }
     },
     {
@@ -341,7 +343,12 @@
       "attempt": 1,
       "spec": {
         "repo": "acme/web",
-        "cli": "claude"
+        "cli": "claude",
+        "policy": {
+          "hooks": [],
+          "managedHooksOnly": false,
+          "secretInjection": "deny"
+        }
       },
       "ttl": 30
     },

@@ -39,22 +39,39 @@ var gitLockBackoff = 200 * time.Millisecond
 // gitWrite chạy một lệnh git ghi vào repo cache dưới khoá của cache. dir là thư mục chạy lệnh (cache, DataDir khi
 // clone, hoặc worktree khi push).
 func gitWrite(ctx context.Context, cache, dir string, args ...string) error {
+	return gitWriteAuth(ctx, gitAuth{}, cache, dir, args...)
+}
+
+func gitWriteAuth(ctx context.Context, auth gitAuth, cache, dir string, args ...string) error {
 	unlock, err := lockRepo(ctx, cache)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	return gitRetryLocked(ctx, dir, args...)
+	return gitRetryAuth(ctx, auth, dir, args...)
 }
 
 func gitRetryLocked(ctx context.Context, dir string, args ...string) error {
+	return gitRetryAuth(ctx, gitAuth{}, dir, args...)
+}
+
+// gitRetryAuth chạy git với token của run khi auth có: token chỉ nằm trong môi trường của git (askpass đọc), không trong
+// tham số hay URL, và stderr đã che token trước khi ra log của worker.
+func gitRetryAuth(ctx context.Context, auth gitAuth, dir string, args ...string) error {
+	full, env := args, []string(nil)
+	if auth.git != nil {
+		full, env = auth.git.Prepare(auth.host, args...)
+	}
 	for attempt := 1; ; attempt++ {
 		var stderr bytes.Buffer
-		c := procattr.CommandContext(ctx, "git", args...)
+		c := procattr.CommandContext(ctx, "git", full...)
 		c.Dir = dir
+		c.Env = env
 		c.Stdout = io.Discard
-		c.Stderr = io.MultiWriter(os.Stderr, &stderr)
+		out := auth.mask.Writer(io.MultiWriter(os.Stderr, &stderr))
+		c.Stderr = out
 		err := c.Run()
+		_ = out.Flush()
 		if err == nil || attempt >= gitLockRetries || ctx.Err() != nil || !isGitLockError(stderr.String()) {
 			return err
 		}

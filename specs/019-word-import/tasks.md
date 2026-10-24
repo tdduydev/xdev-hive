@@ -613,7 +613,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/web/e2e/word-import-history.spec.ts` (mới), `apps/web/e2e/word-import-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task.
 
-- [ ] **T022 [P] [—] [nhẹ] · 1 ngày — ADR 0029, SRS 3.24, tài liệu kỹ thuật**
+- [x] **T022 [P] [—] [nhẹ] · 1 ngày — ADR 0029, SRS 3.24, tài liệu kỹ thuật**
   - **Phụ thuộc**: T004, T014 (dung lượng image đo được).
   - **Goal**: plan.md "SRS và ADR", mục 12, 12b, 13.
     - ADR 0029 "Use pandoc and LibreOffice for Word import" (tiếng Anh, theo `docs/adr/template.md`): pandoc thay
@@ -633,6 +633,12 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `docs/srs.md` (chỉ thêm mục 3.24 và một dòng ở 3.23)
     - `docs/architecture.md`, `docs/self-hosting.md`, `apps/hub/.env.example`, `deploy/.env.example`, `AGENTS.md`
   - **Kiểm**: `pnpm biome check --write .`.
+  - **Đã làm (DOCS019)**: cherry-pick `e6e5e553` từ `ai/WORD019H`, rồi sửa theo quyết định 2026-10-23: ADR 0029 đổi tiêu đề
+    thành "Use pandoc for Word import", LibreOffice ghi là phương án không chọn trên hub (để sau, đổi định dạng ở desktop
+    hoặc worker); bỏ `HIVE_SOFFICE_PATH`, `HIVE_DOC_WORD_DOC_TIMEOUT_MS` và đoạn cài LibreOffice khỏi `self-hosting.md`,
+    hai `.env.example`, `AGENTS.md`; SRS WIMP-02, WIMP-10 và các mục liên quan ghi `.doc` ngoài phạm vi. Số ADR 0029 và
+    mục SRS 3.24 chưa nhánh nào dùng (đã kiểm `origin/ai/CTX029V`, `SPEC032`, `CLI010B`, `SPEC034`; `CTX029V` dùng 3.30).
+    Dung lượng image của stage pandoc vẫn chưa đo, ADR ghi rõ.
 
 ## Đợt 5: kiểm tổng
 
@@ -651,6 +657,18 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Đã làm (DOCS018B, phần tự động)**: research.md mục 7 ghi lệnh đã chạy và kết quả (hub Word 205 đạt, contracts 31, web 80,
     desktop đạt). **Chưa làm**: `pnpm check` đầy đủ và CI, `word:corpus` trên bộ thật (SC-001), đo SC-003, bàn giao
     `FILTER_VERSION`, kiểm Rust (máy không có cargo), SC-002/SC-005 phần `.doc` (T014 ngoài phạm vi). Giữ `[ ]`.
+  - **Chạy lại (DOCS019, trên `main` + T022)**, máy Windows có Docker và pandoc, `apps/hub`:
+    - `vitest run src/modules/docsync/word`: 205 đạt, 1 bỏ qua (cùng kết quả mục 7 research.md).
+    - `vitest run src/modules/docsync`: 492 đạt, 201 đỏ, 1 bỏ qua. 200 đỏ ở `roundtrip.test.ts` (băm SHA-256 của file mẫu
+      lệch với giá trị ghi sẵn). [Inference] Do `core.autocrlf=true` trên máy này đổi xuống dòng của file mẫu; chưa kiểm
+      từng file, CI Linux là nơi quyết định. 1 đỏ ở `extract/extract.test.ts`: lần đầu là xlsx quá 5 giây, chạy lại với
+      `--testTimeout=60000` thì xlsx đạt nhưng "zip bomb … cắt theo giờ" nhận thông báo khác (hỏng thay vì quá giờ). [Inference]
+      Phụ thuộc thời gian, không liên quan Word. Không có đỏ trong `word/`.
+    - SC-001: bộ mẫu vàng đạt; bộ 261 SRS thật và bản cuối chưa chạy, việc của người có dữ liệu.
+    - SC-002, SC-004, SC-006, SC-007: test trong mục 7 research.md vẫn đạt (nằm trong 205 test trên).
+    - SC-005: pandoc treo, zip bomb, mật khẩu, quá lớn đạt; "LibreOffice treo" không còn áp dụng (T014 ngoài phạm vi).
+    - SC-003 (xem trước 3 MB ≤ 20 giây, 50 file ≤ 10 phút): không có test, chỉ đo được trên hub thật, việc của T025.
+    - Cần hub thật cho T025: `/api/v1/health`, nhập vào nhà thử, tài khoản `propose`, desktop với thư mục OneDrive.
 
 - [ ] **T025 [—] [người: chủ dự án] · 0,5 ngày người — Thử trên hub thật**
   - **Phụ thuộc**: T023, bản đã triển khai lên `hive.example.com`.

@@ -66,7 +66,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   Kết quả "không đạt" thì sửa plan và task liên quan trước Phase 2.
 
   Tiến độ: cỡ khối trên Windows đã kiểm (2560 byte mỗi mục, khối 1800 byte đạt). macOS và các điểm còn lại chưa kiểm.
-- [ ] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
+- [x] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
   - fixture mới `packages/contracts/fixtures/local-secrets.json` (reserved exact/prefixes, tên hợp lệ, không hợp lệ);
   - `packages/contracts/src/local-secrets.ts` (`RESERVED_SECRET_NAMES`, `isValidSecretName`, `isReservedSecretName`,
     `normalizeSecretName`);
@@ -140,7 +140,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test: tham số không bao giờ nhận giá trị; stdout lỗi không chứa giá trị.
 
   Sau T004, T006.
-- [ ] T008 [P] [US1] B·vừa — File mới `apps/desktop/src-tauri/src/secrets.rs` với `secrets_status`, `secrets_list`,
+- [x] T008 [P] [US1] B·vừa — File mới `apps/desktop/src-tauri/src/secrets.rs` với `secrets_status`, `secrets_list`,
   `secret_save`, `secret_rename`, `secret_assign`, `secret_delete`.
   - Theo mẫu `ssh_keys.rs`: `spawn`, `child.write` giá trị, đóng stdin, `wipe`.
   - Mô tả đi qua file tạm, xoá sau khi chạy.
@@ -148,13 +148,13 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test dựng tham số; test giá trị không có trong argv.
 
   Viết theo contract, chạy song song với T007.
-- [ ] T009 [P] [US1] C·vừa — File mới `apps/desktop/src/lib/secrets.ts`:
+- [x] T009 [P] [US1] C·vừa — File mới `apps/desktop/src/lib/secrets.ts`:
   - kiểu `StoreStatus`, `SecretItem`, `ReservedNames`, `GrantEntry`, `ApprovalRequest`;
   - hàm gọi lệnh Tauri;
   - kiểm tên phía UI bằng `@xdev-hive/contracts/local-secrets`.
   - Test `apps/desktop/src/lib/secrets.test.ts` khớp fixture `worker/internal/secretstore/testdata/cli/*.json`.
     Nếu T007 chưa xong, dùng mẫu trong contract.
-- [ ] T010 [US1] C·vừa — Màn mới `apps/desktop/src/screens/secrets-screen.tsx` và test:
+- [x] T010 [US1] C·vừa — Màn mới `apps/desktop/src/screens/secrets-screen.tsx` và test:
   - bảng tên, mô tả, dự án, ngày đổi;
   - sheet thêm và sửa: ô giá trị `type=password`, `autoComplete="off"`, xoá state sau khi gửi (FR-007);
   - gán dự án từ `local-projects.ts`;
@@ -166,7 +166,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   `apps/desktop/src/lib/nav.ts`, không đặt `needs` (FR-008). Thêm chữ vi/en vào `apps/desktop/src/lib/i18n.ts`.
 
   Sau T009.
-- [ ] T011 [US1] C·nhẹ — `apps/desktop/src/screens/projects-screen.tsx`: mỗi dự án hiện số bí mật gán và nút tới màn
+- [x] T011 [US1] C·nhẹ — `apps/desktop/src/screens/projects-screen.tsx`: mỗi dự án hiện số bí mật gán và nút tới màn
   Bí mật (lọc theo dự án). Kèm test.
 
   Sau T010.
@@ -192,7 +192,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test: SC-008 (10 bí mật ≤500 ms với backend giả có trễ); dự án không gán thì không ghi nhật ký.
 
   Sau T004, T006.
-- [ ] T013 [US2] A·nặng — Nối `Grant` vào runner.
+- [x] T013 [US2] A·nặng — Nối `Grant` vào runner.
   - `worker/internal/channel/channel.go`: `localProject` gắn `LocalID` vào job (trường mới `runner.Job.LocalID`); job
     sandbox hay runner-host để rỗng (FR-018).
   - `worker/internal/runner/hooks.go`: `JobPolicy.SecretInjection string json:"secretInjection,omitempty"`.
@@ -222,7 +222,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1–3.
 
-- [ ] T014 [US5] A·nặng — Bọc Sink và che mọi Event.
+- [x] T014 [US5] A·nặng — Bọc Sink và che mọi Event.
   - `worker/internal/runner/secrets.go`: `secretSink` bọc `Sink`, che `Data` log (dùng `secretmask.Writer` theo
     `Stream`), `Result.Error`, đuôi `Commands`, `Artifacts`, `Subagent.Description`, `Steer`, báo cáo agent.
   - Khi có che: `MarkLeaked` một lần mỗi tên, và log tại máy `secret masked: NAME`.
@@ -235,11 +235,11 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     - nhật ký có `leaked`.
 
   Sau T013 và T005.
-- [ ] T015 [P] [US5] A2·vừa — `worker/internal/terminal/redact.go` dùng `secretmask` (mặt nạ `***` giữ như cũ). Test cũ
+- [x] T015 [P] [US5] A2·vừa — `worker/internal/terminal/redact.go` dùng `secretmask` (mặt nạ `***` giữ như cũ). Test cũ
   của terminal phải xanh, thêm test base64 và JSON.
 
   Sau T005.
-- [ ] T016 [US5] A·vừa — FR-038, chặn commit và push có giá trị.
+- [x] T016 [US5] A·vừa — FR-038, chặn commit và push có giá trị.
   - File `worker/internal/runner/secrets.go` có hàm `scanDiffForSecrets(work, base, masker)`. Hàm quét
     `git diff --cached -z` và `git log -p <base>..HEAD`.
   - `runner.go` gọi hàm trước bước commit của worker và trước `gitRetryLocked(…"push"…)`.
@@ -258,14 +258,14 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1 (agent không hỏi giá trị, SC-005).
 
-- [ ] T017 [P] [US4] A2·vừa — File mới `worker/internal/secretstore/context.go`, hàm `ContextBlock(policy, items)` theo
+- [x] T017 [P] [US4] A2·vừa — File mới `worker/internal/secretstore/context.go`, hàm `ContextBlock(policy, items)` theo
   [contracts/agent-context.md](contracts/agent-context.md).
   - Mô tả được quét lại; mô tả không đạt thì bỏ, giữ tên.
   - Tối đa 64 mục; mô tả cắt ở 200 ký tự.
   - Test golden cho khối có bí mật và khối "không có bí mật".
 
   Sau T004. Khác file với T012, nên A2 làm song song được.
-- [ ] T018 [US4] A·vừa — Đưa khối vào agent.
+- [x] T018 [US4] A·vừa — Đưa khối vào agent.
   - `worker/internal/runner/runner.go`: claude có `packInSystemPrompt` thì nối khối vào file
     `--append-system-prompt-file`; CLI khác thì ghép vào đầu `job.Prompt` sau gói ngữ cảnh.
   - `worker/internal/runner/interactive.go`: nối `InteractiveSpec.SystemPrompt`.
@@ -285,7 +285,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 4.
 
-- [ ] T019 [US3] A2·nặng — Lệnh `secrets exec`.
+- [x] T019 [US3] A2·nặng — Lệnh `secrets exec`.
   - File mới `worker/cmd/hive-worker/secrets_exec.go`, `secrets_exec_unix.go` (`syscall.Exec`),
     `secrets_exec_windows.go` (tiến trình con cùng console, chờ, trả mã thoát).
   - Trình tự: `Grant` kind `terminal`; nếu `--cli claude` thì thêm `--append-system-prompt <khối>`.
@@ -297,7 +297,7 @@ không chứa giá trị.
   - Test: tiến trình con in env khớp byte (giá trị có xuống dòng, nháy, `$`, Unicode); argv con không chứa giá trị.
 
   Sau T012, T017.
-- [ ] T020 [P] [US3] B·vừa — Bọc argv ở desktop.
+- [x] T020 [P] [US3] B·vừa — Bọc argv ở desktop.
   - `apps/desktop/src-tauri/src/profiles.rs`: `cli_launch`, `agent_launch` bọc `Launch.argv` bằng
     `[<sidecar>, "secrets", "exec", "--project=<localId>", "--kind=terminal", "--cli=<cli>", "--", …]` khi dự án có gán.
     `localId` tìm theo `folder` qua `secrets list`/`projects --json`.
@@ -306,7 +306,7 @@ không chứa giá trị.
   - Test: script sinh ra không chứa giá trị; trích dẫn argv đúng trên sh và cmd.
 
   Viết theo contract, chạy song song với T019.
-- [ ] T021 [US3] A2·vừa — `worker/internal/terminal/local.go`: phiên `origin=local` (`hive chat`) có
+- [x] T021 [US3] A2·vừa — `worker/internal/terminal/local.go`: phiên `origin=local` (`hive chat`) có
   `CreateParams.ProjectID`, hoặc cwd khớp `FindFolder`, thì gọi `Grant` kind `terminal`.
   - Biến thêm vào `cmd.Env` sau `runner.LocalEnv`; giá trị thêm vào bộ che của `pump`.
   - Phiên `term_start` từ xa không nhận (research D6).
@@ -322,21 +322,21 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 2 (nhật ký và "Dùng 1 bí mật tại máy").
 
-- [ ] T022 [US6] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: thêm `secrets log [--name] [--project] [--limit]` và
+- [x] T022 [US6] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: thêm `secrets log [--name] [--project] [--limit]` và
   `secrets log clear` (FR-042). Fixture `testdata/cli/log.json`.
 
   Sau T007, T004.
-- [ ] T023 [P] [US6] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secrets_log`, `secrets_log_clear`. Đăng ký ở
+- [x] T023 [P] [US6] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secrets_log`, `secrets_log_clear`. Đăng ký ở
   `lib.rs`.
 
   Sau T008.
-- [ ] T024 [P] [US6] C·vừa — Tab Nhật ký trong `apps/desktop/src/screens/secrets-screen.tsx`:
+- [x] T024 [P] [US6] C·vừa — Tab Nhật ký trong `apps/desktop/src/screens/secrets-screen.tsx`:
   - lọc theo bí mật và dự án;
   - nhãn "đã xoá" (FR-044) và "giá trị xuất hiện trong output" (FR-037);
   - nút xoá toàn bộ, có xác nhận.
 
   Thêm chữ vào `i18n.ts`. Kèm test. Sau T010.
-- [ ] T025 [P] [US6] D·vừa — Hub nhận số lượng.
+- [x] T025 [P] [US6] D·vừa — Hub nhận số lượng.
   - `packages/contracts/src/runs.ts`: `secretsInjected?: number` trong kiểu xem kết quả run.
     **[Inference]** Tên kiểu chính xác xem lại khi làm.
   - `apps/hub/src/modules/runs/engine.ts` hoặc `queries.ts`: đọc `report.secretsInjected` (int 0–64).
@@ -355,7 +355,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 5.
 
-- [ ] T026 [US7] D·vừa — Contracts.
+- [x] T026 [US7] D·vừa — Contracts.
   - `packages/contracts/src/policies.ts`:
     - `secretInjection = z.enum(["allow","approve","deny"])`;
     - `agentPolicyInput.secretInjection.default("allow")`;
@@ -367,7 +367,7 @@ không chứa giá trị.
   - Chạy `pnpm openapi`. Thêm test contracts.
 
   Không phụ thuộc task khác, nên làm ngay từ Phase 2.
-- [ ] T027 [US7] D·vừa — Hub.
+- [x] T027 [US7] D·vừa — Hub.
   - `apps/hub/src/modules/governance/policies.ts`: `jobPolicyOf` thêm trường.
   - `apps/hub/src/modules/runs/engine.ts`: gửi `policy` khi
     `hooks.length || managedHooksOnly || secretInjection !== "allow"`.
@@ -378,7 +378,7 @@ không chứa giá trị.
     - `policy_snapshot` có trường.
 
   Sau T026.
-- [ ] T028 [US7] A·nặng — Chính sách và duyệt ở worker.
+- [x] T028 [US7] A·nặng — Chính sách và duyệt ở worker.
   - File mới `worker/internal/secretstore/policy.go` (`secrets-policy.json` theo hub) và `approvals.go`
     (`secret-approvals/<id>.json`, hạn 120 giây, dọn file quá hạn).
   - `grant.go`:
@@ -390,26 +390,26 @@ không chứa giá trị.
   - Test Go đọc fixture `worker-protocol.json` của T026; test mọi nhánh.
 
   Sau T012, T026.
-- [ ] T029 [US7] A·vừa — `worker/internal/runner/runner.go`: `approve` cho run nền chờ file trả lời. Run ghi sự kiện
+- [x] T029 [US7] A·vừa — `worker/internal/runner/runner.go`: `approve` cho run nền chờ file trả lời. Run ghi sự kiện
   chính sách, và khối ngữ cảnh "không có bí mật" khi `deny`, `declined` hoặc `timeout`. Test.
 
   Sau T028, T018.
-- [ ] T030 [US7] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: `secrets approvals`, `secrets approve --id --allow|--deny`.
+- [x] T030 [US7] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: `secrets approvals`, `secrets approve --id --allow|--deny`.
   Phần hỏi `[c/K]` trong terminal thuộc T019 (file của A2), không sửa ở đây.
 
   Sau T028, T022.
-- [ ] T031 [P] [US7] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secret_approvals`, `secret_approve`. Đăng ký ở
+- [x] T031 [P] [US7] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secret_approvals`, `secret_approve`. Đăng ký ở
   `lib.rs`.
 
   Sau T023.
-- [ ] T032 [P] [US7] C·vừa — File mới `apps/desktop/src/components/secret-approval-dialog.tsx` và test.
+- [x] T032 [P] [US7] C·vừa — File mới `apps/desktop/src/components/secret-approval-dialog.tsx` và test.
   - Hỏi `secret_approvals` mỗi 2 giây.
   - Hộp thoại liệt kê tên và dự án, không giá trị; nút mặc định là Từ chối.
   - Gắn vào `apps/desktop/src/shell/app-shell.tsx`.
   - Chữ vi/en ở `i18n.ts`.
 
   Sau T009.
-- [ ] T033 [P] [US7] D·vừa — `apps/web/src/pages/admin/policies-page.tsx`: mục "Bí mật tại máy" với nhóm radio "Cho
+- [x] T033 [P] [US7] D·vừa — `apps/web/src/pages/admin/policies-page.tsx`: mục "Bí mật tại máy" với nhóm radio "Cho
   phép" / "Hỏi trước" / "Không cho"; chỉ xem khi thiếu quyền `policies.write`. Kèm test Playwright web theo vai trò và
   tên.
 
@@ -423,12 +423,12 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 6.
 
-- [ ] T034 [US9] C·nhẹ — `apps/desktop/src/screens/secrets-screen.tsx`:
+- [x] T034 [US9] C·nhẹ — `apps/desktop/src/screens/secrets-screen.tsx`:
   - banner khi `StoreStatus.available=false` hoặc `locked=true`, có cách sửa (FR-062);
   - dòng có `missingInStore` hiện "Kho thiếu giá trị, hãy đặt lại".
 
   Kèm test. Sau T024.
-- [ ] T035 [US9] A2·vừa — Phân loại lỗi kho theo hệ điều hành.
+- [x] T035 [US9] A2·vừa — Phân loại lỗi kho theo hệ điều hành.
   - File mới `worker/internal/secretstore/keyring_{darwin,windows,linux}.go`.
   - Giới hạn 5 giây. Worker không có phiên người dùng thì không gọi API bật hộp thoại (FR-061).
   - `status` trên Linux thử D-Bus.
@@ -440,6 +440,8 @@ không chứa giá trị.
 
   Sau T003, T001.
 
+  Mã và bước CI đã có; kiểm kho thật macOS/Windows và hành vi hộp mở khoá còn chờ CI/T001, không chạy trên máy dev.
+
 ---
 
 ## Phase 11: User Story 8 — Xem lại giá trị, đổi giá trị, gỡ máy (P3)
@@ -448,19 +450,19 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 7.
 
-- [ ] T036 [US8] A·nhẹ — `worker/cmd/hive-worker/secrets.go`:
+- [x] T036 [US8] A·nhẹ — `worker/cmd/hive-worker/secrets.go`:
   - `secrets reveal [--copy]`: ghi dòng `reveal`, `copy` (FR-041);
   - `secrets purge --project|--all`: trả `removed` và `left` (FR-064).
 
   Test: chỉ `reveal` in giá trị ra stdout. Sau T030.
-- [ ] T037 [US8] B·vừa — `apps/desktop/src-tauri/src/secrets.rs`:
+- [x] T037 [US8] B·vừa — `apps/desktop/src-tauri/src/secrets.rs`:
   - `secret_reveal`;
   - `secret_copy`: Rust đặt clipboard, giữ bản so sánh, sau 30 giây xoá nếu chưa đổi, rồi `wipe`;
   - `secrets_purge`.
 
   Thêm `tauri-plugin-clipboard-manager` vào `apps/desktop/src-tauri/Cargo.toml`, quyền vào `capabilities/app.json`,
   đăng ký ở `lib.rs`. Kèm test. Sau T031.
-- [ ] T038 [US8] C·vừa — UI.
+- [x] T038 [US8] C·vừa — UI.
   - `apps/desktop/src/screens/secrets-screen.tsx`:
     - nút Hiện và Sao chép có hộp xác nhận, nút mặc định là Huỷ;
     - giá trị chỉ ở state của dòng, tự ẩn sau 10 giây hoặc khi rời màn (FR-052);
@@ -476,6 +478,7 @@ không chứa giá trị.
   - Không có thì dùng hộp xác nhận.
   - File mới `apps/desktop/src-tauri/src/os_auth.rs`.
   - Thêm phụ thuộc mới vào `Cargo.toml`: cần chủ dự án duyệt trước.
+  - để sau (quyết định 2026-10-23: tuỳ chọn, chưa làm)
 
   Sau T037.
 
@@ -483,14 +486,14 @@ không chứa giá trị.
 
 ## Phase 12: Polish và việc chung
 
-- [ ] T040 [P] D·nhẹ — Tài liệu:
+- [x] T040 [P] D·nhẹ — Tài liệu:
   - ADR mới `docs/adr/0038-local-secrets-keyring.md` (kho hệ điều hành, worker là chủ, chia khối, `secrets exec`, chỉ
     gửi số lượng);
   - `docs/architecture.md`: gói `secretstore`, `secretmask`;
   - `docs/srs.md`: FR của spec 031.
 
   Không sửa `docs/decisions.md`.
-- [ ] T041 A·vừa — Test quét SC-004 trong `worker/internal/secretstore/sc004_test.go`.
+- [x] T041 A·vừa — Test quét SC-004 trong `worker/internal/secretstore/sc004_test.go`.
   - Chạy chuỗi set → assign → Grant run giả → reveal → delete với backend giả.
   - Quét mọi file trong thư mục cấu hình tạm và pending dir giả.
   - Mong đợi: 0 byte giá trị, 0 byte base64 của giá trị.

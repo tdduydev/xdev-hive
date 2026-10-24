@@ -55,10 +55,15 @@ const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"
 const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
+const HubDataPage = lazyRouteComponent(() => import("@/pages/admin/hub-data-page.tsx"), "HubDataPage");
 const RemotePage = lazyRouteComponent(() => import("@/pages/remote/remote-page.tsx"), "RemotePage");
 const RemoteSessionPage = lazyRouteComponent(() => import("@/pages/remote/session-page.tsx"), "RemoteSessionPage");
 const RemotePairPage = lazyRouteComponent(() => import("@/pages/remote/pair-page.tsx"), "RemotePairPage");
 const RemoteDevicesPage = lazyRouteComponent(() => import("@/pages/remote/devices-page.tsx"), "RemoteDevicesPage");
+const ArtifactUsagePage = lazyRouteComponent(
+  () => import("@/pages/admin/artifact-usage-page.tsx"),
+  "ArtifactUsagePage",
+);
 const PublicLinksPage = lazyRouteComponent(() => import("@/pages/admin/public-links-page.tsx"), "PublicLinksPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
@@ -123,6 +128,10 @@ const ServersPage = lazyRouteComponent(() => import("@/pages/settings/servers-pa
 const EnvironmentsPage = lazyRouteComponent(() => import("@/pages/settings/environments-page.tsx"), "EnvironmentsPage");
 const DeployBoardPage = lazyRouteComponent(() => import("@/pages/deploys/board-page.tsx"), "DeployBoardPage");
 const DeployPage = lazyRouteComponent(() => import("@/pages/deploys/deploy-page.tsx"), "DeployPage");
+const DeployApprovalsPage = lazyRouteComponent(
+  () => import("@/pages/deploys/approvals-page.tsx"),
+  "DeployApprovalsPage",
+);
 const SdlcModesPage = lazyRouteComponent(() => import("@/pages/admin/sdlc-modes-page.tsx"), "SdlcModesPage");
 const SdlcFleetPage = lazyRouteComponent(() => import("@/pages/sdlc/fleet-page.tsx"), "SdlcFleetPage");
 const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
@@ -470,6 +479,7 @@ const deliveryRoutes = [
     component: EnvironmentsPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/deploys/$id", component: DeployPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/deploy-approvals", component: DeployApprovalsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/servers", component: ServersPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/ci-connections", component: CiConnectionsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/settings/jenkins-tokens", component: JenkinsTokensPage }),
@@ -541,8 +551,10 @@ const v2Routes = [
     component: McpPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/hub-data", component: HubDataPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/config", component: OrgConfigPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/public-links", component: PublicLinksPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/artifact-usage", component: ArtifactUsagePage }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/admin/audit",

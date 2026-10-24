@@ -223,6 +223,11 @@ export const deployEnvironments = hive
       lockedAt: at("locked_at"),
       lockedBy: text("locked_by"),
       lockReason: text("lock_reason"),
+      /** `worker`: chạy trên máy trong mạng nội bộ; `legacy`: hub tự gọi (HIVE_DELIVERY_OUTBOUND), giữ để chuyển dần. */
+      runner: text("runner").notNull().default("worker"),
+      /** Máy chạy deploy của tổ chức này theo thứ tự ưu tiên; rỗng thì chọn máy nào đủ điều kiện. */
+      runnerMachines: uuid("runner_machines").array().notNull().default(sql`'{}'::uuid[]`),
+      runnerLabelRequired: boolean("runner_label_required").notNull().default(false),
       ...times(),
     },
     (t) => [
@@ -231,6 +236,7 @@ export const deployEnvironments = hive
       foreignKey({ columns: [t.teamId, t.orgId], foreignColumns: [teams.id, teams.orgId] }).onDelete("cascade"),
       check("deploy_environments_lock", sql`(locked_at is null) = (lock_reason is null)`),
       check("deploy_environments_policy", sql`jsonb_typeof(policy) = 'object'`),
+      check("deploy_environments_runner", sql`runner in ('worker', 'legacy')`),
       orgScoped("deploy_environments"),
     ],
   )
@@ -306,6 +312,9 @@ export const deploys = hive
       health: jsonb("health").$type<Record<string, unknown>>(),
       approvalsRequired: integer("approvals_required").notNull().default(0),
       approvalExpiresAt: at("approval_expires_at"),
+      /** Máy đã chạy lần này (log nằm trên máy đó); null khi chưa giao hoặc chạy kiểu cũ. */
+      ranOnWorkerId: uuid("ran_on_worker_id"),
+      ranLegacy: boolean("ran_legacy").notNull().default(false),
       ...times(),
       startedAt: at("started_at"),
       finishedAt: at("finished_at"),
@@ -379,5 +388,71 @@ export const deployApprovals = hive
       check("deploy_approvals_decision", sql`decision in ('approve', 'reject')`),
       orgScoped("deploy_approvals"),
     ],
+  )
+  .enableRLS();
+
+/**
+ * Việc giao cho worker: hub chỉ giữ cấu hình, trạng thái và lịch sử; log nằm trên máy chạy. `last_seq` để nhận trùng
+ * sự kiện (jobId, seq) mà không xử lý hai lần. Tên credential chỉ là tên, không bao giờ là giá trị.
+ */
+export const deliveryJobs = hive
+  .table(
+    "delivery_jobs",
+    {
+      ...identity(),
+      deployId: uuid("deploy_id"),
+      kind: text("kind").notNull(),
+      state: text("state").notNull().default("waiting"),
+      workerId: uuid("worker_id"),
+      configVersion: integer("config_version"),
+      attempt: integer("attempt").notNull().default(1),
+      leaseExpiresAt: at("lease_expires_at"),
+      lastSeq: integer("last_seq").notNull().default(-1),
+      errorCode: text("error_code"),
+      errorMessage: text("error_message"),
+      credentialNames: text("credential_names").array().notNull().default(sql`'{}'::text[]`),
+      /**
+       * `deliveryJobSpec` (trừ jobId) dựng lúc giao: máy nhận đúng cấu hình đã khoá dù đích bị sửa sau đó (FR-021). Chỉ có
+       * tên credential.
+       */
+      spec: jsonb("spec").$type<Record<string, unknown>>().notNull(),
+      /** Việc `waiting`: vì sao chưa có máy nhận (runner-select), hiện cho người bấm. */
+      waitReason: text("wait_reason"),
+      ...times(),
+      finishedAt: at("finished_at"),
+    },
+    (t) => [
+      unique("delivery_jobs_id_org").on(t.id, t.orgId),
+      foreignKey({ columns: [t.deployId, t.orgId], foreignColumns: [deploys.id, deploys.orgId] }).onDelete("cascade"),
+      check(
+        "delivery_jobs_state",
+        sql`state in ('waiting', 'leased', 'running', 'succeeded', 'failed', 'lost', 'canceled')`,
+      ),
+      check("delivery_jobs_kind", sql`kind in ('jenkins-job', 'argocd')`),
+      check("delivery_jobs_attempt", sql`attempt >= 1`),
+      check("delivery_jobs_error_message", sql`error_message is null or char_length(error_message) <= 200`),
+      index("delivery_jobs_org_state").on(t.orgId, t.state),
+      index("delivery_jobs_deploy").on(t.deployId),
+      orgScoped("delivery_jobs"),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Khả năng delivery máy báo theo từng đăng ký (FR-010): cách chạy và TÊN credential trong kho của máy. Bảng riêng của
+ * delivery vì danh sách credential dài hơn nhiều so với `capabilities` của fleet. Không khoá ngoại sang fleet: máy bị
+ * thu hồi thì dòng còn đó nhưng không bao giờ trực tuyến nên không được chọn.
+ */
+export const deliveryRunners = hive
+  .table(
+    "delivery_runners",
+    {
+      ...identity(),
+      machineId: uuid("machine_id").notNull(),
+      methods: text("methods").array().notNull().default(sql`'{}'::text[]`),
+      credentials: text("credentials").array().notNull().default(sql`'{}'::text[]`),
+      reportedAt: at("reported_at").notNull().defaultNow(),
+    },
+    (t) => [unique("delivery_runners_org_machine").on(t.orgId, t.machineId), orgScoped("delivery_runners")],
   )
   .enableRLS();

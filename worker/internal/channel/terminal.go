@@ -10,6 +10,7 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/pty"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 )
 
@@ -172,6 +173,11 @@ type termLink struct {
 var _ terminal.Sender = (*termLink)(nil)
 
 func newTermLink(ctx context.Context, j *jobs, w Welcome) *termLink {
+	if j.cfg.Projects != "" && w.Policy != nil && w.Policy.SecretInjection != "" {
+		if err := secretstore.SavePolicy(j.cfg.Projects, j.cfg.HubURL, w.Policy.SecretInjection); err != nil {
+			j.log.Warn("Không lưu được chính sách bí mật tại máy")
+		}
+	}
 	return &termLink{j: j, ctx: ctx, enabled: slices.Contains(w.Features, featureTerminal)}
 }
 

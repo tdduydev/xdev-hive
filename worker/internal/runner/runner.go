@@ -19,6 +19,10 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+	"github.com/tdduydev/xdev-hive/worker/internal/redact"
+	"github.com/tdduydev/xdev-hive/worker/internal/runlogs"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
 
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
@@ -67,6 +71,7 @@ func Binary(cli string) string {
 }
 
 type Job struct {
+	RunLogRetentionDays                             int
 	Execution                                       string
 	SandboxPolicy                                   *SandboxJobConfig
 	RunID                                           string
@@ -94,8 +99,12 @@ type Job struct {
 	Policy JobPolicy
 	// ProjectID là id dự án trên hub. LocalRepo là thư mục repo máy đã gắn với dự án đó (projects.json, ADR 0020):
 	// có thì worktree của run tạo từ repo này thay vì repo cache bare. Runner host bỏ qua.
-	ProjectID string
-	LocalRepo string
+	ProjectID     string
+	LocalRepo     string
+	LocalID       string
+	grantedEnv    map[string]string
+	grantedValues []string
+	secretSink    *secretSink
 	// Checks là lệnh kiểm của quy trình review code (spec.checks.commands); chạy sau khi agent xong, trước khi đẩy.
 	// Chỉ run code dùng; run chỉ đọc bỏ qua.
 	Checks []CheckCommand
@@ -105,7 +114,9 @@ type Job struct {
 	BriefSHA string
 	// TaskText là tiêu đề, mô tả và kế hoạch đã duyệt của task (spec.taskText), nguồn từ khoá của context pack; rỗng
 	// với hub cũ (lấy từ prompt).
-	TaskText  string
+	TaskText string
+	// Git là token git theo run của hub (lease.git); nil là dùng thông tin git của máy.
+	Git       *RunGit
 	workspace string
 	repoCache string
 	// savingEnv và accountID do Run tính từ cấu hình máy và tài khoản đã giữ; nằm trên Job để đường sandbox và đường
@@ -146,12 +157,13 @@ type SinkFunc func(Event) error
 func (f SinkFunc) Emit(e Event) error { return f(e) }
 
 type Result struct {
-	Status       string     `json:"status"`
-	HeadSHA      string     `json:"headSha,omitempty"`
-	CommitCount  int        `json:"commitCount"`
-	ChangedFiles []string   `json:"changedFiles"`
-	DiffStats    *DiffStats `json:"-"`
-	Error        string     `json:"error,omitempty"`
+	SecretsInjected int        `json:"secretsInjected,omitempty"`
+	Status          string     `json:"status"`
+	HeadSHA         string     `json:"headSha,omitempty"`
+	CommitCount     int        `json:"commitCount"`
+	ChangedFiles    []string   `json:"changedFiles"`
+	DiffStats       *DiffStats `json:"-"`
+	Error           string     `json:"error,omitempty"`
 	// Commands đi vào report.commands của run_result; nil (không có lệnh kiểm) thì không xuất hiện, để hub phân biệt
 	// với worker cũ chỉ khi spec có checks.commands.
 	Commands []CommandResult `json:"commands,omitempty"`
@@ -197,9 +209,11 @@ func CommandsFromEnv() (map[string]Command, error) {
 }
 
 type Runner struct {
-	DataDir     string
-	CLICommands map[string]Command
-	Sandbox     *SandboxConfig
+	SecretStore  *secretstore.Store
+	WorkerConfig string
+	DataDir      string
+	CLICommands  map[string]Command
+	Sandbox      *SandboxConfig
 	// Account là tài khoản CLI đã giữ cho run (spec 008 US13); nil là đăng nhập mặc định. Runner host (sandbox) bỏ qua.
 	Account *accounts.Lease
 	// TokenSaving, nếu có, thay HIVE_WORKER_TOKEN_SAVING (code đặt thắng biến môi trường, như CLICommands).
@@ -286,6 +300,17 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := os.MkdirAll(r.DataDir, 0700); err != nil {
 		return err
 	}
+	store := runlogs.Store{Dir: filepath.Join(r.DataDir, "runlogs")}
+	if err := store.Cleanup(time.Now()); err != nil {
+		return err
+	}
+	logFile, err := store.Open(runlogs.Entry{RunID: job.RunID, Attempt: job.Attempt, ProjectID: job.ProjectID, CLI: job.CLI, RetentionDays: job.RunLogRetentionDays})
+	if err != nil {
+		return fmt.Errorf("Không mở được log tại máy: %w", err)
+	}
+	defer func() { retErr = errors.Join(retErr, logFile.Close()) }()
+	exact := append(secretValues(job.Env), secretValues(job.SetupEnv)...)
+	sink = &runLogSink{file: logFile, next: sink, job: job, stream: redact.Stream{Exact: exact}}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "prepare"}); err != nil {
 		return err
 	}
@@ -307,6 +332,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	// worktreeGit là gitdir riêng của worktree trong repo; pushed: nhánh của run đã lên origin.
 	var worktreeGit string
 	pushed := false
+	secretsInjected := 0
 	defer func() {
 		// Xoá file của worktree lớn mất cả giây: dời thư mục sang chỗ bỏ (tức thì) rồi chỉ prune trong khoá, xoá file
 		// sau khi gửi kết quả. Không dời được (Windows còn process giữ file) thì gỡ như cũ.
@@ -344,6 +370,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			result = &Result{Status: status, Error: retErr.Error()}
 		}
 		if result != nil {
+			result.SecretsInjected = secretsInjected
 			result.Repo = repo
 			if e := emit(sink, Event{Type: "result", RunID: job.RunID, Attempt: job.Attempt, Result: result}); e != nil {
 				retErr = errors.Join(retErr, e)
@@ -358,7 +385,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := os.MkdirAll(filepath.Dir(src.dir), 0700); err != nil {
 			return err
 		}
-		if err := cloneOnce(ctx, r.DataDir, job.RepoURL, src.dir); err != nil {
+		if err := cloneOnce(ctx, job.Git.auth(job.RepoURL), r.DataDir, job.RepoURL, src.dir); err != nil {
 			return err
 		}
 	}
@@ -367,7 +394,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		// Run review cần cả nhánh run cha; một lệnh fetch cho hai nhánh đỡ một lần nối và thương lượng với remote.
 		fetch = append(fetch, job.Branch+":refs/remotes/origin/"+job.Branch)
 	}
-	if err := gitWrite(ctx, src.lock, src.dir, fetch...); err != nil {
+	if err := gitWriteAuth(ctx, job.Git.originAuth(ctx, src.dir, false), src.lock, src.dir, fetch...); err != nil {
 		return err
 	}
 	if job.Kind == KindReview {
@@ -443,6 +470,25 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			return err
 		}
 	}
+	granted, err := r.grantSecrets(ctx, job)
+	if err != nil {
+		return err
+	}
+	job.grantedEnv, job.grantedValues = granted.Env, granted.Values
+	secretsInjected = len(granted.Names)
+	var secure *secretSink
+	secretBase := ""
+	if len(granted.Values) > 0 {
+		secure = newSecretSink(sink, secretmask.New(granted.Values), r.WorkerConfig, granted)
+		job.secretSink = secure
+		sink = secure
+		defer func() { retErr = secure.safeError(retErr) }()
+		secretBase, err = gitOutput(ctx, work, "rev-parse", "HEAD")
+		if err != nil {
+			return err
+		}
+		secretBase = strings.TrimSpace(secretBase)
+	}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "running"}); err != nil {
 		return err
 	}
@@ -488,6 +534,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	// mục CodeGraph lần đầu mất vài chục giây) hiện ngay trong log của run.
 	stdoutLog := &logWriter{sink: sink, job: job, name: "stdout"}
 	stderrLog := &logWriter{sink: sink, job: job, name: "stderr"}
+	if len(granted.Items) > 0 {
+		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Chính sách bí mật tại máy: %s; kết quả: %s; đã cấp %d biến.\n", granted.Policy, granted.Outcome, len(granted.Names))
+	}
 	job.codegraph = r.prepareCodeGraph(runCtx, job, work, stderrLog)
 	if job.rtk = r.prepareRTK(runCtx, job, stderrLog); job.rtk != nil {
 		defer job.rtk.cleanup()
@@ -517,6 +566,11 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			}
 		}
 	}
+	contextCleanup, err := r.attachSecretContext(&job, secretContext(granted))
+	if err != nil {
+		return err
+	}
+	defer contextCleanup()
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
@@ -527,7 +581,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	process := cmd.Cmd
 	process.Dir = work
 	// job.Env của dự án đặt sau nhóm tiết kiệm token: biến dự án đã đặt rõ thì không bị mặc định đè.
-	process.Env = mergeEnv(os.Environ(), mergeMap(job.savingEnv, job.Env))
+	process.Env = secretstore.MergeEnv(mergeEnv(os.Environ(), mergeMap(job.savingEnv, job.Env)), job.grantedEnv)
 	if r.Sandbox == nil {
 		// Đặt sau job.Env để spec của hub không đổi được thư mục đăng nhập của máy.
 		process.Env = mergeEnv(r.Account.Base(process.Env), r.Account.Env())
@@ -694,6 +748,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		result = &Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), ChangedFiles: []string{}}
 		return nil
 	}
+	if err := blockSecretChanges(ctx, work, secretBase, secure); err != nil {
+		return err
+	}
 	countText, err := gitOutput(ctx, work, "rev-list", "--count", "origin/"+job.BaseBranch+"..HEAD")
 	if err != nil {
 		return err
@@ -729,7 +786,10 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		}
 		// Không -u: upstream không ai đọc, mà ghi nó vào config chung thì push (chờ mạng) phải giữ khoá repo cache và
 		// config phình thêm một mục mỗi run. Push không ghi gì vào cache nên chạy ngoài khoá.
-		if err := gitRetryLocked(ctx, work, "push", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
+		if err := blockSecretChanges(ctx, work, secretBase, secure); err != nil {
+			return err
+		}
+		if err := gitRetryAuth(ctx, job.Git.originAuth(ctx, work, true), work, "push", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
@@ -808,7 +868,7 @@ func mustReadDir(p string) []os.DirEntry { v, _ := os.ReadDir(p); return v }
 
 // cloneOnce kiểm cache có chưa ngay trong khoá: hai run đầu tiên của một repo cùng thấy cache chưa có và cùng clone
 // vào một thư mục.
-func cloneOnce(ctx context.Context, dataDir, repoURL, cache string) error {
+func cloneOnce(ctx context.Context, auth gitAuth, dataDir, repoURL, cache string) error {
 	unlock, err := lockRepo(ctx, cache)
 	if err != nil {
 		return err
@@ -817,7 +877,7 @@ func cloneOnce(ctx context.Context, dataDir, repoURL, cache string) error {
 	if _, err := os.Stat(cache); !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return gitRetryLocked(ctx, dataDir, "clone", "--bare", repoURL, cache)
+	return gitRetryAuth(ctx, auth, dataDir, "clone", "--bare", repoURL, cache)
 }
 
 // addWorktree chỉ giữ khoá repo cache lúc git đăng ký worktree (sửa config, ref chung). Checkout ghi index riêng của

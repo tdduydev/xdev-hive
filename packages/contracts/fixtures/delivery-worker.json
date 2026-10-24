@@ -1,0 +1,209 @@
+{
+  "jobSpecs": [
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+      "kind": "jenkins-job",
+      "deployId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4ed1",
+      "configVersion": 3,
+      "target": {
+        "baseUrl": "https://jenkins.bv.local/",
+        "job": "his/portal/deploy-prod"
+      },
+      "credential": "jenkins-prod",
+      "params": {
+        "parameters": {
+          "TAG": "v1.4.2",
+          "DEPLOY_DIR": "D:\\apps\\his-portal",
+          "CONFIG": "/etc/his/portal.yaml",
+          "REPLICAS": 3
+        }
+      },
+      "timeoutSeconds": 1800
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e02",
+      "kind": "argocd",
+      "deployId": null,
+      "configVersion": 0,
+      "target": {
+        "baseUrl": "https://argocd.bv.local",
+        "app": "his-portal"
+      },
+      "credential": "argocd-prod",
+      "params": {
+        "action": "sync",
+        "revision": "v1.4.2"
+      },
+      "timeoutSeconds": 600
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e03",
+      "kind": "jenkins-job",
+      "deployId": null,
+      "configVersion": 1,
+      "target": {
+        "baseUrl": "https://jenkins.bv.local/",
+        "job": "his/portal/deploy-prod"
+      },
+      "credential": "jenkins-missing",
+      "params": {},
+      "timeoutSeconds": 1800
+    }
+  ],
+  "runs": [
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+      "events": [
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+          "seq": 0,
+          "type": "started",
+          "at": "2026-10-23T08:00:00Z",
+          "workerId": "w-build-01"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+          "seq": 1,
+          "type": "step",
+          "at": "2026-10-23T08:00:00Z",
+          "name": "Bấm build",
+          "state": "running"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+          "seq": 2,
+          "type": "step",
+          "at": "2026-10-23T08:00:00Z",
+          "name": "Bấm build",
+          "state": "succeeded"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+          "seq": 3,
+          "type": "external",
+          "at": "2026-10-23T08:00:00Z",
+          "ref": "his/portal/deploy-prod#42",
+          "url": "https://jenkins.bv.local/job/his/job/portal/job/deploy-prod/42/"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+          "seq": 4,
+          "type": "step",
+          "at": "2026-10-23T08:00:00Z",
+          "name": "Chờ build",
+          "state": "running"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+          "seq": 5,
+          "type": "step",
+          "at": "2026-10-23T08:00:00Z",
+          "name": "Chờ build",
+          "state": "succeeded"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+          "seq": 6,
+          "type": "finished",
+          "at": "2026-10-23T08:00:00Z",
+          "state": "succeeded"
+        }
+      ]
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e02",
+      "events": [
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e02",
+          "seq": 0,
+          "type": "started",
+          "at": "2026-10-23T08:00:00Z",
+          "workerId": "w-build-01"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e02",
+          "seq": 1,
+          "type": "external",
+          "at": "2026-10-23T08:00:00Z",
+          "ref": "his-portal"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e02",
+          "seq": 2,
+          "type": "step",
+          "at": "2026-10-23T08:00:00Z",
+          "name": "Sync",
+          "state": "running"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e02",
+          "seq": 3,
+          "type": "step",
+          "at": "2026-10-23T08:00:00Z",
+          "name": "Sync",
+          "state": "succeeded"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e02",
+          "seq": 4,
+          "type": "finished",
+          "at": "2026-10-23T08:00:00Z",
+          "state": "succeeded"
+        }
+      ]
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e03",
+      "events": [
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e03",
+          "seq": 0,
+          "type": "started",
+          "at": "2026-10-23T08:00:00Z",
+          "workerId": "w-build-01"
+        },
+        {
+          "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e03",
+          "seq": 1,
+          "type": "finished",
+          "at": "2026-10-23T08:00:00Z",
+          "state": "failed",
+          "error": {
+            "code": "missing_credential",
+            "message": "Máy này chưa có credential \"jenkins-missing\". Thêm ở màn Bí mật."
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+      "seq": 7,
+      "type": "step",
+      "at": "2026-10-23T08:00:00.000Z",
+      "name": "Chờ build",
+      "state": "failed",
+      "exitCode": 1
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+      "seq": 8,
+      "type": "step",
+      "at": "2026-10-23T08:00:00Z",
+      "name": "Chờ duyệt",
+      "state": "skipped"
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e01",
+      "seq": 9,
+      "type": "finished",
+      "at": "2026-10-23T08:00:00Z",
+      "state": "canceled",
+      "error": {
+        "code": "canceled",
+        "message": "Đã huỷ."
+      }
+    }
+  ]
+}

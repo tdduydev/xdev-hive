@@ -236,6 +236,64 @@ test("xem file sinh ra theo dự án và mở PR ngay", async ({ page }) => {
   await expect(page.getByText("Đã xếp việc mở PR cho các dự án.")).toBeVisible();
 });
 
+test("bí mật tại máy: chọn Hỏi trước rồi lưu riêng mục, hub chỉ nhận lựa chọn", async ({ page }) => {
+  const hub = await setup(page, "admin", policyOf());
+  await page.goto("/admin/policies");
+  const secrets = section(page, "Bí mật tại máy");
+  await expect(secrets.getByRole("radio", { name: /Cho phép/ })).toBeChecked();
+  await expect(secrets.getByRole("button", { name: "Lưu" })).toBeDisabled();
+  await secrets.getByRole("radio", { name: /Hỏi trước/ }).check();
+  await secrets.getByRole("button", { name: "Lưu" }).click();
+  await expect(secrets.getByText("Đã lưu.", { exact: false })).toBeVisible();
+  const saved = hub.rpcCalls.filter((c) => c.path === "policies/update").map((c) => c.input as AgentPolicyInput);
+  expect(saved).toHaveLength(1);
+  expect(saved[0]?.secretInjection).toBe("approve");
+  // Chỉ có giá trị chọn, không có tên hay giá trị bí mật nào trong lời gọi.
+  expect(JSON.stringify(saved[0])).not.toMatch(/secrets?(Names?|Values?)/i);
+});
+
+test("bí mật tại máy: thành viên không có quyền ghi chỉ xem", async ({ page }) => {
+  await setup(page, "member", policyOf({ secretInjection: "deny" }), []);
+  await page.goto("/admin/policies");
+  const secrets = section(page, "Bí mật tại máy");
+  await expect(secrets.getByRole("radio", { name: /Không cho/ })).toBeChecked();
+  await expect(secrets.getByRole("radio", { name: /Cho phép/ })).toBeDisabled();
+  await expect(secrets.getByRole("radio", { name: /Hỏi trước/ })).toBeDisabled();
+  await expect(secrets.getByRole("button", { name: "Lưu" })).toHaveCount(0);
+});
+
+test("token Git theo run: bật bắt buộc rồi lưu riêng mục, không gửi kèm bản nháp mục khác", async ({ page }) => {
+  const hub = await setup(page, "admin", policyOf());
+  await page.goto("/admin/policies");
+  const git = section(page, "Token Git theo run");
+  await expect(git.getByText("Dự án kết nối bằng PAT sẽ chờ", { exact: false })).toBeVisible();
+  const require = git.getByRole("switch", { name: "Bắt buộc token Git theo run" });
+  await expect(require).not.toBeChecked();
+  await expect(git.getByRole("button", { name: "Lưu" })).toBeDisabled();
+
+  const perm = section(page, "Quyền CLI");
+  await perm.getByRole("switch", { name: "Bắt buộc sandbox" }).click();
+  await require.click();
+  await expect(git.getByText("Có thay đổi chưa lưu")).toBeVisible();
+  await git.getByRole("button", { name: "Lưu" }).click();
+  await expect(git.getByText("Đã lưu.", { exact: false })).toBeVisible();
+  await expect(require).toBeChecked();
+  const saved = hub.rpcCalls.filter((c) => c.path === "policies/update").map((c) => c.input as AgentPolicyInput);
+  expect(saved).toHaveLength(1);
+  expect(saved[0]?.git).toEqual({ requireRunGitToken: true });
+  // Sandbox sửa dở ở mục Quyền CLI không đi theo lần lưu này.
+  expect(saved[0]?.requireSandbox).toBe(DEFAULT_AGENT_POLICY.requireSandbox);
+  await expect(perm.getByText("Có thay đổi chưa lưu")).toBeVisible();
+});
+
+test("token Git theo run: thành viên chỉ xem", async ({ page }) => {
+  await setup(page, "member", policyOf({ git: { requireRunGitToken: true } }), []);
+  await page.goto("/admin/policies");
+  const require = section(page, "Token Git theo run").getByRole("switch", { name: "Bắt buộc token Git theo run" });
+  await expect(require).toBeChecked();
+  await expect(require).toBeDisabled();
+});
+
 test("quản trị không có quyền toàn quyền CLI không mở lại được công tắc đã tắt", async ({ page }) => {
   await setup(page, "admin", policyOf({ allowFullPermission: false }));
   await page.goto("/admin/policies");

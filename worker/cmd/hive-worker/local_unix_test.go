@@ -88,7 +88,7 @@ func TestWorkerStatusOp(t *testing.T) {
 	observe := status.observe(func(s channel.Status) { seen = append(seen, s.State) })
 	observe(channel.Status{State: "online"})
 	// Hai marker là hai run đang chạy; file không phải .json (marker đang ghi dở) không tính.
-	active := filepath.Join(dir, "xdev-hive", "worker", "active")
+	active := filepath.Join(dir, "active")
 	if err := os.MkdirAll(active, 0o700); err != nil {
 		t.Fatal(err)
 	}

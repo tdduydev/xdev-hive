@@ -4,7 +4,8 @@
 
 **Created**: 2026-10-13
 
-**Status**: Draft (đã ghi quyết định của product owner ngày 2026-10-13, xem Clarifications)
+**Status**: Đã làm US1–US6 (2026-10-23). US7 (PWA, thông báo đẩy) và US8 (xem cùng) ngoài phạm vi từ 2026-10-23, xem
+Out of Scope. Quyết định của product owner ngày 2026-10-13 ở Clarifications.
 
 **Input**: Yêu cầu của product owner (nguyên văn): "có thể tự viết cli hem, sau này có thể làm remote cli trên app luôn,
 trên dt ấy". Đã chốt: (1) CLI của Hive bọc agent có sẵn (Claude Code, Codex, Gemini CLI, Antigravity), không tự viết
@@ -187,11 +188,12 @@ trong ≤ 2 giây điện thoại mất quyền và bị đóng kết nối, phi
    thu mọi quyền điều khiển từ xa, đóng người xem, kết thúc phiên mở từ xa (SIGHUP, 10 giây rồi kill), giữ phiên mở tại
    máy, gửi `term_state` cho hub.
 2. **Given** chủ máy hoặc quản trị đội bấm "Tắt từ xa cho máy này" trên web, **Then** hub gửi `term_disable`, kết quả như
-   trên; muốn bật lại phải làm tại máy.
+   trên; muốn bật lại phải làm tại máy. (Hiện có route hub `POST /v1/remote/machines/{machineId}/disable`; web chưa có
+   nút.)
 3. **Given** bấm "Ngắt" một phiên trên web hoặc app, **Then** phiên kết thúc trong ≤ 10 giây, sự kiện `exit` ghi lý do
    và người ngắt.
 4. **Given** phiên mở từ xa không có client nào gắn và không có output trong 2 giờ, hoặc đã chạy quá 12 giờ (mặc định,
-   chỉnh tại máy), **Then** worker kết thúc phiên và gửi thông báo đẩy.
+   chỉnh tại máy), **Then** worker kết thúc phiên (thông báo đẩy ngoài phạm vi, xem US7).
 5. **Given** bất kỳ thao tác nào trong: bật/tắt, thêm/gỡ thư mục, ghép/gỡ thiết bị, mở/từ chối phiên, gắn/tách người
    xem, cấp/thu/giành quyền điều khiển, đổi kích thước, gói nhập bị từ chối, ngắt, phiên kết thúc, **Then** hub ghi
    `audit_log` (`terminal.*`) và worker ghi một dòng JSON vào `remote-audit.log` tại máy. Nội dung phím gõ không được ghi
@@ -226,6 +228,9 @@ hub có sự kiện `steer` và CLI in "Đã gửi chỉ dẫn (đã nhận)" kh
 
 ### User Story 7 - Cài web lên màn hình chính và nhận thông báo đẩy (Priority: P2)
 
+**Ngoài phạm vi từ 2026-10-23** (tính năng web mới; việc chạy và xem phiên agent thuộc desktop và worker). Giữ để tham
+khảo, xem Out of Scope.
+
 Trên điện thoại, dev cài web của hub lên màn hình chính (PWA). Khi agent trong phiên của mình cần trả lời (Claude hỏi
 quyền chạy lệnh, chờ câu tiếp), phiên kết thúc, hay có phiên mới mở từ xa, điện thoại nhận thông báo đẩy; chạm vào thì
 mở thẳng màn terminal của phiên.
@@ -249,6 +254,8 @@ thông báo → hub lưu subscription; CLI giả gọi hook "attention" → hub 
 ---
 
 ### User Story 8 - Người khác xem cùng phiên (chỉ xem) (Priority: P3)
+
+**Ngoài phạm vi từ 2026-10-23**, như US7. Phiên máy cá nhân chỉ chủ xem.
 
 Chủ phiên bật "Cho đội xem" để người review hay lead xem trực tiếp (ví dụ khi pair). Người xem không gõ được, không lấy
 được quyền điều khiển.
@@ -290,10 +297,10 @@ mở → "Không tìm thấy phiên".
 - **Mất điện thoại có app Authenticator** (khoá TOTP nằm trong app): chủ máy tắt TOTP và tạo khoá mới tại máy; khoá cũ hết
   hiệu lực ngay.
 - **Worker mất kết nối hub**: PTY chạy tiếp; output vào bộ đệm đĩa (tối đa 32 MB mỗi phiên, quá thì bỏ phần cũ nhất và
-  ghi sự kiện `gap`); quyền điều khiển từ xa bị thu; nối lại thì gửi bù.
+  ghi sự kiện `gap`); quyền điều khiển từ xa giữ 2 phút như FR-021, quá thì bị thu; nối lại thì gửi bù.
 - **Hub khởi động lại**: bộ đệm vòng trong bộ nhớ mất; client nối lại được phát lại từ `terminal_chunks`.
 - **Output dồn dập** (`cat` file lớn, build log): hub cắt luồng trực tiếp quá 512 KB/s mỗi người xem; client chậm (đệm WS
-  > 1 MB) bị bỏ khung và nhận "đồng bộ lại" (reset + đuôi 256 KB). Bản ghi vẫn đủ.
+  > 1 MB) bị bỏ khung và nhận "đồng bộ lại" (reset + đuôi 128 KiB). Bản ghi vẫn đủ.
 - **Hai thiết bị cùng xin điều khiển**: thiết bị sau được (đều của chủ máy), thiết bị trước chuyển chỉ xem với thông báo.
 - **Assertion bị phát lại**: nonce đã thấy hoặc lệch giờ quá 120 giây → từ chối `ASSERTION_REPLAY`/`ASSERTION_STALE`.
 - **Đồng hồ máy lệch**: worker so `ts` với giờ của chính nó; lệch quá 120 giây thì báo "Đồng hồ máy lệch" cho chủ.
@@ -341,9 +348,9 @@ Worker giữ phiên (US1, US3)
 - **FR-008 (RMT-02)**: Worker MUST chạy CLI trong PTY (ConPTY trên Windows) với biến môi trường theo danh sách cho phép
   như run (không có machine token, token cá nhân, biến `HIVE_*`), giữ PTY khi mọi client tách, và chỉ có **một** người
   điều khiển tại một thời điểm.
-- **FR-009 (RMT-03)**: Worker MUST gửi output của phiên được ghi lên hub bằng `term_output{sessionId, offset, bytes}` gom
-  tối đa 8 ms hoặc 32 KiB, giữ phần chưa ack trên đĩa (tối đa 32 MB mỗi phiên) và gửi lại khi nối lại; hub loại trùng theo
-  `(session_id, offset)`.
+- **FR-009 (RMT-03)**: Worker MUST gửi output của phiên được ghi lên hub bằng `term_output{sessionId, seq, data}` gom
+  tối đa 8 ms hoặc 32 KiB, giữ phần chưa ack (`term_ack`) trên đĩa (tối đa 32 MB mỗi phiên) và gửi lại khi nối lại; hub
+  loại trùng theo `(session_id, seq)`.
 - **FR-010 (RMT-03)**: Worker MUST che giá trị bí mật đã biết (machine token, token cá nhân, run token) trong output trước
   khi gửi lên hub.
 
@@ -375,8 +382,9 @@ Mở phiên và điều khiển từ xa (US3, US4)
   `challenge = SHA-256(JSON chuẩn hoá {machineId, action, params, ephPub, ts, nonce})`; worker MUST kiểm chữ ký ES256 bằng
   khoá của thiết bị đã ghép, `origin` bằng URL hub trong `worker.json`, `rpIdHash`, `ts` trong ±120 giây, `nonce` chưa
   dùng (bộ nhớ 10 phút), `signCount` không lùi (khi khác 0), và người dùng trong yêu cầu bằng người đã ghép thiết bị.
-  Khi hub chạy HTTP, yêu cầu có thể mang mã TOTP thay cho assertion theo FR-033…FR-037; hub MUST không bao giờ chấp nhận
-  mã TOTP thay cho assertion trên origin HTTPS khi thiết bị đã ghép passkey, trừ khi chủ máy bật riêng tại máy.
+  Khi hub chạy HTTP, yêu cầu có thể mang mã TOTP thay cho assertion theo FR-033…FR-037; worker MUST không bao giờ chấp
+  nhận mã TOTP thay cho assertion trên origin HTTPS, trừ khi chủ máy bật riêng tại máy (`totp-on-https`). Hub không kiểm
+  điều này vì hub không phải bên tin cậy.
 - **FR-017 (RMT-06)**: Khi cấp quyền điều khiển, điện thoại và worker MUST suy ra khoá phiên bằng ECDH P-256 (khoá tạm
   của điện thoại nằm trong `params` đã ký) và HKDF-SHA256; mọi `term_input` và `term_resize` từ điện thoại MUST mang
   `seq` tăng nghiêm ngặt và HMAC-SHA256 (cắt 16 byte) trên `connId‖seq‖data`; worker bỏ gói sai.
@@ -386,7 +394,7 @@ Mở phiên và điều khiển từ xa (US3, US4)
 - **FR-019 (RMT-06)**: Phiên mở từ xa MUST áp chính sách agent của tổ chức như run (model, mức quyền) và MUST NOT chạy chế
   độ bỏ hỏi quyền trừ khi chủ máy bật riêng "Cho phiên từ xa chạy toàn quyền" tại máy và chính sách cho phép.
 - **FR-020 (RMT-06)**: Chủ máy MUST chọn được "Hỏi trên máy mỗi lần" (mặc định tắt); khi bật, worker chờ xác nhận tại máy
-  tối đa 60 giây.
+  tối đa khoảng 50 giây (`DefaultConfirmWait`), để kịp trả lời trước khi hub hết chờ (60 giây + 10).
 - **FR-021 (RMT-07)**: Quyền điều khiển MUST hết khi không có phím 15 phút (mặc định, 1–120); mất kết nối ≤ 2 phút thì nối
   lại dùng tiếp khoá cũ, quá thì xin lại. Terminal tại máy MUST luôn giành lại được quyền.
 
@@ -394,18 +402,19 @@ Ngắt và giới hạn (US5)
 
 - **FR-022 (RMT-07)**: Tắt từ xa (app, khay, `hive remote off`, web) MUST trong ≤ 2 giây thu mọi quyền từ xa, đóng người xem
   từ xa, kết thúc phiên mở từ xa và giữ phiên mở tại máy.
-- **FR-023 (RMT-07)**: Worker MUST kết thúc phiên không có client và không có output 2 giờ, và phiên mở từ xa chạy quá 12 giờ
-  (mặc định, chỉnh tại máy).
+- **FR-023 (RMT-07)**: Worker MUST kết thúc phiên mở từ xa không có client và không có output 2 giờ, và phiên mở từ xa
+  chạy quá 12 giờ (mặc định, chỉnh tại máy). Phiên mở tại máy (`hive chat`) không bị các giới hạn này (US5-4, Q5).
 - **FR-024 (RMT-07)**: Chủ phiên và quản trị đội MUST ngắt được phiên trên web; chủ máy ngắt được trên app và `hive kill`.
 
 Hub, web, ghi lại (US1, US3, US7, US8)
 
-- **FR-025 (RMT-03)**: Module hub `terminal` MUST lưu phiên (`terminal_sessions`), output (`terminal_chunks`, gộp tới
-  64 KiB hoặc 1 giây), sự kiện (`terminal_events`), bản sao danh sách thiết bị (`remote_devices`) và subscription đẩy
-  (`push_subscriptions`); RLS bật và ép; bản ghi xoá theo số ngày lưu log của chính sách agent.
-- **FR-026 (IF-07)**: Hub MUST mở `/ws/terminal` nhận vé dùng một lần 60 giây từ `terminal.ticket`, kiểm `Origin`, phát
-  output trực tiếp từ bộ đệm vòng 512 KiB mỗi phiên và nối lại theo offset; người xem chỉ nhận output và trạng thái; gói
-  nhập từ kết nối không phải người điều khiển bị đóng 4403.
+- **FR-025 (RMT-03)**: Module hub `terminal` MUST lưu phiên (`terminal_sessions`), output (`terminal_chunks`, mỗi
+  dòng một gói `term_output` của worker; gộp tới 64 KiB hoặc 1 giây chưa làm), sự kiện (`terminal_events`), bản sao
+  danh sách thiết bị (`remote_devices`) và subscription đẩy (`push_subscriptions`); RLS bật và ép; bản ghi xoá theo số
+  ngày lưu log của chính sách agent.
+- **FR-026 (IF-07)**: Hub MUST mở `/ws/terminal` nhận vé dùng một lần 60 giây từ `remote.ticket`, kiểm `Origin`, phát
+  output trực tiếp từ bộ đệm vòng 512 KiB mỗi phiên và nối lại theo `seq` (`{after}`); người xem chỉ nhận output và
+  trạng thái; gói nhập từ kết nối không phải người điều khiển bị đóng 4403.
 - **FR-027 (RMT-09)**: Web MUST có các màn: danh sách máy và phiên (`/remote`), terminal (`/remote/sessions/:id`, xterm.js,
   thanh phím Esc, Tab, Ctrl giữ, mũi tên, Ctrl-C, ô soạn dòng cho bộ gõ tiếng Việt, cỡ chữ), mở phiên mới, ghép thiết bị
   (`/remote/pair`), thiết bị; dùng được ở 360 px, sáng và tối.
@@ -483,7 +492,9 @@ Audit (US5)
 - **SC-007**: Màn danh sách và màn terminal dùng được ở 360 px không cuộn ngang trang (terminal tự co cỡ chữ hoặc cuộn
   riêng trong khung), sáng và tối (NFR-11, Playwright).
 - **SC-008**: Một hub với 50 phiên trực tiếp, mỗi phiên 3 người xem và 20 KB/s output: CPU tiến trình `api` tăng ≤ 15%
-  và không mất khung với người xem nhanh (test hiệu năng).
+  và không mất khung với người xem nhanh (test hiệu năng). "Tăng ≤ 15%" chưa rõ là 15% một lõi hay của máy; test
+  `apps/hub/src/terminal-perf.db.test.ts` đo 43.9–48.6% một lõi trên máy dev Windows, nên chưa đạt nếu hiểu là 15% một
+  lõi.
 - **SC-009**: Từ lúc cài app tới khi điều khiển được phiên đầu tiên trên điện thoại ≤ 3 phút cho người dùng mới theo
   hướng dẫn trên màn (đo thủ công trước khi phát hành).
 - **SC-010**: Worker và hub ở mọi tổ hợp cũ/mới vẫn chạy run như trước; test `worker_e2e_test.go` và `fleet.db.test.ts`
@@ -509,6 +520,9 @@ Audit (US5)
 - Tách số liệu token/chi phí của phiên tương tác vào báo cáo chi phí (OPS-03); có thể đọc transcript sau.
 - Nhiều tiến trình `api` chia nhau kết nối terminal (theo NFR-15).
 - Truyền file, xem diff hay trình soạn thảo trên điện thoại ngoài terminal.
+- Từ 2026-10-23: US7 và FR-028 (PWA đầy đủ, thông báo đẩy, tín hiệu "agent cần bạn"), US8 và FR-029 (đội xem cùng
+  phiên). Bảng `push_subscriptions` (migration 0071) và route `pushKey|pushSubscribe|pushUnsubscribe` trong contracts
+  đã có, nhưng hub chưa phục vụ route đẩy và chưa gửi thông báo.
 
 ## Assumptions
 

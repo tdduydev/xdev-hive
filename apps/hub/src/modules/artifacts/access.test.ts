@@ -69,6 +69,19 @@ describe("quyền của người", () => {
     expect(allowed(user("x", { org: "admin" }), facts("org"))).toEqual(["read", "write", "manage"]);
   });
 
+  it("team: quản trị đội đọc, sửa, quản lý; vai trò đội không đổi gì ở phạm vi org", () => {
+    expect(allowed(user("x", { team: "admin" }), facts("team"))).toEqual(["read", "write", "manage"]);
+    // Quản trị đội không phải quản trị tổ chức nên không quản lý được artifact `org`.
+    expect(allowed(user("x", { team: "admin" }), facts("org"))).toEqual(["read", "write"]);
+    expect(allowed(user("x", { org: "owner" }), facts("team"))).toEqual([]);
+  });
+
+  it("org: người ngoài mọi đội vẫn đọc được, nhưng không quản lý team của đội khác", () => {
+    const outsider: UserReader = { ...user("x"), teams: new Map([[OTHER_TEAM, "admin"]]) };
+    expect(can(outsider, facts("org"), "read")).toBe(true);
+    expect(can(outsider, facts("team"), "manage")).toBe(false);
+  });
+
   it("chỉ chủ có quyền `own` (tạo link công khai, C17)", () => {
     expect(can(user("x", { org: "owner", team: "admin" }), facts("project"), "own")).toBe(false);
   });
@@ -106,6 +119,14 @@ describe("quyền của run (FR-032)", () => {
     expect(allowed(run(user("x", { team: "member" })), f)).toEqual(["read", "write"]);
     expect(allowed(run(user("x", { team: "viewer" })), f)).toEqual(["read"]);
     expect(allowed(run(null), f)).toEqual(["read"]);
+  });
+
+  it("artifact team/org: run chỉ đọc khi gắn với run hay công việc của run", () => {
+    for (const scope of ["team", "org"] as const) {
+      expect(can(run(null), facts(scope), "read")).toBe(false);
+      expect(allowed(run(null), facts(scope, { linkedToRunWork: true }))).toEqual(["read"]);
+      expect(allowed(run(null), facts(scope, { linkedToRun: true }))).toEqual(["read", "write"]);
+    }
   });
 
   it("artifact dự án không gắn với run: chỉ đọc", () => {

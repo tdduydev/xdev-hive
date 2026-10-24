@@ -396,7 +396,7 @@ describe("run từ đầu tới PR", () => {
       runId: run.id,
       attempt: 1,
       event: "agent_report",
-      data: { summary: "Đã sửa" },
+      data: { summary: "Đã sửa", details: { token: `ghp_${"A".repeat(36)}` } },
     });
     await w.next("ack", (a) => a.uptoSeq === s3);
     const s4 = w.sendRun({
@@ -405,7 +405,7 @@ describe("run từ đầu tới PR", () => {
       attempt: 1,
       exit: 0,
       headSha: sha,
-      report: { commitCount: 1, changedFiles: ["src/hoa-don.ts"] },
+      report: { commitCount: 1, changedFiles: ["src/hoa-don.ts"], errorDetails: { token: `ghp_${"A".repeat(36)}` } },
     });
     await w.next("ack", (a) => a.uptoSeq === s4);
 
@@ -422,6 +422,11 @@ describe("run từ đầu tới PR", () => {
       s1,
     ]);
     expect(dup.rows[0].n).toBe(1);
+    const reports = await admin.query(
+      "select data from hive.run_events where run_id = $1 and type in ('agent_report', 'result')",
+      [run.id],
+    );
+    expect(JSON.stringify(reports.rows)).not.toContain(`ghp_${"A".repeat(36)}`);
 
     // SSE mở từ đầu nhận đủ chuyển trạng thái, sự kiện của worker và log, kết thúc bằng end.
     const events = await live;
@@ -454,6 +459,8 @@ describe("run từ đầu tới PR", () => {
     expect(evs.data.filter((e) => e.type === "phase")).toHaveLength(2);
     const lg = await api<Array<{ bytes: string }>>("GET", `/v1/runs/${run.id}/logs`);
     expect(lg.data).toHaveLength(1);
+    const storedLogs = await admin.query("select count(*)::int as n from hive.run_logs where run_id = $1", [run.id]);
+    expect(storedLogs.rows[0].n).toBe(0);
     await w.close();
   });
 });
@@ -555,6 +562,62 @@ describe("lệnh kiểm của chính sách kết quả (RUN-07)", () => {
     expect(row.result.checks[1].passed).toBe(exit === undefined ? null : exit === 0);
     if (outcome === "succeeded") expect(row.pr_url).toMatch(/\/pull\/\d+$/);
     else expect(row.pr_url).toBeNull();
+    await w.close();
+  });
+});
+
+describe("bí mật tại máy (specs/031)", () => {
+  const rogue = {
+    secretNames: ["STRIPE_KEY"],
+    secrets: { STRIPE_KEY: "sk_live_do_not_store" },
+    secretValues: ["sk_live_do_not_store"],
+  };
+
+  it.each([
+    { name: "số hợp lệ", sent: 2, stored: 2 },
+    { name: "số 0", sent: 0, stored: 0 },
+    { name: "vượt trần 64", sent: 65, stored: undefined },
+    { name: "không phải số nguyên", sent: 1.5, stored: undefined },
+    { name: "không phải số", sent: "2", stored: undefined },
+    { name: "worker cũ không báo", sent: undefined, stored: undefined },
+  ])("run_result báo $name: hub chỉ giữ số lượng, không giữ tên hay giá trị", async ({ sent, stored }) => {
+    const w = await FakeWorker.connect(await seedMachine(`sec-${randomUUID().slice(0, 6)}`));
+    const task = await newTask("Dùng bí mật tại máy");
+    const run = await startRun(task.id);
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    w.sendRun({
+      type: "run_result",
+      runId: run.id,
+      attempt: 1,
+      exit: 0,
+      headSha: sha,
+      report: {
+        commitCount: 1,
+        changedFiles: ["src/a.ts"],
+        ...rogue,
+        ...(sent === undefined ? {} : { secretsInjected: sent }),
+      },
+    });
+    await until(async () => (await runRow(run.id)).state === "succeeded");
+
+    const view = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(view.data.result?.secretsInjected).toBe(stored);
+    const events = await api<unknown[]>("GET", `/v1/runs/${run.id}/events?after=0`);
+    const stores = JSON.stringify([
+      await runRow(run.id),
+      (await admin.query("select * from hive.run_events where run_id = $1", [run.id])).rows,
+      view.data,
+      events.data,
+    ]);
+    // Cả cơ sở dữ liệu lẫn mọi route đọc đều không có tên, giá trị hay khoá nào ngoài số lượng.
+    expect(stores).not.toMatch(/STRIPE_KEY|sk_live_do_not_store|secretNames|secretValues/);
+    expect(stores).not.toMatch(/"secrets"/);
+    const row = await runRow(run.id);
+    expect(Object.keys(row.result.report).filter((k) => /secret/i.test(k))).toEqual(
+      stored === undefined ? [] : ["secretsInjected"],
+    );
     await w.close();
   });
 });
@@ -1704,6 +1767,25 @@ describe("chính sách agent của tổ chức", () => {
       await admin.query("update hive.projects set settings = settings - 'runPermissions' - 'budget' where id = $1", [
         projectId,
       ]);
+    }
+  });
+
+  it.each([
+    ["deny", true],
+    ["approve", true],
+    ["allow", false],
+  ] as const)("bí mật tại máy %s: spec có policy là %s, bản chụp chính sách giữ lựa chọn", async (injection, sent) => {
+    await setPolicy({ secretInjection: injection });
+    const w = await FakeWorker.connect(await seedMachine(`policy-secret-${injection}-${tag}`));
+    try {
+      const run = await startRun((await newTask(`Bí mật ${injection}`)).id);
+      const { spec } = await w.next("job_offer", (o) => o.runId === run.id);
+      // Giữ spec như cũ khi không có gì cần báo, để worker cũ và worker mới nhận cùng một gói.
+      if (sent) expect(spec).toMatchObject({ policy: { secretInjection: injection } });
+      else expect(spec).not.toHaveProperty("policy");
+      expect((await runRow(run.id)).agent_policy_snapshot).toMatchObject({ secretInjection: injection });
+    } finally {
+      await w.close();
     }
   });
 

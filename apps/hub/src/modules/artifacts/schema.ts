@@ -114,9 +114,9 @@ export const artifactVersions = hive
       orgId: uuid("org_id").notNull(),
       artifactId: uuid("artifact_id").notNull(),
       version: integer("version").notNull(),
-      /** Null khi là blob hoặc đã tombstone. */
+      /** Null khi là ảnh/PDF (tệp ở `blobId`) hoặc đã tombstone. */
       content: text("content"),
-      /** Blob lưu ở bảng sau MVP (T062), chưa có khoá ngoại. */
+      /** Tệp trong kho file của nền tảng (`platform` blob store); không khoá ngoại vì module khác sở hữu bảng, GC theo tham chiếu. */
       blobId: uuid("blob_id"),
       /** `react`: mã đã biên dịch hoặc lỗi biên dịch. */
       compiled: text("compiled"),

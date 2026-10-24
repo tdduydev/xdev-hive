@@ -246,6 +246,50 @@ describe("ProjectsScreen", () => {
     await waitFor(() => expect(opened().map((a) => a?.folder)).toEqual(["/w/pay", "/w/cu"]));
   });
 
+  it("mỗi dự án có số bí mật được gán và nút mở màn Bí mật lọc theo dự án đó", async () => {
+    const secret = (name: string, ids: string[]) => ({
+      name,
+      description: "",
+      createdAt: at,
+      valueChangedAt: at,
+      projects: ids.map((localId) => ({ localId, name: "x", folder: "/w" })),
+      inUseBy: 0,
+    });
+    fakeApp({
+      hub: { "projects/list": [PAY, WEB], "policies/get": policy(true) },
+      local: [
+        entry({ projectId: P1, name: "payment-api", folder: "/w/pay", localId: "aaaa1111aaaa1111" }),
+        entry({ projectId: P2, name: "web-shop", folder: "/w/web", localId: "bbbb2222bbbb2222" }),
+      ],
+      extra: {
+        secrets_list: () => ({
+          secrets: [
+            secret("DATABASE_URL", ["aaaa1111aaaa1111", "bbbb2222bbbb2222"]),
+            secret("STRIPE_KEY", ["aaaa1111aaaa1111"]),
+          ],
+          reserved: { exact: [], prefixes: [] },
+        }),
+      },
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    const pay = await row("payment-api");
+    await user.click(await within(pay).findByRole("button", { name: "Xem 2 bí mật của payment-api" }));
+    expect(location.hash).toBe("#/secrets/aaaa1111aaaa1111");
+    expect(within(await row("web-shop")).getByRole("button", { name: "Xem 1 bí mật của web-shop" })).toBeTruthy();
+  });
+
+  it("worker cũ không có lệnh bí mật: màn vẫn dùng được, không hiện số", async () => {
+    fakeApp({
+      hub: { "projects/list": [PAY], "policies/get": policy(true) },
+      local: [entry({ projectId: P1, name: "payment-api", folder: "/w/pay", localId: "aaaa1111aaaa1111" })],
+    });
+    renderScreen();
+    const pay = await row("payment-api");
+    expect(within(pay).getByRole("button", { name: "Mở terminal ở payment-api" })).toBeTruthy();
+    expect(within(pay).queryByRole("button", { name: /bí mật/ })).toBeNull();
+  });
+
   it("bật toàn quyền phải xác nhận rủi ro; tắt thì không hỏi", async () => {
     const calls = fakeApp({
       hub: { "projects/list": [PAY], "policies/get": policy(true) },

@@ -178,7 +178,7 @@ function fakeTauri(rpc?: Rpc) {
     }),
     run_cli_stream: () => "run-1",
     cancel_cli_stream: () => null,
-    propose_doc: (args) => ({ proposalId: "4f1c2d3e-aaaa", status: "pending", key: args?.key, baseVersion: 3 }),
+    propose_doc: () => ({ key: "4f1c2d3e-aaaa", state: "queued" }),
     "plugin:dialog|open": () => FOLDER,
   };
   window.__TAURI__ = {
@@ -418,7 +418,7 @@ describe("DocsScreen", () => {
       content: PROPOSAL,
       note: "Viết theo code nhánh feat/proxy",
     });
-    expect(await within(dialog).findByText(/Đã gửi đề xuất 4f1c2d3e/)).toBeTruthy();
+    expect(await within(dialog).findByText(/Đã xếp đề xuất 4f1c2d3e/)).toBeTruthy();
     // Không lệnh nào gọi tool ghi qua hub_tool.
     expect(calls.filter((c) => c.command === "hub_tool").map((c) => c.args?.name)).not.toContain("doc_propose");
   });

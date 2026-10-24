@@ -169,12 +169,8 @@ func (e *Executor) dispatch(ctx context.Context, spec JobSpec, cred []byte, jl *
 		return e.runJenkins(ctx, spec, cred, jl)
 	case "argocd":
 		return e.runArgo(ctx, spec, cred, jl)
-	case "kubectl":
-		return e.runKube(ctx, spec, cred, jl)
-	case "health":
-		return e.runHealth(ctx, spec, jl)
 	default:
-		// ssh-script, gitlab-manual, ci-action chưa có trên worker; hub không giao khi worker không khai khả năng.
+		// Worker chỉ bấm Jenkins và Argo CD rồi theo dõi; loại khác (gitlab-manual, ci-action) chưa có trên worker; hub không giao khi worker không khai khả năng.
 		return newError(CodeUnsupported, 0, "Worker này chưa hỗ trợ loại việc %q.", spec.Kind)
 	}
 }
@@ -227,7 +223,12 @@ func (e *Executor) runJenkins(ctx context.Context, spec JobSpec, cred []byte, jl
 		return newError(CodeUnavailable, 0, "Jenkins huỷ hoặc chưa nhận build.")
 	}
 	e.step(spec.JobID, "Bấm build", "succeeded")
-	e.emit(spec.JobID, "external", Event{"ref": fmt.Sprintf("%s#%d", job, tr.Number), "url": tr.URL})
+	ext := Event{"ref": truncate(fmt.Sprintf("%s#%d", job, tr.Number), 500)}
+	// Hợp đồng đòi url là URL hợp lệ hoặc vắng hẳn; Jenkins chưa cấu hình root URL thì trả chuỗi rỗng, zod ở hub từ chối.
+	if tr.URL != "" {
+		ext["url"] = tr.URL
+	}
+	e.emit(spec.JobID, "external", ext)
 	jl.Printf("Jenkins build %s #%d", job, tr.Number)
 
 	e.step(spec.JobID, "Chờ build", "running")
@@ -319,84 +320,4 @@ func (e *Executor) runArgo(ctx context.Context, spec JobSpec, cred []byte, jl *J
 			return ctxErr(ctx)
 		}
 	}
-}
-
-func (e *Executor) runKube(ctx context.Context, spec JobSpec, cred []byte, jl *JobLog) error {
-	if err := requireTarget(spec, "apiUrl", "namespace", "kind", "name", "container"); err != nil {
-		return err
-	}
-	image, _ := spec.Params["image"].(string)
-	if image == "" {
-		return newError(CodeBadRequest, 0, "Thiếu image cần triển khai.")
-	}
-	k, err := NewKube(targetStr(spec.Target, "apiUrl"), cred, targetStr(spec.Target, "caPem"), 0)
-	if err != nil {
-		return err
-	}
-	ns, name := targetStr(spec.Target, "namespace"), targetStr(spec.Target, "name")
-	kind := WorkloadKind(targetStr(spec.Target, "kind"))
-	e.emit(spec.JobID, "external", Event{"ref": ns + "/" + name})
-	e.step(spec.JobID, "Đổi image", "running")
-	prev, err := k.PatchImage(ctx, ns, kind, name, targetStr(spec.Target, "container"), image)
-	if err != nil {
-		e.step(spec.JobID, "Đổi image", "failed")
-		return err
-	}
-	jl.Printf("%s %s/%s: image %s -> %s", kind, ns, name, prev, image)
-	e.step(spec.JobID, "Đổi image", "succeeded")
-	e.step(spec.JobID, "Chờ rollout", "running")
-	for {
-		r, err := k.RolloutStatus(ctx, ns, kind, name)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctxErr(ctx)
-			}
-			return err
-		}
-		switch r.State {
-		case "complete":
-			e.step(spec.JobID, "Chờ rollout", "succeeded")
-			return nil
-		case "failed":
-			e.step(spec.JobID, "Chờ rollout", "failed")
-			return newError(CodeUnavailable, 0, "%s", r.Message)
-		}
-		jl.Printf("rollout: %s", r.Message)
-		if err := sleepCtx(ctx, e.poll()); err != nil {
-			return ctxErr(ctx)
-		}
-	}
-}
-
-func (e *Executor) runHealth(ctx context.Context, spec JobSpec, jl *JobLog) error {
-	if err := requireTarget(spec, "url"); err != nil {
-		return err
-	}
-	hc := HealthCheck{URL: targetStr(spec.Target, "url"), Interval: e.poll()}
-	if v, ok := spec.Params["expectStatus"].(float64); ok {
-		hc.ExpectStatus = int(v)
-	}
-	if v, ok := spec.Params["intervalSec"].(float64); ok && v > 0 {
-		hc.Interval = time.Duration(v * float64(time.Second))
-	}
-	if v, ok := spec.Params["timeoutSec"].(float64); ok && v > 0 {
-		hc.AttemptTimeout = time.Duration(v * float64(time.Second))
-	}
-	if p, _ := spec.Params["matchPath"].(string); p != "" {
-		eq, _ := spec.Params["matchEquals"].(string)
-		hc.Match = &HealthMatch{Path: p, Equals: eq}
-	}
-	e.step(spec.JobID, "Kiểm tra sức khoẻ", "running")
-	res := RunHealth(ctx, hc)
-	jl.Printf("%s (%d lần thử)", res.Message, res.Attempts)
-	e.emit(spec.JobID, "health", Event{"ok": res.OK})
-	if !res.OK {
-		e.step(spec.JobID, "Kiểm tra sức khoẻ", "failed")
-		if ctx.Err() != nil {
-			return ctxErr(ctx)
-		}
-		return newError(CodeUnavailable, 0, "%s", truncate(res.Message, 180))
-	}
-	e.step(spec.JobID, "Kiểm tra sức khoẻ", "succeeded")
-	return nil
 }

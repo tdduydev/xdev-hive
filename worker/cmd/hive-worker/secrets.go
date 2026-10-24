@@ -25,6 +25,13 @@ const secretsUsage = `Cách dùng: hive-worker secrets <lệnh> [--config FILE] 
   assign    --name TÊN --project LOCAL_ID
   unassign  --name TÊN --project LOCAL_ID
   delete    --name TÊN
+  log       [--name TÊN] [--project LOCAL_ID] [--limit 200]
+  log clear                                 xoá nhật ký cấp tại máy
+  approvals                                 yêu cầu đang chờ duyệt
+  approve   --id MÃ --allow|--deny
+  reveal    --name TÊN [--copy]
+  purge     --project LOCAL_ID|--all
+  delivery  status|list|set|delete          credential triển khai (Jenkins, Argo CD), không gán cho dự án
 Giá trị chỉ đọc từ stdin, không bao giờ từ tham số hay biến môi trường.`
 
 // Kiểu ra của lệnh, khớp contracts/sidecar-cli.md và fixture testdata/cli của secretstore.
@@ -59,7 +66,7 @@ type (
 
 // Test thay kho và đồng hồ.
 var (
-	secretsStore = secretstore.NewStore
+	secretsStore = secretstore.NewSystemStore
 	secretsNow   = time.Now
 )
 
@@ -80,9 +87,19 @@ var errSecretInput = &secretstore.Error{
 
 // secretsCommand: quản lý bí mật tại máy cho agent (specs/031). In một JSON ra stdout; lỗi in {"error":…} và thoát 1.
 func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "exec" {
+		return runSecretsExec(args[1:], stdin, stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "delivery" {
+		return deliveryCredsCommand(args[1:], stdin, stdout, stderr)
+	}
 	action := ""
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		action, args = args[0], args[1:]
+	}
+	clearLog := action == "log" && len(args) > 0 && args[0] == "clear"
+	if clearLog {
+		args = args[1:]
 	}
 	usage := func() int {
 		fmt.Fprintln(stderr, secretsUsage)
@@ -98,6 +115,12 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	to := fs.String("to", "", "tên mới")
 	project := fs.String("project", "", "localId của dự án trên máy")
 	descFile := fs.String("description-file", "", "file chứa mô tả")
+	limit := fs.Int("limit", secretstore.DefaultLogLimit, "số dòng nhật ký")
+	approvalID := fs.String("id", "", "mã yêu cầu duyệt")
+	allow := fs.Bool("allow", false, "cho phép")
+	deny := fs.Bool("deny", false, "từ chối")
+	copyValue := fs.Bool("copy", false, "ghi thao tác sao chép")
+	all := fs.Bool("all", false, "xoá mọi bí mật")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
 		fmt.Fprintln(stderr, "Tham số không hợp lệ.")
 		return usage()
@@ -113,6 +136,30 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	}
 	var view any
 	switch action {
+	case "reveal":
+		if *name == "" {
+			return usage()
+		}
+		view, err = cmd.reveal(path, *name, *copyValue)
+	case "purge":
+		if *all == (*project != "") {
+			return usage()
+		}
+		view, err = cmd.purge(*project, *all)
+	case "approvals":
+		var pending []secretstore.ApprovalRequest
+		pending, err = secretstore.PendingApprovals(path)
+		view = struct {
+			Pending []secretstore.ApprovalRequest `json:"pending"`
+		}{pending}
+	case "approve":
+		if *approvalID == "" || *allow == *deny {
+			return usage()
+		}
+		err = secretstore.AnswerApproval(path, *approvalID, *allow)
+		view = struct {
+			OK bool `json:"ok"`
+		}{true}
 	case "status":
 		view = cmd.store.Status()
 	case "list":
@@ -142,6 +189,24 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 			return usage()
 		}
 		view, err = cmd.delete(*name)
+	case "log":
+		if clearLog {
+			var n int
+			n, err = secretstore.ClearLog(secretstore.GrantsPath(path))
+			view = struct {
+				Cleared int `json:"cleared"`
+			}{n}
+		} else {
+			var cat secretstore.Catalog
+			cat, err = secretstore.LoadCatalog(cmd.catalog)
+			if err == nil {
+				var entries []secretstore.LogEntry
+				entries, err = secretstore.ReadLog(secretstore.GrantsPath(path), secretstore.LogFilter{Name: *name, Project: *project, Limit: *limit}, cat)
+				view = struct {
+					Entries []secretstore.LogEntry `json:"entries"`
+				}{entries}
+			}
+		}
 	default:
 		return usage()
 	}
@@ -155,6 +220,60 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 type secretsCmd struct {
 	catalog, projects string
 	store             *secretstore.Store
+}
+
+func (c secretsCmd) reveal(config, raw string, copyValue bool) (any, error) {
+	name, err := lookupName(raw)
+	if err != nil {
+		return nil, err
+	}
+	cat, err := secretstore.LoadCatalog(c.catalog)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = cat.Get(name); err != nil {
+		return nil, err
+	}
+	value, err := c.store.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = secretstore.Append(secretstore.GrantsPath(config), secretstore.GrantRecord{Kind: secretstore.KindReveal, Names: []string{name}, Copy: copyValue, Policy: secretstore.PolicyAllow, Outcome: secretstore.OutcomeGranted}); err != nil {
+		return nil, err
+	}
+	return struct {
+		Value string `json:"value"`
+	}{value}, nil
+}
+
+type secretPurgeView struct {
+	Removed []string `json:"removed"`
+	Left    []string `json:"left"`
+}
+
+func (c secretsCmd) purge(project string, all bool) (secretPurgeView, error) {
+	view := secretPurgeView{Removed: []string{}, Left: []string{}}
+	if !all {
+		if err := secretstore.DropProject(c.catalog, project); err != nil {
+			return view, err
+		}
+	}
+	cat, err := secretstore.LoadCatalog(c.catalog)
+	if err != nil {
+		return view, err
+	}
+	for _, item := range cat.Secrets {
+		if !all {
+			view.Left = append(view.Left, item.Name)
+			continue
+		}
+		if _, err := c.delete(item.Name); err != nil {
+			view.Left = append(view.Left, item.Name)
+		} else {
+			view.Removed = append(view.Removed, item.Name)
+		}
+	}
+	return view, nil
 }
 
 func (c secretsCmd) list(project string) (secretsListView, error) {

@@ -303,7 +303,7 @@ test("bảng việc rỗng và lỗi tải", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveText("Bạn không có quyền làm việc này.");
 });
 
-test("chi tiết run: pha, log trực tiếp qua SSE, chi phí, chính sách, gửi chỉ dẫn, huỷ", async ({ page }) => {
+test("chi tiết run: pha, nơi giữ log, chi phí, chính sách, gửi chỉ dẫn, huỷ", async ({ page }) => {
   const hub = await open(page, {
     "runs/steer": () => ok({ status: "sent" }),
     "runs/cancel": () => ok({ ...RUNNING, state: "cancelling" }),
@@ -348,7 +348,8 @@ test("chi tiết run: pha, log trực tiếp qua SSE, chi phí, chính sách, g�
   await expect(phases.locator("[aria-current=step]")).toContainText("Đang chạy");
   await expect(phases.getByRole("listitem").first()).toContainText("đã xong");
 
-  await expect(page.getByRole("region", { name: "Nội dung log" })).toHaveText("✓ vat.test.ts (14 tests)");
+  await expect(page.getByText(/Log nằm trên máy/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Nội dung log" })).toHaveCount(0);
   await expect(page.getByText("Chỉ dẫn: Thêm test số âm")).toBeVisible();
 
   const info = page.getByRole("complementary", { name: "Thông tin run" });
@@ -457,9 +458,35 @@ test("run đã xong: không có nút gửi chỉ dẫn và huỷ; có PR và k�
   await page.goto(`/runs/${done.id}`);
   await expect(page.getByText("Đạt · 1 commit, 1 file.")).toBeVisible();
   await expect(page.getByRole("link", { name: "PR #128" })).toBeVisible();
-  await expect(page.getByText("Run đã xong")).toBeVisible();
+  await expect(page.getByText(/Log nằm trên máy/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Gửi chỉ dẫn" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Huỷ run" })).toHaveCount(0);
+});
+
+test("run dùng bí mật tại máy: hiện số lượng; không dùng hay worker cũ thì không hiện", async ({ page }) => {
+  const result = {
+    exit: 0,
+    commitCount: 1,
+    changedFiles: ["a.ts"],
+    reasons: [],
+    checks: [{ check: "changes", required: true, passed: true, message: "1 commit, 1 file." }],
+  };
+  const withSecrets = (secretsInjected?: number) => ({
+    ...RUNS[1],
+    policySnapshot: [{ check: "changes", required: true }],
+    result: { ...result, ...(secretsInjected === undefined ? {} : { secretsInjected }) },
+  });
+  let current = withSecrets(2);
+  await open(page, { "runs/get": () => ok(current) });
+  await fakeStream(page, [{ event: "end", data: { state: "succeeded" } }]);
+  await page.goto(`/runs/${current.id}`);
+  await expect(page.getByText("Dùng 2 bí mật tại máy")).toBeVisible();
+  for (const n of [0, undefined]) {
+    current = withSecrets(n);
+    await page.reload();
+    await expect(page.getByText("Đạt · 1 commit, 1 file.")).toBeVisible();
+    await expect(page.getByText("bí mật tại máy")).toHaveCount(0);
+  }
 });
 
 test("run không thấy được: báo lỗi tiếng Việt", async ({ page }) => {
@@ -495,7 +522,7 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.getByRole("table", { name: "Danh sách việc" })).toBeVisible();
     await page.screenshot({ path: `test-results/screens/tasks-${scheme}.png`, fullPage: true });
     await page.goto(`/runs/${RUNNING.id}`);
-    await expect(page.getByRole("region", { name: "Nội dung log" })).toContainText("git fetch");
+    await expect(page.getByText(/Log nằm trên máy/)).toBeVisible();
     await page.screenshot({ path: `test-results/screens/run-${scheme}.png`, fullPage: true });
 
     await page.setViewportSize({ width: 360, height: 800 });

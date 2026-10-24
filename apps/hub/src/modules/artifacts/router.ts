@@ -14,6 +14,7 @@ import {
 import { type OrgDeps, orgMiddlewares, type SessionUser } from "../tenancy/index.ts";
 import type { ArtifactErrorDetail } from "./access.ts";
 import { readerFor } from "./access.ts";
+import { toDoc } from "./convert.ts";
 import { askLeaderFix } from "./fix-request.ts";
 import { createPreview, frameDocument, frameUrl, libManifestLoader } from "./frame-routes.ts";
 import { createPublicLink, listPublicLinks, orgListPublicLinks, revokePublicLink } from "./public-links.ts";
@@ -84,8 +85,7 @@ const stampOrg = os.$context<{ orgId: string }>().middleware(async ({ context, n
 });
 
 /**
- * Route `artifacts.*`. `toDoc`/`toRepo` sau MVP: chưa đăng ký thì oRPC
- * trả 404 cho route đó.
+ * Route `artifacts.*`. `toRepo` ngoài phạm vi (quyết định 2026-10-23): chưa đăng ký thì oRPC trả 404 cho route đó.
  */
 export function artifactsRouter(deps: ArtifactsRouterDeps) {
   const { authed, inOrg, orgMember } = orgMiddlewares(deps);
@@ -156,6 +156,7 @@ export function artifactsRouter(deps: ArtifactsRouterDeps) {
     frameDocument: o.frameDocument.handler(async ({ context: { tx, user }, input }) =>
       frameDocument(tx, await as(tx, user), input, manifest),
     ),
+    toDoc: o.toDoc.handler(async ({ context: { tx, user }, input }) => toDoc(tx, await as(tx, user), input)),
     usage: o.usage.handler(({ context: { tx, user } }) => usage(tx, user.id)),
     publicLinks: {
       create: o.publicLinks.create.handler(async ({ context: { tx, user }, input }) =>

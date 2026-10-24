@@ -50,7 +50,7 @@ func newWorkerStatus(cfg config.Config, owner, dataDir string) *workerStatus {
 		owner:      owner,
 		machineID:  cfg.MachineID,
 		registered: cfg.Registered(),
-		activeDir:  filepath.Join(dataDir, "xdev-hive", "worker", "active"),
+		activeDir:  filepath.Join(dataDir, "active"),
 		state:      "starting",
 	}
 }
@@ -114,6 +114,8 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 	}
 	handle := func(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
 		switch {
+		case strings.HasPrefix(req.Op, "runs."):
+			return handleRunLogs(localLogStore(recordDir), c, req)
 		case req.Op == "worker.status" && status != nil:
 			return status.reply(c)
 		case strings.HasPrefix(req.Op, "outbox.") && ob != nil:
@@ -123,6 +125,20 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 	}
 	// Server không theo ctx của worker: lúc tắt phải báo các client đang gắn rằng phiên đã đóng trước khi ngắt kết nối.
 	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		store := localLogStore(recordDir)
+		cleanupRunLogs(store)
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cleanupRunLogs(store)
+			}
+		}
+	}()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

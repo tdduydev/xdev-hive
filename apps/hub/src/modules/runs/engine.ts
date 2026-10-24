@@ -147,6 +147,7 @@ import {
 } from "./cost.ts";
 import { assistTargets, createAssistRun, listAssists } from "./docassist.ts";
 import { docCheckPrompt } from "./doccheck.ts";
+import { liveRunLogs, redactRunData } from "./live-logs.ts";
 import { approvedPlanPrompt, parsePlanReport, planPrompt } from "./plan.ts";
 import {
   evaluatePlanRun,
@@ -159,8 +160,9 @@ import {
 import { parseReviewReport, prNumberOf, type ReviewReport, reviewComment, reviewPrompt } from "./review.ts";
 import { type RoutedRun, routeRun } from "./routing.ts";
 import { createMcpRunTokens } from "./run-tokens.ts";
-import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
+import { type RunResult, runEvents, runLeases, runs } from "./schema.ts";
 import { registerScmHandlers } from "./scm-events.ts";
+import { sanitizeSecretsReport } from "./secrets-report.ts";
 import {
   hubEvent,
   lockRun,
@@ -464,6 +466,7 @@ interface SpecContext {
   fullAllowed: boolean;
   /** Hook bắt buộc của tổ chức, worker chạy ở các mốc của CLI. */
   policy: JobPolicy;
+  runLogRetentionDays?: number;
   parentPrUrl: string | null;
   /** Run review của checkpoint AI trong quy trình review code: mục kiểm, đường dẫn trọng tâm, quy tắc chấm, ngữ cảnh spec. */
   reviewRubric: ReturnType<typeof parseWorkflowReview> | null;
@@ -633,8 +636,11 @@ function buildSpec(
     // Run sdlc chỉ ghi tài liệu trong worktree tạm: không cần toàn quyền dù dự án cho (plan.md "Worker impact").
     runPermissions: run.kind === "sdlc" ? "workspace" : ctx.runPermissions,
     fullAllowed: ctx.fullAllowed,
+    runLogRetentionDays: ctx.runLogRetentionDays ?? 365,
     // Bỏ khi không có gì để worker cũ (chưa biết trường này) và worker mới nhận cùng một spec như trước.
-    ...(ctx.policy.hooks.length || ctx.policy.managedHooksOnly ? { policy: ctx.policy } : {}),
+    ...(ctx.policy.hooks.length || ctx.policy.managedHooksOnly || ctx.policy.secretInjection !== "allow"
+      ? { policy: ctx.policy }
+      : {}),
     repoUrl: project.repoHttpUrl,
     baseBranch: project.defaultBranch,
     branch: run.branch,
@@ -1049,6 +1055,7 @@ export function createRunsEngine(deps: RunsDeps) {
             runPermissions: permission.mode,
             fullAllowed: policy.allowFullPermission,
             policy: jobPolicy,
+            runLogRetentionDays: policy.limits.runLogRetentionDays,
             parentPrUrl: parent?.prUrl ?? workflowReview?.prUrl ?? null,
             reviewRubric: workflowReview,
             approvedPlan,
@@ -1236,7 +1243,7 @@ export function createRunsEngine(deps: RunsDeps) {
   }
 
   async function onRunEvent(machine: AuthedMachine, msg: Extract<RunMessage, { type: "run_event" }>) {
-    const data = msg.event === "subagent" ? subagentData(msg.data) : msg.data;
+    const data = msg.event === "subagent" ? subagentData(msg.data) : redactRunData(msg.data);
     if (!data) {
       log.warn(`Bỏ sự kiện subagent sai dạng: run ${msg.runId}, seq ${msg.seq}`);
       send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
@@ -1318,24 +1325,13 @@ export function createRunsEngine(deps: RunsDeps) {
   }
 
   async function onLogChunk(machine: AuthedMachine, msg: Extract<RunMessage, { type: "log_chunk" }>) {
-    const inserted = await tenant(machine.orgId, async (tx) => {
+    const accepted = await tenant(machine.orgId, async (tx) => {
       const run = await fenced(tx, machine, msg.runId, msg.attempt);
       if (!run) return false;
-      const rows = await tx
-        .insert(runLogs)
-        .values({
-          orgId: run.orgId,
-          runId: run.id,
-          attempt: run.attempt,
-          seq: msg.seq,
-          offset: msg.offset,
-          data: Buffer.from(msg.bytes, "base64"),
-        })
-        .onConflictDoNothing()
-        .returning({ id: runLogs.id });
-      return rows.length > 0;
+      liveRunLogs.push(run.id, run.attempt, msg.seq, msg.bytes);
+      return true;
     });
-    if (inserted) notifyLater(msg.runId);
+    if (accepted) notifyLater(msg.runId);
     send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
   }
 
@@ -1343,9 +1339,11 @@ export function createRunsEngine(deps: RunsDeps) {
     let cancelledRun: RunRow | null = null;
     // Gán trong callback của transaction; ép kiểu để TypeScript không thu hẹp về null.
     let briefRun = null as { orgId: string; id: string } | null;
+    const report = sanitizeSecretsReport(redactRunData(msg.report));
     const next = await tenant(machine.orgId, async (tx) => {
       const run = await lockRun(tx, msg.runId);
       if (!run || run.attempt !== msg.attempt || run.machineId !== machine.id) return null;
+      liveRunLogs.finish(run.id, run.attempt);
       const inserted = await tx
         .insert(runEvents)
         .values({
@@ -1354,7 +1352,7 @@ export function createRunsEngine(deps: RunsDeps) {
           attempt: run.attempt,
           seq: msg.seq,
           type: "result",
-          data: { exit: msg.exit, headSha: msg.headSha, report: msg.report, diffStats: msg.diffStats },
+          data: { exit: msg.exit, headSha: msg.headSha, report, diffStats: msg.diffStats },
         })
         .onConflictDoNothing()
         .returning({ id: runEvents.id });
@@ -1362,7 +1360,7 @@ export function createRunsEngine(deps: RunsDeps) {
       if (inserted.length === 0 || !ON_MACHINE.includes(run.state)) return null;
       // Agent đã xong: máy không cần giữ lease nữa, slot trống cho run khác.
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
-      briefRun = await onRepoReport(tx, run, msg.report);
+      briefRun = await onRepoReport(tx, run, report);
       if (run.state === "cancelling") {
         cancelledRun = await finishCancelled(tx, run, {});
         return "cancelled" as const;

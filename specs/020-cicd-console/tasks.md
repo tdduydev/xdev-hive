@@ -569,6 +569,9 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 ## Đợt 4: các cách triển khai khác, test `sshd` (song song, sau Đợt 3)
 
 - [ ] **T024 [P] [US5] [nặng] · 1,5 ngày — Cách `jenkins-job`, "đẩy từ môi trường", lần "ngoài Hive"**
+  - **ngoài phạm vi (thay bằng spec 032)**: hub không bấm Jenkins nữa; máy chạy (worker) bấm job và theo dõi build
+    (specs/032 T004, T008), hub chỉ giao việc sau cổng duyệt (specs/032 T013). Đường cũ trên hub chỉ còn sau cờ
+    `HIVE_DELIVERY_OUTBOUND` (specs/032 T014).
   - **Phụ thuộc**: T004, T015, T019.
   - **Goal**: US5 scenario 1, 4; FR-021, FR-025, FR-029 (phần Jenkins), FR-034; Q13, Q15.
     - `deploys/jenkins-job.ts` cài `DeployMethod`:
@@ -590,6 +593,8 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     lần triển khai mới; promote lấy đúng số build), typecheck.
 
 - [ ] **T025 [P] [US5] [vừa] · 2 ngày — Cách `gitlab-manual`, `argocd`, `kubectl`**
+  - **ngoài phạm vi (thay bằng spec 032)**: Argo CD do máy chạy sync và theo dõi (specs/032 T005, T008, T013).
+    `gitlab-manual`, `kubectl` và gọi thẳng Kubernetes không làm (specs/032 T025).
   - **Phụ thuộc**: T005, T010, T013, T019.
   - **Goal**: US5 scenario 2, 3; FR-022, FR-023, FR-024, FR-035, plan.md mục 6.
     - `deploys/gitlab-manual.ts`: tìm pipeline của commit (`listPipelines({ sha })`), job tên đã cấu hình ở trạng thái
@@ -607,6 +612,8 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     workload không còn thì báo "không tìm thấy"), typecheck.
 
 - [ ] **T026 [P] [US4] [nặng] · 1,5 ngày — Test tích hợp với `sshd`, có ca dừng hub giữa bước**
+  - **ngoài phạm vi (thay bằng spec 032)**: không triển khai qua SSH từ hub hay worker (specs/032 T010). Log và nhận sự
+    kiện bỏ trùng của máy chạy: specs/032 T003, T012.
   - **Phụ thuộc**: T016, T019, T020.
   - **Goal**: SC-004, SC-005, SC-007, SC-008, plan.md mục 11 "SSH tích hợp", edge case "Hub khởi động lại khi đang
     triển khai". Dùng `testing/sshd.ts` (T020), pg-boss và bộ điều phối thật:
@@ -627,6 +634,10 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 ## Đợt 5: P2: duyệt, khoá, quay về, thông báo (song song, sau Đợt 4)
 
 - [ ] **T027 [P] [US6] [nặng] · 1,5 ngày — Duyệt và khoá môi trường**
+  - **ngoài phạm vi (thay bằng spec 032)**: cổng duyệt (duyệt, từ chối kèm lý do, `SELF_APPROVAL`, hết hạn, audit) ở
+    specs/032 T022; chỉ giao việc khi đủ duyệt và môi trường không khoá ở specs/032 T013; khoá, mở khoá kèm lý do ở
+    specs/032 T026. Proceed/Abort bước `input` của Jenkins: ngoài phạm vi (specs/032 T013b). `compare`: specs/032
+    T028, chưa làm.
   - **Phụ thuộc**: T017, T019, T024.
   - **Goal**: US6, FR-026, FR-027, FR-029, SC-006, plan.md mục 8.
     - `approvals.ts`:
@@ -646,6 +657,8 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     `deploy.approve`; hết hạn; khoá môi trường), typecheck.
 
 - [ ] **T028 [P] [US7] [vừa] · 1 ngày — Quay về bản trước**
+  - **ngoài phạm vi**: quay về là chạy lệnh trên hệ đích, hub không làm. Muốn về bản cũ thì triển khai lại bản đó qua
+    cổng duyệt như lần thường (specs/032 T029).
   - **Phụ thuộc**: T019, T020, T024, T025.
   - **Goal**: US7, FR-028, Q8, edge case autoSync của Argo CD.
     - `deploys/rollback.ts`: bản thành công gần nhất trước bản hiện tại (kể cả "ngoài Hive"); tạo lần mới với
@@ -659,6 +672,8 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     lý do đúng), typecheck.
 
 - [ ] **T029 [P] [US8] [vừa] · 1 ngày — Thông báo theo hệ thống, người liên quan**
+  - **Phần thuộc Duyệt đã có**: người duyệt nhận `deploy.approval_requested` trong hộp thư (`deploys/orchestrator.ts`).
+  - **ngoài phạm vi**: lọc kênh theo hệ thống và chọn hệ thống ở trang thông báo (specs/032 T030).
   - **Phụ thuộc**: T008, T015, T016, T019.
   - **Goal**: US8, FR-031.
     - `notify`: kênh của tổ chức lọc thêm theo hệ thống (`system_ids`; rỗng là mọi hệ thống); API kênh nhận
@@ -673,6 +688,9 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test, web typecheck, test, Playwright `queue-notifications.spec.ts`.
 
 - [ ] **T030 [P] [US6] [vừa] · 1 ngày — Web: duyệt, khoá môi trường, quay về**
+  - **ngoài phạm vi (thay bằng spec 032)**: trang "Duyệt triển khai" `/deploy-approvals` ở specs/032 T023; khoá, mở
+    khoá ở trang Môi trường ở specs/032 T026; danh sách commit khi duyệt ở specs/032 T028 (chưa làm). Bảng triển khai
+    và nút "Quay về" không làm (specs/032 T024, T029).
   - **Phụ thuộc**: T022, T023.
   - **Goal**: US6, US7 (giao diện), FR-026…FR-028.
     - Hàng chờ duyệt trên bảng triển khai; `approval-dialog.tsx`: phiên bản sẽ lên, danh sách commit so với bản đang
@@ -705,7 +723,9 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/hub/src/modules/delivery/ci/{feed.ts,detail.ts,logs.ts,actions.ts,gitlab-events.ts}`, `routes/ci.ts` + test
   - **Kiểm**: hub test, typecheck.
 
-- [ ] **T032 [P] [US9] [vừa] · 1 ngày — Web: GitHub Actions trên tab CI/CD**
+- [x] **T032 [P] [US9] [vừa] · 1 ngày — Web: GitHub Actions trên tab CI/CD**
+  - **Xong**: danh sách gộp, chi tiết job, log, chạy lại, huỷ đã có; "Duyệt deployment" và "Từ chối" làm ở specs/032
+    T027.
   - **Phụ thuộc**: T021.
   - **Goal**: US9 (giao diện): nguồn GitHub trong danh sách gộp, chi tiết job, log, chạy lại, huỷ, nút "Duyệt
     deployment".
@@ -717,6 +737,9 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 ## Đợt 7: kiểm tổng, chạy thật (sau Đợt 4–6)
 
 - [ ] **T033 [—] [—] [nặng] · 1 ngày — Kiểm tổng tự động**
+  - **Còn áp dụng**: SC-006 mức API đã có ở `delivery/dispatch.db.test.ts` ("người yêu cầu không tự duyệt"). SC-003
+    (mọi route ghi có audit) đang phủ theo từng file test; `audit-coverage.db.test.ts` duyệt cả router chưa viết.
+  - **ngoài phạm vi**: SC-001 đo tải và Playwright hub thật với `sshd`, `ssh-script` (specs/032 T010, T024).
   - **Phụ thuộc**: mọi task giao agent ở Đợt 0–6.
   - **Goal**: SC-001, SC-003, SC-006 ở mức hệ thống, e2e với hub thật:
     - SC-001: 20 job Jenkins giả, 5 dự án GitLab `memory` có độ trễ giả; tab CI/CD từ đệm ≤ 2 giây; trạng thái mới

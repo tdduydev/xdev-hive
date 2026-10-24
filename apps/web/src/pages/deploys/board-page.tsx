@@ -60,6 +60,8 @@ const text: Dict<{
   colVersion: string;
   colState: string;
   colBy: string;
+  colRunner: string;
+  runnerLegacy: string;
   historyEmpty: string;
   historyEmptyHint: string;
   historyEmptyFiltered: string;
@@ -102,6 +104,8 @@ const text: Dict<{
     colVersion: "Phiên bản",
     colState: "Trạng thái",
     colBy: "Người",
+    colRunner: "Máy chạy",
+    runnerLegacy: "Hub",
     historyEmpty: "Chưa có lần triển khai nào",
     historyEmptyHint: "Bấm Triển khai ở một ô của bảng để chạy lần đầu.",
     historyEmptyFiltered: "Không có lần triển khai khớp bộ lọc",
@@ -144,6 +148,8 @@ const text: Dict<{
     colVersion: "Version",
     colState: "State",
     colBy: "By",
+    colRunner: "Runner",
+    runnerLegacy: "Hub",
     historyEmpty: "No deployments yet",
     historyEmptyHint: "Press Deploy on a board cell to run the first one.",
     historyEmptyFiltered: "No deployments match the filters",
@@ -239,7 +245,7 @@ function BoardTable({
   return (
     <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
       {/* Bảng rộng hơn khung thì cuộn ngang trong chính nó, không kéo cả trang (Table đã bọc overflow-x-auto). */}
-      <Table className="min-w-[44rem]">
+      <Table className="min-w-[50rem]">
         <TableHeader>
           <TableRow>
             <Th variant="plain" scope="col" className="sticky left-0 z-10 bg-card">
@@ -432,7 +438,7 @@ function History({ systemId, board }: { systemId: string; board: DeployBoard | u
           <option value="external">{DEPLOY_ORIGIN_LABEL.external}</option>
         </FilterSelect>
       </fieldset>
-      {list.isPending && <TableSkeleton rows={4} columns={5} />}
+      {list.isPending && <TableSkeleton rows={4} columns={7} />}
       {list.isError && <LoadFailure error={list.error} retry={() => void list.refetch()} />}
       {list.data && items.length === 0 && (
         <EmptyState
@@ -464,6 +470,9 @@ function History({ systemId, board }: { systemId: string; board: DeployBoard | u
                 <Th variant="plain" scope="col">
                   {t.colBy}
                 </Th>
+                <Th variant="plain" scope="col">
+                  {t.colRunner}
+                </Th>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -493,6 +502,13 @@ function History({ systemId, board }: { systemId: string; board: DeployBoard | u
                     </Pill>
                   </Td>
                   <Td className="align-top">{deployActor(d)}</Td>
+                  <Td className="align-top">
+                    {d.runner === null
+                      ? "—"
+                      : d.runner.mode === "legacy"
+                        ? t.runnerLegacy
+                        : (d.runner.machine?.name ?? "—")}
+                  </Td>
                 </TableRow>
               ))}
             </TableBody>

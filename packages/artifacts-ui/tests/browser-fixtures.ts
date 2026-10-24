@@ -38,6 +38,7 @@ export function detail(id = ID_A, version = 2): ArtifactDetail {
       message: null,
       name: null,
       restoredFrom: null,
+      hasBlob: false,
       hasCompileError: false,
       tombstonedAt: null,
       createdAt: NOW,

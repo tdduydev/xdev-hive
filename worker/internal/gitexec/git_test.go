@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -40,7 +41,9 @@ func isolateGit(t *testing.T) {
 func TestNativeGitKeepsConfiguredHelperAndStripsHiveSecrets(t *testing.T) {
 	isolateGit(t)
 	gitT(t, "", "config", "--global", "credential.helper", "test-helper")
-	native := Git{UseGitCredentials: true, Askpass: "hive-askpass", Token: "hive-secret"}
+	// Giá trị riêng để không trùng biến môi trường của máy chạy test (vd. tên nhánh có chữ "secret" trên CI).
+	const token, envToken = "tok-6f1c9e-field", "tok-6f1c9e-env"
+	native := Git{UseGitCredentials: true, Askpass: "hive-askpass", Token: token}
 	out, err := native.Run(context.Background(), "", "", "config", "--get", "credential.helper")
 	if err != nil || strings.TrimSpace(out) != "test-helper" {
 		t.Fatalf("native helper = %q, %v", out, err)
@@ -49,11 +52,11 @@ func TestNativeGitKeepsConfiguredHelperAndStripsHiveSecrets(t *testing.T) {
 	if err != nil || strings.TrimSpace(out) != "" {
 		t.Fatalf("token mode helper = %q, %v", out, err)
 	}
-	t.Setenv(TokenEnv, "secret")
-	t.Setenv(TokensEnv, "secret")
+	t.Setenv(TokenEnv, envToken)
+	t.Setenv(TokensEnv, envToken)
 	t.Setenv("GIT_ASKPASS", "hive-askpass")
 	for _, kv := range native.env("git.test") {
-		if strings.Contains(kv, "secret") || strings.Contains(kv, "hive-askpass") || strings.HasPrefix(kv, "HIVE_GIT_") {
+		if strings.Contains(kv, token) || strings.Contains(kv, envToken) || strings.Contains(kv, "hive-askpass") || strings.HasPrefix(kv, "HIVE_GIT_") {
 			t.Fatalf("secret/askpass passed to native Git: %q", kv)
 		}
 	}
@@ -107,6 +110,10 @@ func TestGitEnvDropsSecretsAndScopesAskpass(t *testing.T) {
 	}
 	if got := (Git{Token: "glpat-z"}).redact("fatal: https://oauth2:glpat-z@h/x"); strings.Contains(got, "glpat-z") {
 		t.Errorf("redact = %q", got)
+	}
+	// Token git theo run: hub đã nói tên đăng nhập, không đoán theo Kind.
+	if env := (Git{Askpass: "/x", Kind: KindGitLab, Token: "ghs-z", User: "x-access-token"}).env("github.com"); !slices.Contains(env, askpassUserEnv+"=x-access-token") {
+		t.Errorf("env không dùng User: %v", env)
 	}
 }
 

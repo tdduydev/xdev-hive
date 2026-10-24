@@ -5,7 +5,7 @@ import { streamSSE } from "hono/streaming";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
 import { ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
-import { ORG_HEADER } from "../tenancy/index.ts";
+import { ORG_HEADER, tokenOrgMismatch } from "../tenancy/index.ts";
 import { runForUser } from "./engine.ts";
 import { eventsAfter, logsAfter } from "./queries.ts";
 import { runs } from "./schema.ts";
@@ -14,7 +14,7 @@ import { RUNS_CHANNEL } from "./state.ts";
 /**
  * Một kết nối LISTEN cho cả tiến trình api, phát lại trong bộ nhớ cho các luồng SSE (docs/architecture.md mục 9).
  * Mượn kết nối từ pool lúc có người nghe đầu tiên và giữ luôn; mất kết nối thì nối lại, luồng SSE vẫn tự đọc lại định
- * kỳ nên không mất dữ liệu trong lúc nối lại.
+ * kỳ để đọc lại sự kiện bền vững và phần log còn trong bộ đệm RAM khi nối lại.
  */
 export class RunNotifier {
   private client: pg.PoolClient | null = null;
@@ -96,7 +96,7 @@ export interface RunStreamDeps {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE = 200;
 
-/** Con trỏ SSE gộp hai dãy id (sự kiện, log) thành `<eventId>.<logId>`, để Last-Event-ID nối tiếp được cả hai. */
+/** Giữ dạng con trỏ của spec 010; id log mới trỏ vào bộ đệm RAM, log cũ vẫn đọc được từ database. */
 export function parseCursor(raw: string | undefined | null): { e: number; l: number } {
   const m = /^(\d{1,18})\.(\d{1,18})$/.exec(raw ?? "");
   return m ? { e: Number(m[1]), l: Number(m[2]) } : { e: 0, l: 0 };
@@ -115,6 +115,7 @@ export function runStreamHandler(deps: RunStreamDeps) {
     if (!pool || !notifier) return c.json({ message: "Hub chưa cấu hình HIVE_DATABASE_URL." }, 500);
     const orgId = c.req.header(ORG_HEADER) ?? c.req.query("org");
     if (!orgId || !UUID.test(orgId)) return c.json({ message: `Chưa chọn tổ chức (header ${ORG_HEADER}).` }, 400);
+    if (tokenOrgMismatch(session, orgId)) return c.json({ message: "Chưa đăng nhập." }, 401);
     const runId = c.req.param("id") ?? "";
     if (!UUID.test(runId)) return c.json({ message: "Không tìm thấy run trong tổ chức." }, 404);
     const userId = session.user.id;

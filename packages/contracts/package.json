@@ -8,7 +8,8 @@
     "./worker-protocol": "./src/worker-protocol.ts",
     "./terminal-auth": "./src/terminal-auth.ts",
     "./run-states": "./src/run-states.ts",
-    "./run-log": "./src/run-log.ts"
+    "./run-log": "./src/run-log.ts",
+    "./local-secrets": "./src/local-secrets.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
