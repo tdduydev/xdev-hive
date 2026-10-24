@@ -3,6 +3,34 @@
 A `## vX.Y.Z` section here becomes the whole release body for that version (release page and the app's update notice),
 replacing the notes generated from merged PR titles (`scripts/release/notes.sh`).
 
+## v0.2.42
+
+### Upgrade notes
+
+- **The hub now runs as two containers.** `hub` serves HTTP, MCP and worker connections; the new `hub-jobs` runs the
+  job queue and starts once `hub` is healthy. `deploy/remote.sh` starts both. If you run Compose by hand, either start
+  `hub-jobs` too (`docker compose up -d`) or set `HIVE_ROLES=api,jobs` and start only `postgres` and `hub`; otherwise
+  scheduled and queued work stops running.
+- **`postgres` is now built from `deploy/postgres`** on top of `HIVE_POSTGRES_IMAGE`, adding pgBackRest. The first
+  deploy builds the image, so it takes a few minutes longer. Existing data is kept.
+- Optional continuous backup with point-in-time restore: set `HIVE_BACKUP_REPO` (S3, MinIO or SFTP on another machine)
+  and `HIVE_BACKUP_CIPHER_PASS`, and keep that password with `HIVE_MASTER_KEY`. Without them, backups stay daily
+  `pg_dump` as before. See [Continuous backup](https://github.com/tdduydev/xdev-hive/blob/main/docs/self-hosting.md#continuous-backup-and-point-in-time-restore).
+- Update workers together with the hub: after a database restore, workers resend events the hub may have lost.
+
+### Desktop: local secrets
+
+- **Back up and move secrets.** On the Secrets screen, **Xuất** saves the secrets you pick to a `.hivesecrets` file
+  encrypted with your password; **Nhập** restores it on another machine after a preview, matching projects by git
+  remote, then by name. A forgotten password cannot be recovered. The hub never sees the file. See
+  [Local secrets](https://github.com/tdduydev/xdev-hive/blob/main/docs/local-secrets.md).
+- **Import from `.env`.** Pick a `.env` file and a project (or every project) instead of typing secrets one by one.
+- **Secrets for every project.** Tick "Dùng cho mọi dự án" to give a secret to every project on the machine.
+
+### Worker
+
+- Reads GitLab test reports as a delivery job (`test-report`), groundwork for test results on the delivery board.
+
 ## v0.2.26
 
 ### Upgrade notes

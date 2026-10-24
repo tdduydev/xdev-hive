@@ -158,3 +158,16 @@ nhiều cửa sổ: một cho `claude` điều phối, một cho `tail -f` log, 
 - Đừng nhận diện "hết quota" bằng grep cả log: agent đọc code về rate limit cũng có chữ đó. Chỉ xét vài dòng kết quả cuối.
 - Test Go chạy trên Windows trong CI cần lưu ý: `filepath.Join` cho đường dẫn mong đợi; không kiểm quyền file 0600;
   đường dẫn nhúng vào JSON phải escape bằng `json.Marshal`.
+
+## Bài học (2026-10-24)
+
+- CI đỏ ở bước lint vì Biome định dạng JSON: meta migration do drizzle sinh, fixture `testdata/*.json` agent viết tay.
+  Trước khi push, chạy `pnpm exec biome check` trên mọi file đổi (`git diff --name-only origin/main...HEAD`), kể cả `.json`.
+- `e2e/remote-totp.spec.ts` chập chờn vì chờ mã TOTP đổi chu kỳ: đỏ một lần ở PR không chạm màn đó thì chạy lại job
+  (`gh run rerun <id> --failed`) trước khi sửa. Đã thêm vào `KNOWN` của `ci-watch.sh`.
+- Xem diff của nhánh agent sau khi `main` đã đi tiếp: `git diff origin/main...HEAD` (ba chấm), không thì thấy cả thay
+  đổi của người khác trên `main` dưới dạng bị xoá.
+- Máy điều phối Windows: không có Rust, nên phần Tauri chỉ được biên dịch ở CI; ghi rõ trong PR. `gofmt -l` và Biome báo
+  cả file CRLF không đổi, chỉ đọc kết quả của file trong diff.
+- Việc chạm bí mật (spec 031): đề bài ghi rõ mật khẩu/giá trị chỉ đi qua stdin, không qua argv, env, log hay hub; người
+  điều phối grep lại `stdin|password|arg(` trong diff trước khi mở PR.

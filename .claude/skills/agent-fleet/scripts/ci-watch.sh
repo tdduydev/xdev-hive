@@ -2,7 +2,7 @@
 # Theo dõi PR mở: lỗi do test flaky đã biết thì tự chạy lại; lỗi khác thì in ra và thoát để người điều phối xử lý.
 source ${0:A:h}/env.sh
 fleet_gh_repo || exit 1
-KNOWN='ws.db.test.ts|mode-editor.test.tsx|routing.db.test.ts|mcp-artifacts.db.test.ts|compile.test.ts|panel.test.tsx|public-link-dialog.test.tsx|library.test.tsx|TestChatDetachAttachKill|TestStdinClosedDetaches|TestLocalSlowClientDropped|TestLocalPostToolIsFast|TestOpenInputResizeClose|plans-screen.test.tsx|skills-screen.test.tsx'
+KNOWN='ws.db.test.ts|mode-editor.test.tsx|routing.db.test.ts|mcp-artifacts.db.test.ts|compile.test.ts|panel.test.tsx|public-link-dialog.test.tsx|library.test.tsx|TestChatDetachAttachKill|TestStdinClosedDetaches|TestLocalSlowClientDropped|TestLocalPostToolIsFast|TestOpenInputResizeClose|plans-screen.test.tsx|skills-screen.test.tsx|remote-totp.spec.ts'
 touch $S/seen-fail.txt $S/rerun.txt
 while true; do
   for row in $(gh pr list --repo $FLEET_GH_REPO --state open --json number,headRefOid,statusCheckRollup --jq '.[]|select([.statusCheckRollup[]?.conclusion]|index("FAILURE"))|"\(.number):\(.headRefOid[0:7])"'); do
