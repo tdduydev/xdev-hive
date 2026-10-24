@@ -76,7 +76,8 @@ func machineOutbox() (outbox.Store, error) {
 	if err != nil {
 		return outbox.Store{}, err
 	}
-	return outbox.Store{Root: filepath.Join(home, ".xdev-hive", "outbox"), Now: optimizeNow}, nil
+	// Hỏi mốc database của hub trong lượt gửi để gửi lại việc hub mất khi khôi phục (spec 027 FR-042).
+	return outbox.Store{Root: filepath.Join(home, ".xdev-hive", "outbox"), Now: optimizeNow, Epoch: outbox.HubEpoch(optimizeHubHTTP())}, nil
 }
 
 func machineIdentity(cfg config.Config) outbox.Identity {

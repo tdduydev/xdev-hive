@@ -11,7 +11,7 @@
 |---|---|---|---|
 | `secrets_status` | | `StoreStatus` | `secrets status` |
 | `secrets_list` | `project?: string` | `{ secrets, reserved }` | `secrets list` |
-| `secret_save` | `{ name, description, value?: string, projects?: string[] }` | `SecretItem` | `secrets set` (+ `assign` cho từng dự án mới) |
+| `secret_save` | `{ name, description, value?: string, projects?: string[], allProjects?: boolean }` | `SecretItem` | `secrets set` (+ `assign\|unassign --all-projects` khi có `allProjects`, rồi `assign` cho từng dự án mới) |
 | `secret_rename` | `{ name, to }` | `SecretItem` | `secrets rename` |
 | `secret_assign` | `{ name, project, assigned: boolean }` | `SecretItem` | `secrets assign` / `unassign` |
 | `secret_delete` | `{ name }` | `{ deleted, inUse }` | `secrets delete` |

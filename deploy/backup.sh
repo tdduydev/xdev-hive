@@ -48,3 +48,13 @@ for name in $(find "$root" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 
   esac
 done
 echo "Đã sao lưu: $backup (giữ $keep bản mới nhất)."
+
+# Backup liên tục (ADR 0035) đi cùng cron hằng ngày: đầy đủ mỗi Chủ nhật, tăng dần các ngày khác. Lần đầu chưa có bản
+# đầy đủ thì pgBackRest tự chuyển bản tăng dần thành đầy đủ; stanza-create chạy lại không sao.
+if [ -n "$(get_env HIVE_BACKUP_REPO "$env")" ]; then
+  type=incr
+  [ "$(date -u +%u)" != 7 ] || type=full
+  echo "Backup pgBackRest ($type) lên kho HIVE_BACKUP_REPO…"
+  compose exec -T postgres hive-pgbackrest stanza-create
+  compose exec -T postgres hive-pgbackrest backup --type="$type"
+fi

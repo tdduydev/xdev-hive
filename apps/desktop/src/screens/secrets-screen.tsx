@@ -57,6 +57,8 @@ const text: Dict<{
   colChanged: string;
   colActions: string;
   noProjects: string;
+  shared: string;
+  sharedTitle: string;
   moreProjects: (n: number) => string;
   edit: (name: string) => string;
   editLabel: string;
@@ -68,6 +70,7 @@ const text: Dict<{
   deleteInUse: (n: number) => string;
   deleteInUseHint: string;
   deleteProjects: (n: number) => string;
+  deleteShared: string;
   cancel: string;
   deleteConfirm: string;
   deleting: string;
@@ -104,6 +107,8 @@ const text: Dict<{
     colChanged: "Đổi giá trị lúc",
     colActions: "Thao tác",
     noProjects: "Chưa gán",
+    shared: "Mọi dự án",
+    sharedTitle: "Đưa vào mọi dự án trên máy, kể cả dự án thêm sau",
     moreProjects: (n) => `+${n}`,
     edit: (name) => `Sửa ${name}`,
     editLabel: "Sửa",
@@ -115,6 +120,7 @@ const text: Dict<{
     deleteInUse: (n) => `Đang có ${n} run dùng bí mật này.`,
     deleteInUseHint: "Run đang chạy vẫn giữ giá trị đã nhận; run mới sẽ không còn thấy biến này.",
     deleteProjects: (n) => `Bí mật đang gán cho ${n} dự án; các dự án đó thôi nhận biến này.`,
+    deleteShared: "Bí mật đang dùng cho mọi dự án; mọi dự án thôi nhận biến này.",
     cancel: "Huỷ",
     deleteConfirm: "Xoá bí mật",
     deleting: "Đang xoá…",
@@ -158,6 +164,8 @@ const text: Dict<{
     colChanged: "Value changed",
     colActions: "Actions",
     noProjects: "Not assigned",
+    shared: "All projects",
+    sharedTitle: "Put into every project on this machine, including projects added later",
     moreProjects: (n) => `+${n}`,
     edit: (name) => `Edit ${name}`,
     editLabel: "Edit",
@@ -170,6 +178,7 @@ const text: Dict<{
     deleteInUse: (n) => `${n} runs are using this secret.`,
     deleteInUseHint: "Running runs keep the value they received; new runs will no longer see the variable.",
     deleteProjects: (n) => `The secret is assigned to ${n} projects; they stop receiving this variable.`,
+    deleteShared: "The secret is used by every project; they all stop receiving this variable.",
     cancel: "Cancel",
     deleteConfirm: "Delete secret",
     deleting: "Deleting…",
@@ -249,7 +258,10 @@ export function SecretsScreen() {
     void load();
   }, [load]);
 
-  const rows = (data?.secrets ?? []).filter((s) => !filter || s.projects.some((p) => p.localId === filter));
+  // Bí mật dùng chung tới mọi dự án, nên lọc theo dự án nào cũng thấy.
+  const rows = (data?.secrets ?? []).filter(
+    (s) => !filter || s.allProjects === true || s.projects.some((p) => p.localId === filter),
+  );
   // Dự án để lọc lấy từ danh sách gán, không từ projects.json, để dự án đã bị gỡ khỏi máy vẫn chọn được khi còn gán mồ côi.
   const filterable = new Map<string, string>();
   for (const p of projects) if (p.localId) filterable.set(p.localId, p.name);
@@ -408,15 +420,21 @@ export function SecretsScreen() {
                         </Td>
                         <Td className="min-w-36">
                           <div className="flex flex-wrap gap-1">
-                            {s.projects.length === 0 && (
+                            {s.allProjects === true && (
+                              <Pill small tone="sel" title={t.sharedTitle}>
+                                {t.shared}
+                              </Pill>
+                            )}
+                            {!s.allProjects && s.projects.length === 0 && (
                               <span className="text-xs text-muted-foreground">{t.noProjects}</span>
                             )}
-                            {s.projects.slice(0, 2).map((p) => (
-                              <Pill key={p.localId} small>
-                                {p.name}
-                              </Pill>
-                            ))}
-                            {s.projects.length > 2 && (
+                            {!s.allProjects &&
+                              s.projects.slice(0, 2).map((p) => (
+                                <Pill key={p.localId} small>
+                                  {p.name}
+                                </Pill>
+                              ))}
+                            {!s.allProjects && s.projects.length > 2 && (
                               <Pill small title={s.projects.map((p) => p.name).join(", ")}>
                                 {t.moreProjects(s.projects.length - 2)}
                               </Pill>
@@ -549,7 +567,8 @@ function DeleteDialog({
             <AlertDescription>{t.deleteInUseHint}</AlertDescription>
           </Alert>
         )}
-        {secret && secret.projects.length > 0 && (
+        {secret?.allProjects === true && <p className="text-sm text-muted-foreground">{t.deleteShared}</p>}
+        {secret && !secret.allProjects && secret.projects.length > 0 && (
           <p className="text-sm text-muted-foreground">{t.deleteProjects(secret.projects.length)}</p>
         )}
         {error && (

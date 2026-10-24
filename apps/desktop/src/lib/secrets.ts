@@ -34,6 +34,11 @@ export interface SecretItem {
   createdAt: string;
   valueChangedAt: string;
   projects: SecretProject[];
+  /**
+   * Dùng cho mọi dự án, kể cả dự án thêm sau (FR-066); khi đó `projects` là mọi dự án đang có trên máy. Worker cũ chưa
+   * trả trường này.
+   */
+  allProjects?: boolean | undefined;
   /** Số run đang chạy dùng bí mật này; > 0 thì xoá phải báo trước (FR-016). */
   inUseBy: number;
   /** Có tên trong danh mục mà kho không có giá trị (vd. người dùng xoá trong Keychain). Worker cũ chưa trả trường này. */
@@ -99,6 +104,8 @@ export interface SecretSave {
   value?: string | undefined;
   /** localId các dự án được cấp; bỏ qua thì giữ nguyên. */
   projects?: string[] | undefined;
+  /** Bật hay tắt cờ dùng cho mọi dự án; bỏ qua thì giữ nguyên. Bật thì worker bỏ các gán riêng. */
+  allProjects?: boolean | undefined;
 }
 
 export const secretsStatus = () => invoke<StoreStatus>("secrets_status");

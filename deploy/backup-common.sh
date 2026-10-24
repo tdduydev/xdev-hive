@@ -35,6 +35,17 @@ key_fingerprint() {
 backup_meta() {
   printf 'HIVE_COMPOSE_PROJECT=%s\nHIVE_MASTER_KEY_SHA256=%s\n' "$(get_env HIVE_COMPOSE_PROJECT "$1")" "$(key_fingerprint "$1")"
 }
+# Đổi mốc database sau khi khôi phục (specs/027 R7): worker thấy mốc mới sẽ gửi lại kết quả hub nhận sau $1 mà bản
+# khôi phục không còn. $1 trống nghĩa là không biết thời điểm, worker gửi lại mọi thứ còn trong nhật ký 14 ngày.
+# Bản dump cũ chưa có bảng thì bỏ qua: migration tạo bảng với mốc ngẫu nhiên, cũng là mốc mới.
+db_epoch_sql() {
+  case "$1" in
+    '') restored_to=NULL ;;
+    *[!0-9TZ:.+\ -]*) fail "Thời điểm khôi phục không hợp lệ: $1" ;;
+    *) restored_to="'$1'::timestamptz" ;;
+  esac
+  printf "DO \$\$ BEGIN IF to_regclass('hive.db_epoch') IS NOT NULL THEN INSERT INTO hive.db_epoch (id, epoch, restored_to, changed_at) VALUES (true, gen_random_uuid(), %s, now()) ON CONFLICT (id) DO UPDATE SET epoch = excluded.epoch, restored_to = excluded.restored_to, changed_at = excluded.changed_at; END IF; END \$\$;\n" "$restored_to"
+}
 lock=$dir/.backup-restore.lock
 acquire_lock() {
   umask 077
