@@ -4,5 +4,6 @@
   "createdAt": "2026-10-01T08:30:00Z",
   "valueChangedAt": "2026-10-01T08:30:00Z",
   "projects": [],
+  "allProjects": false,
   "inUseBy": 0
 }

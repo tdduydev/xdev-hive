@@ -76,7 +76,7 @@ Chặn mọi story. Không có nhãn story.
   "Kiểm thử" (FR-010). Vai trò `team-tester` trong `systemRoleId`, tập `TEAM_TESTER` liệt kê đủ quyền như `TEAM_BA`
   (FR-012). Gán quyền cho vai trò có sẵn theo FR-014 và research.md D5. Test: `team-tester` không có quyền nào ở
   FR-013 (`packages/contracts/src/roles.ts`, `roles.test.ts`)
-- [ ] T006 [P] C, W — `test-report` vào `DELIVERY_JOB_KINDS`, không vào `DELIVERY_METHODS`. Khả năng `kinds` mặc định
+- [x] T006 [P] C, W — `test-report` vào `DELIVERY_JOB_KINDS`, không vào `DELIVERY_METHODS`. Khả năng `kinds` mặc định
   `[]` nếu specs/032 T020 chưa thêm. `params` là union theo `op`:
   - `read`: `projectPath` `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$` (1–255), `pipelineId` ≥ 1, `mode`, `jobFilter`
     tối đa 20 mục, mỗi mục tối đa 100, `artifactPath` tối đa 255;
@@ -385,10 +385,10 @@ kết lỗi, thời điểm."
 Story P1 nhưng đặt sau cùng: phần hub cần specs/032 T011, T012, T017, T020 ở `main`. Phần worker T049, T050 làm được
 ngay sau T006.
 
-- [ ] T049 [P] [US3] W — `testreport.Options{Library bool}`: tìm mã bằng `\bTC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}\b` trong
+- [x] T049 [P] [US3] W — `testreport.Options{Library bool}`: tìm mã bằng `\bTC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}\b` trong
   tên test; nhiều mã tính `ambiguous`, không mã tính `unmapped`; giới hạn 32 MiB và 5000 ca
   (`worker/internal/testreport/summary.go`, `worker/internal/testreport/summary_test.go`)
-- [ ] T050 [P] [US3] W — Việc `test-report` (FR-023, FR-025). `op=read` theo ba mode (D7): `pipeline-report` gọi
+- [x] T050 [P] [US3] W — Việc `test-report` (FR-023, FR-025). `op=read` theo ba mode (D7): `pipeline-report` gọi
   `/pipelines/:id/test_report`; hai mode artifact gọi `/pipelines/:id/jobs` rồi `/jobs/:job_id/artifacts/*path`;
   `total_count = 0` báo `no_report`. `op=list` theo D18. Phát `test-results`, `pipelines`, `finished` với mã T006.
   Test bằng `httptest`: JSON sự kiện không chứa tên test, tên suite, thông báo lỗi (SC-003)

@@ -2,12 +2,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  checkExportPassword,
   checkSecretName,
   checkSecretValue,
   type DeleteResult,
+  type ExportResult,
   formatWhen,
   type GrantEntry,
+  type ImportResult,
+  importWrites,
   isMissingValue,
+  pickExportPath,
+  pickSecretsFile,
   SECRET_VALUE_MAX_BYTES,
   type SecretItem,
   type SecretsList,
@@ -19,8 +25,12 @@ import {
   secretDelete,
   secretReveal,
   secretSave,
+  secretsExport,
   secretsFilterFromHash,
   secretsHash,
+  secretsImport,
+  secretsImportEnv,
+  secretsImportPreview,
   secretsList,
   secretsLog,
   secretsLogClear,
@@ -57,8 +67,11 @@ describe("kiểu theo fixture của worker", () => {
     const list = fixture<SecretsList>("list.json");
     const calls = fakeTauri(() => list);
     const got = await secretsList();
-    expect(got.secrets.map((s) => s.name)).toEqual(["DATABASE_URL", "STRIPE_TEST_KEY"]);
+    expect(got.secrets.map((s) => s.name)).toEqual(["DATABASE_URL", "SENTRY_DSN", "STRIPE_TEST_KEY"]);
     expect(got.secrets[0]?.projects.map((p) => p.localId)).toEqual(["1111111111111111", "2222222222222222"]);
+    expect(got.secrets.map((s) => s.allProjects)).toEqual([false, true, false]);
+    // Bí mật dùng chung liệt kê mọi dự án trên máy, dù danh mục không giữ gán riêng.
+    expect(got.secrets[1]?.projects.map((p) => p.localId)).toEqual(["1111111111111111", "2222222222222222"]);
     expect(got.reserved.exact).toContain("PATH");
     expect(got.reserved.prefixes).toContain("HIVE_");
     expect(calls).toEqual([{ command: "secrets_list", args: undefined }]);
@@ -103,6 +116,7 @@ describe("lệnh Tauri", () => {
   it("gửi đúng tên lệnh và tham số camelCase", async () => {
     const calls = fakeTauri(() => null);
     await secretAssign("DATABASE_URL", "1111", true);
+    await secretSave({ name: "SENTRY_DSN", description: "", projects: [], allProjects: true });
     await secretsPurge({ all: true });
     await secretsPurge({ project: "1111" });
     await secretsLogClear();
@@ -110,6 +124,7 @@ describe("lệnh Tauri", () => {
     await secretApprove("a1", false);
     expect(calls).toEqual([
       { command: "secret_assign", args: { name: "DATABASE_URL", project: "1111", assigned: true } },
+      { command: "secret_save", args: { name: "SENTRY_DSN", description: "", projects: [], allProjects: true } },
       { command: "secrets_purge", args: { all: true } },
       { command: "secrets_purge", args: { project: "1111" } },
       { command: "secrets_log_clear", args: undefined },
@@ -132,6 +147,104 @@ describe("lệnh Tauri", () => {
 
   it("ngoài app Tauri thì từ chối bằng thông báo tiếng Việt", async () => {
     await expect(secretsStatus()).rejects.toThrow(/app xDev Hive/);
+  });
+});
+
+describe("xuất và nhập", () => {
+  it("kết quả theo fixture của worker: chỉ có tên, trạng thái và dự án", async () => {
+    const preview = fixture<ImportResult>("import-preview.json");
+    const env = fixture<ImportResult>("import-env.json");
+    fakeTauri((c) =>
+      c === "secrets_export" ? fixture<ExportResult>("export.json") : c.endsWith("env") ? env : preview,
+    );
+    expect((await secretsExport({ path: "/tmp/a.hivesecrets", password: "p", names: [], force: false })).names).toEqual(
+      ["DATABASE_URL", "SENTRY_DSN", "STRIPE_TEST_KEY"],
+    );
+    const got = await secretsImportPreview("/tmp/a.hivesecrets", "p", "overwrite");
+    expect(got.dryRun).toBe(true);
+    expect(got.items.map((i) => [i.name, i.status, i.action])).toEqual([
+      ["DATABASE_URL", "same_name", "overwrite"],
+      ["SENTRY_DSN", "same_value", "overwrite"],
+      ["STRIPE_TEST_KEY", "new", "create"],
+    ]);
+    expect(got.items[0]?.unmatched).toEqual([{ name: "api" }]);
+    expect(got.items.filter(importWrites)).toHaveLength(3);
+    // Không trường nào của kết quả mang giá trị.
+    expect(JSON.stringify(got)).not.toMatch(/"value"/);
+    const fromEnv = await secretsImportEnv("/tmp/.env", true, "skip", { kind: "none" });
+    expect(fromEnv.items.map((i) => [i.line, i.status, i.error?.code ?? null])).toEqual([
+      [1, "new", null],
+      [2, "same_value", null],
+      [3, "invalid", "invalid_name"],
+    ]);
+    expect(fromEnv.items.filter(importWrites).map((i) => i.name)).toEqual(["NEW_TOKEN"]);
+  });
+
+  it("gửi đúng tên lệnh và tham số camelCase; mật khẩu chỉ nằm trong tham số của lệnh", async () => {
+    const calls = fakeTauri(() => null);
+    await secretsExport({ path: "/tmp/a.hivesecrets", password: "mat-khau-dai-1", names: ["A_KEY"], force: true });
+    await secretsImportPreview("/tmp/a.hivesecrets", "mat-khau-dai-1", "skip");
+    await secretsImport("/tmp/a.hivesecrets", "mat-khau-dai-1", "overwrite");
+    await secretsImportEnv("/tmp/.env", true, "skip", { kind: "none" });
+    await secretsImportEnv("/tmp/.env", false, "overwrite", { kind: "project", localId: "1111" });
+    await secretsImportEnv("/tmp/.env", false, "skip", { kind: "all" });
+    expect(calls).toEqual([
+      {
+        command: "secrets_export",
+        args: { path: "/tmp/a.hivesecrets", password: "mat-khau-dai-1", names: ["A_KEY"], force: true },
+      },
+      {
+        command: "secrets_import_preview",
+        args: { path: "/tmp/a.hivesecrets", password: "mat-khau-dai-1", onConflict: "skip" },
+      },
+      {
+        command: "secrets_import",
+        args: { path: "/tmp/a.hivesecrets", password: "mat-khau-dai-1", onConflict: "overwrite" },
+      },
+      { command: "secrets_import_env", args: { path: "/tmp/.env", dryRun: true, onConflict: "skip" } },
+      {
+        command: "secrets_import_env",
+        args: { path: "/tmp/.env", dryRun: false, onConflict: "overwrite", project: "1111" },
+      },
+      {
+        command: "secrets_import_env",
+        args: { path: "/tmp/.env", dryRun: false, onConflict: "skip", allProjects: true },
+      },
+    ]);
+  });
+
+  it("hộp chọn file: .hivesecrets lọc theo đuôi, .env không lọc; hộp lưu đặt sẵn tên file", async () => {
+    const calls = fakeTauri((c) => (c === "plugin:dialog|open" ? ["/tmp/a.hivesecrets"] : "/tmp/b.hivesecrets"));
+    expect(await pickSecretsFile("Chọn", "hivesecrets")).toBe("/tmp/a.hivesecrets");
+    await pickSecretsFile("Chọn", "env");
+    expect(await pickExportPath("Lưu", "x.hivesecrets")).toBe("/tmp/b.hivesecrets");
+    expect(calls.map((c) => c.args)).toEqual([
+      {
+        options: {
+          title: "Chọn",
+          multiple: false,
+          directory: false,
+          filters: [{ name: "xDev Hive", extensions: ["hivesecrets"] }],
+        },
+      },
+      { options: { title: "Chọn", multiple: false, directory: false } },
+      {
+        options: {
+          title: "Lưu",
+          defaultPath: "x.hivesecrets",
+          filters: [{ name: "xDev Hive", extensions: ["hivesecrets"] }],
+        },
+      },
+    ]);
+    expect(calls[2]?.command).toBe("plugin:dialog|save");
+  });
+
+  it("mật khẩu xuất: tối thiểu 12 ký tự đếm theo code point, hai lần phải khớp", () => {
+    expect(checkExportPassword("12345678901", "12345678901")).toBe("short");
+    expect(checkExportPassword("123456789012", "123456789013")).toBe("mismatch");
+    expect(checkExportPassword("123456789012", "123456789012")).toBeNull();
+    expect(checkExportPassword("😀".repeat(6), "😀".repeat(6))).toBe("short");
+    expect(checkExportPassword("ặ".repeat(12), "ặ".repeat(12))).toBeNull();
   });
 });
 

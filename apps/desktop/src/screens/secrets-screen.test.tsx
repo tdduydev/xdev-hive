@@ -270,6 +270,100 @@ describe("màn Bí mật: thêm và sửa", () => {
   });
 });
 
+// FR-066: worker trả mọi dự án trên máy trong `projects` của bí mật dùng chung.
+const SENTRY = secret("SENTRY_DSN", { allProjects: true, projects: [APP, API] });
+
+describe("màn Bí mật: dùng cho mọi dự án", () => {
+  it("dòng có nhãn Mọi dự án thay cho từng dự án; lọc theo dự án nào cũng thấy", async () => {
+    fakeApp({ secrets: [DATABASE, SENTRY, STRIPE] });
+    location.hash = `#/secrets/${API.localId}`;
+    render(<SecretsScreen />);
+    expect(await screen.findByText("SENTRY_DSN")).toBeTruthy();
+    const shared = row("SENTRY_DSN");
+    expect(within(shared).getByText("Mọi dự án").getAttribute("title")).toMatch(/kể cả dự án thêm sau/);
+    expect(within(shared).queryByText("app")).toBeNull();
+    expect(screen.getByText("DATABASE_URL")).toBeTruthy();
+    expect(screen.queryByText("STRIPE_TEST_KEY")).toBeNull();
+  });
+
+  it("bật khi thêm: cảnh báo, ẩn chọn dự án, gửi cờ và không gửi dự án nào", async () => {
+    const { calls } = fakeApp({ secrets: [] });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText(/Chưa có bí mật nào/);
+    await user.click(screen.getByRole("button", { name: "Thêm bí mật" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Tên biến"), "SENTRY_DSN");
+    await user.type(within(dialog).getByLabelText("Giá trị"), "gia-tri-gia-12345678");
+    await user.click(within(dialog).getByRole("checkbox", { name: /api/ }));
+    expect(within(dialog).queryByText(/kể cả repo clone sau này/)).toBeNull();
+
+    const shared = within(dialog).getByRole("checkbox", { name: "Dùng cho mọi dự án" });
+    await user.click(shared);
+    const warning = within(dialog).getByText(/mọi lần chạy agent của mọi dự án.*kể cả repo clone sau này/);
+    expect(shared.getAttribute("aria-describedby")).toBe(warning.id);
+    expect(within(dialog).queryByRole("checkbox", { name: /api/ })).toBeNull();
+
+    await user.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.find((c) => c.command === "secret_save")?.args).toEqual({
+      name: "SENTRY_DSN",
+      description: "",
+      value: "gia-tri-gia-12345678",
+      projects: [],
+      allProjects: true,
+    });
+  });
+
+  it("tắt khi sửa: hiện lại chọn dự án, mọi dự án đang chọn sẵn; gửi tắt cờ và các dự án còn chọn", async () => {
+    const { calls } = fakeApp({ secrets: [SENTRY] });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("SENTRY_DSN");
+    await user.click(screen.getByRole("button", { name: "Sửa SENTRY_DSN" }));
+    const dialog = await screen.findByRole("dialog");
+    const shared = within(dialog).getByRole("checkbox", { name: "Dùng cho mọi dự án" }) as HTMLInputElement;
+    expect(shared.checked).toBe(true);
+    expect(within(dialog).queryByRole("checkbox", { name: /app/ })).toBeNull();
+
+    await user.click(shared);
+    expect((within(dialog).getByRole("checkbox", { name: /app/ }) as HTMLInputElement).checked).toBe(true);
+    await user.click(within(dialog).getByRole("checkbox", { name: /api/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.find((c) => c.command === "secret_save")?.args).toEqual({
+      name: "SENTRY_DSN",
+      description: "",
+      value: undefined,
+      projects: [APP.localId],
+      allProjects: false,
+    });
+  });
+
+  it("bí mật thường không gửi cờ", async () => {
+    const { calls } = fakeApp({ secrets: [STRIPE] });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    await user.click(screen.getByRole("button", { name: "Sửa STRIPE_TEST_KEY" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.find((c) => c.command === "secret_save")?.args?.allProjects).toBeUndefined();
+  });
+
+  it("xoá báo mọi dự án thôi nhận biến", async () => {
+    fakeApp({ secrets: [SENTRY] });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("SENTRY_DSN");
+    await user.click(screen.getByRole("button", { name: "Xoá SENTRY_DSN" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Bí mật đang dùng cho mọi dự án; mọi dự án thôi nhận biến này.")).toBeTruthy();
+    expect(within(dialog).queryByText(/đang gán cho/)).toBeNull();
+  });
+});
+
 describe("màn Bí mật: xoá", () => {
   it("xoá có xác nhận; nút Huỷ được focus trước; bí mật đang được run dùng thì cảnh báo", async () => {
     const { calls } = fakeApp({ secrets: [secret("OLD_KEY", { inUseBy: 2, projects: [APP] }), STRIPE] });

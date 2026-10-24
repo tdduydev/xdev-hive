@@ -22,8 +22,8 @@ Gói Go: `worker/internal/secretstore` (logic) và `worker/cmd/hive-worker/secre
 | `secrets set --json --name <N> [--description-file <f>]` | `{"value"}` (bắt buộc khi tạo, tuỳ chọn khi sửa) | `SecretItem` |
 | `secrets rename --json --name <N> --to <M>` | | `SecretItem` (chuyển mọi khối sang tên mới rồi xoá khối cũ) |
 | `secrets describe --json --name <N> --description-file <f>` | | `SecretItem` hoặc lỗi `description_looks_secret` |
-| `secrets assign --json --name <N> --project <localId>` | | `SecretItem` |
-| `secrets unassign --json --name <N> --project <localId>` | | `SecretItem` |
+| `secrets assign --json --name <N> --project <localId>\|--all-projects` | | `SecretItem` |
+| `secrets unassign --json --name <N> --project <localId>\|--all-projects` | | `SecretItem` |
 | `secrets delete --json --name <N>` | | `{ deleted: N, inUse: boolean }` |
 | `secrets reveal --json --name <N> [--copy]` | | `{ value: string }` (ghi dòng `reveal`) |
 | `secrets log --json [--name <N>] [--project <localId>] [--limit 200]` | | `{ entries: GrantEntry[] }` |
@@ -36,6 +36,28 @@ Ghi chú:
 
 - Mô tả đi qua file tạm do Rust tạo và xoá, như 029. Mô tả không phải bí mật, nhưng có thể dài và có xuống dòng.
 - `secrets reveal` là lệnh duy nhất in giá trị ra stdout. Rust đọc rồi `wipe` chuỗi sau khi trả cho UI hay clipboard.
+- `assign --all-projects` bật cờ dùng cho mọi dự án (FR-066), `unassign --all-projects` tắt cờ. Phải có đúng một trong
+  `--project` và `--all-projects`; thiếu cả hai hay có cả hai thì thoát mã 2. Bật cờ có thể trả `too_many`.
+- `secrets list --project <localId>` trả cả bí mật dùng chung, vì chúng cũng tới dự án đó.
+
+## Xuất và nhập (US10)
+
+| Lệnh | stdin | Ra |
+|---|---|---|
+| `secrets export --json --out <f> [--name <N> …] [--force]` | `{"password"}` | `{ out: string, names: string[] }` (ghi dòng `export`) |
+| `secrets import --json --in <f> [--dry-run] [--on-conflict skip\|overwrite]` | `{"password"}` | `ImportResult` (ghi dòng `import` khi không `--dry-run`) |
+| `secrets import --json --env <f> [--dry-run] [--on-conflict skip\|overwrite] [--project <localId>\|--all-projects]` | | `ImportResult` |
+
+Ghi chú:
+
+- Mật khẩu chỉ đi qua stdin như giá trị: `{"password":"…"}` rồi EOF. Lệnh không in lại mật khẩu, kể cả khi lỗi.
+- `export` không có `--name` thì xuất mọi bí mật. Mật khẩu dưới 12 ký tự → `weak_password`. File đã có mà thiếu
+  `--force` → `file_exists`. Thiếu giá trị trong kho thì không ghi file (`store_missing`).
+- `import --dry-run` chạy đúng logic của lần nhập thật trên bản sao danh mục, không ghi kho, danh mục hay nhật ký.
+- `--on-conflict` mặc định `skip`. `overwrite` đổi giá trị và mô tả (`.env`: giữ mô tả cũ), thêm gán, không bỏ gán.
+- Lỗi của từng mục nằm trong `items[].error`; lệnh vẫn thoát 0. Lỗi của cả file (`decrypt_failed`, `file_version`,
+  `file_format`) thì in `{"error"}` và thoát khác 0.
+- `--env` không có `--project` hay `--all-projects` thì nhập mà không gán.
 
 ## Lệnh chạy (US3)
 
@@ -69,14 +91,15 @@ type SecretItem = {
   description: string;
   createdAt: string;
   valueChangedAt: string;
-  projects: { localId: string; name: string; folder: string }[];
+  projects: { localId: string; name: string; folder: string }[]; // allProjects: mọi dự án có localId trên máy
+  allProjects: boolean;          // dùng cho mọi dự án (FR-066)
   inUseBy: number;               // số phiên đang chạy dùng bí mật này (FR-016)
   missingInStore?: boolean;      // có trong danh mục mà kho thiếu mục (US9)
 };
 type ReservedNames = { exact: string[]; prefixes: string[] };
 type GrantEntry = {
   id: string; at: string;
-  kind: "run" | "terminal" | "reveal";
+  kind: "run" | "terminal" | "reveal" | "export" | "import";
   sessionId: string; project: string; projectName: string;
   names: { name: string; deleted: boolean; leaked: boolean }[];
   policy: "allow" | "approve" | "deny";
@@ -87,6 +110,19 @@ type ApprovalRequest = {
   id: string; runId: string; project: string; projectName: string;
   names: string[]; expiresAt: string;
 };
+type ImportProject = { localId: string; name: string };
+type ImportItem = {
+  name: string;                  // .env: tên đã chuẩn hoá; tên không đọc được thì rỗng, xem line
+  status: "new" | "same_name" | "same_value" | "invalid";
+  action: "create" | "overwrite" | "skip";
+  allProjects: boolean;
+  projects: ImportProject[];     // gán sẽ thêm (hay đã thêm)
+  unmatched: { name: string; remoteUrl?: string }[]; // dự án trong file không khớp dự án nào trên máy
+  limited: ImportProject[];      // gán bị bỏ vì dự án đã đủ 64
+  error?: { code: string; message: string };
+  line?: number;                 // chỉ với --env
+};
+type ImportResult = { dryRun: boolean; items: ImportItem[] };
 ```
 
 ## Mã lỗi
@@ -97,7 +133,7 @@ type ApprovalRequest = {
 | `reserved_name` | FR-004 | "`PATH` là tên dành riêng, hãy đặt tên khác." |
 | `duplicate_name` | Trùng tên | "Đã có bí mật tên `X`." |
 | `invalid_value` | <8, >8 KiB, có NUL | "Giá trị phải dài từ 8 ký tự đến 8 KiB và không chứa ký tự NUL." |
-| `too_many` | >64 bí mật gán cho dự án | "Dự án đã có 64 bí mật." |
+| `too_many` | >64 bí mật gán cho dự án, kể cả khi bật `--all-projects` | "Dự án đã có 64 bí mật." |
 | `description_looks_secret` | FR-021 | "Mô tả có chuỗi giống bí mật. Hãy bỏ chuỗi đó trước khi lưu." |
 | `store_unavailable` | FR-062 | "Máy không có kho bí mật (Secret Service). Cài gnome-keyring hoặc KWallet rồi thử lại." |
 | `store_locked` | FR-060 | "Kho bí mật đang khoá. Mở khoá máy rồi chạy lại." |
@@ -105,3 +141,8 @@ type ApprovalRequest = {
 | `store_corrupt` | Khối hỏng | "Bí mật X bị hỏng trong kho, hãy đặt lại giá trị." |
 | `env_too_large` | Windows >24 KiB | "Bí mật gán cho dự án quá lớn để đưa vào môi trường Windows: X, Y." |
 | `not_found` | Tên hay `localId` không có | "Không tìm thấy bí mật `X`." |
+| `weak_password` | Mật khẩu xuất < 12 ký tự | "Mật khẩu phải dài ít nhất 12 ký tự." |
+| `file_exists` | File xuất đã có, thiếu `--force` | "File đã có. Chọn tên khác hoặc xác nhận ghi đè." |
+| `decrypt_failed` | Sai mật khẩu, file bị sửa hay hỏng | "Sai mật khẩu hoặc file đã bị sửa." |
+| `file_version` | `version` lạ | "File do bản xDev Hive mới hơn tạo. Hãy cập nhật rồi nhập lại." |
+| `file_format` | Không phải file `.hivesecrets` | "File không phải file bí mật xuất từ xDev Hive." |

@@ -11,7 +11,7 @@
 |---|---|---|---|
 | `secrets_status` | | `StoreStatus` | `secrets status` |
 | `secrets_list` | `project?: string` | `{ secrets, reserved }` | `secrets list` |
-| `secret_save` | `{ name, description, value?: string, projects?: string[] }` | `SecretItem` | `secrets set` (+ `assign` cho từng dự án mới) |
+| `secret_save` | `{ name, description, value?: string, projects?: string[], allProjects?: boolean }` | `SecretItem` | `secrets set` (+ `assign\|unassign --all-projects` khi có `allProjects`, rồi `assign` cho từng dự án mới) |
 | `secret_rename` | `{ name, to }` | `SecretItem` | `secrets rename` |
 | `secret_assign` | `{ name, project, assigned: boolean }` | `SecretItem` | `secrets assign` / `unassign` |
 | `secret_delete` | `{ name }` | `{ deleted, inUse }` | `secrets delete` |
@@ -22,6 +22,10 @@
 | `secrets_purge` | `{ project?: string, all?: boolean }` | `{ removed, left }` | `secrets purge` |
 | `secret_approvals` | | `{ pending }` | `secrets approvals` |
 | `secret_approve` | `{ id, allow: boolean }` | `null` | `secrets approve` |
+| `secrets_export` | `{ path, password, names?: string[], force?: boolean }` | `{ out, names }` | `secrets export` |
+| `secrets_import_preview` | `{ path, password, onConflict: "skip" \| "overwrite" }` | `ImportResult` | `secrets import --in --dry-run` |
+| `secrets_import` | `{ path, password, onConflict }` | `ImportResult` | `secrets import --in` |
+| `secrets_import_env` | `{ path, dryRun: boolean, onConflict, project?: string, allProjects?: boolean }` | `ImportResult` | `secrets import --env` |
 
 **Bảo mật**:
 
@@ -35,6 +39,10 @@
   - giá trị không qua UI;
   - Rust giữ một bản để so sánh trong 30 giây, rồi `wipe`.
 - Không có lệnh nào nhận hay trả giá trị qua sự kiện Tauri (`emit`). Sự kiện có thể được nhiều cửa sổ nghe.
+- `password` của `secrets_export`, `secrets_import_preview`, `secrets_import` đi vào stdin của sidecar như `value`, rồi
+  `wipe`. UI xoá ô mật khẩu khi đóng hộp thoại; không giữ trong query cache hay `localStorage`.
+- `path` lấy từ hộp thoại của hệ điều hành (`plugin:dialog|save` khi xuất, `plugin:dialog|open` khi nhập). Không lệnh
+  nào trả giá trị bí mật: `ImportResult` chỉ có tên, trạng thái và dự án.
 
 **Thay đổi lệnh có sẵn** (`profiles.rs`, `git_groups.rs`):
 

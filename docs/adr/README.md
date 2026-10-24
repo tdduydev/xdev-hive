@@ -38,6 +38,7 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0031](0031-external-ci-and-deploy-sources.md) | Read and drive Jenkins, GitLab, Argo CD and Kubernetes from the hub with per-person Jenkins tokens, and do not store CI logs | Proposed |
 | [0032](0032-client-events-and-outbox.md) | Give every client write an idempotency key, and queue machine writes in the worker outbox | Accepted |
 | [0033](0033-machine-keys-and-run-git-tokens.md) | Authenticate machines with a key pair, and give each run its own git token | Accepted |
+| [0035](0035-continuous-backup-with-pgbackrest.md) | Back up Postgres continuously with pgBackRest in a project Postgres image, to an encrypted repo on another machine | Accepted |
 | [0036](0036-machine-sends-token-score.md) | Send the token score as a machine client event with an idempotency key, opt-in per machine, numbers only | Accepted |
 | [0037](0037-shared-context-local-files.md) | Share project context through one source written into local, untracked files, in a marked block | Proposed |
 | [0038](0038-local-secrets-keyring.md) | Keep local secrets in the OS keyring, owned by the worker, and send the hub only a count | Proposed |

@@ -29,6 +29,7 @@ Người dùng muốn nhập mỗi bí mật một lần, ở một nơi an toà
 ## Không làm (non-goals)
 
 - Hub KHÔNG nhận, KHÔNG lưu, KHÔNG chuyển tiếp giá trị bí mật, kể cả dạng mã hoá. Không đồng bộ bí mật giữa các máy.
+  Chuyển bí mật sang máy khác chỉ bằng file mã hoá người dùng tự xuất và tự mang đi (US10, FR-067); hub không tham gia.
 - Không có công cụ để agent hỏi bí mật theo yêu cầu (MCP tool kiểu `get_secret`) trong bản này (xem Out of Scope).
 - Không quản lý bí mật dùng chung của đội hay tổ chức; không có vai trò "quản trị đội nạp bí mật cho đồng đội".
 - Không thay token đăng nhập Git, khoá SSH, khoá API của CLI agent đã có cách quản lý riêng (spec 016, 023); tính
@@ -125,6 +126,8 @@ dùng được giá trị và agent không hỏi người dùng; chạy run củ
    bộ biến của dự án; trên máy khác thì không (bí mật không rời máy).
 7. **Given** lệnh kiểm của run (`checks.go`) chạy sau khi agent xong, **Then** lệnh kiểm nhận bí mật gán cho dự án
    như agent, và vẫn không thừa kế biến nhạy cảm khác của máy.
+8. **Given** `SENTRY_DSN` bật "Dùng cho mọi dự án", **When** người dùng clone một repo mới rồi worker chạy run đầu tiên
+   của nó, **Then** run thấy biến `SENTRY_DSN` mà không cần gán, và nhật ký cấp ghi tên này cho run đó (FR-066).
 
 ---
 
@@ -304,6 +307,37 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
 
 ---
 
+### User Story 10 - Sao lưu, chuyển bí mật sang máy khác và nhập từ `.env` (Priority: P3)
+
+Người dùng đổi máy hay muốn có bản sao lưu. Họ xuất bí mật ra một file `.hivesecrets` mã hoá bằng mật khẩu, tự cất
+file (OneDrive, Google Drive, USB), rồi nhập file đó trên máy mới. Người dùng đang có file `.env` thì nhập thẳng từ
+file đó thay vì gõ từng bí mật. Hub không tham gia ở bước nào.
+
+**Why this priority**: Tiện cho người dùng, không chặn việc chính.
+
+**Independent Test**: Trên máy A xuất ba bí mật (một dùng cho mọi dự án, hai gán theo dự án), nhập file trên máy B có
+một dự án cùng remote git: giá trị, mô tả, cờ dùng chung giữ nguyên, gán tới đúng dự án; quét thư mục dữ liệu app và hub
+không thấy giá trị (SC-004).
+
+**Acceptance Scenarios**:
+
+1. **Given** người dùng chọn bí mật (mặc định tất cả) và nhập mật khẩu hai lần giống nhau, dài từ 12 ký tự, **When** bấm
+   Xuất và chọn nơi lưu, **Then** app ghi một file mã hoá; trước khi xuất app cảnh báo file chứa giá trị của mọi bí mật
+   đã chọn, quên mật khẩu thì không ai mở được (kể cả hub), và nên cất file ở nơi riêng tư.
+2. **Given** file đã có ở chỗ lưu, **Then** app không ghi đè trừ khi người dùng xác nhận.
+3. **Given** file xuất và đúng mật khẩu, **When** người dùng chọn Nhập, **Then** app hiện bảng xem trước: tên, trạng thái
+   (mới, trùng tên, trùng cả giá trị), dự án sẽ gán, dự án không khớp. Bảng không hiện giá trị nào.
+4. **Given** bảng xem trước, **When** người dùng chọn bỏ qua hay ghi đè tên trùng rồi xác nhận, **Then** app nhập, gán
+   theo dự án khớp trên máy này (remote git trước, rồi tên), và hiện kết quả từng tên.
+5. **Given** sai mật khẩu, hoặc file bị sửa dù một byte, **Then** app báo cùng một lỗi "Sai mật khẩu hoặc file đã bị
+   sửa" và không nhập gì.
+6. **Given** file `.env`, **When** người dùng chọn nhập từ `.env` và dự án (hay "Mọi dự án"), **Then** app xem trước như
+   điểm 3, tên sai quy tắc được liệt kê kèm lý do và không chặn các tên khác.
+7. **Given** mỗi lần xuất hay nhập, **Then** nhật ký tại máy ghi một dòng: loại, thời điểm, tên các bí mật. Không có giá
+   trị, không có mật khẩu.
+
+---
+
 ### Edge Cases
 
 - **Xoá hay đổi bí mật khi run đang chạy**: run giữ giá trị đã nhận. App cảnh báo lúc xoá nếu có phiên đang dùng bí mật
@@ -330,7 +364,17 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
 - **Hai tài khoản hệ điều hành trên cùng máy**: kho theo từng tài khoản; bí mật của người này không thấy được từ người kia.
 - **Sao lưu máy**: giá trị nằm trong kho theo quy tắc sao lưu của hệ điều hành; danh mục không chứa giá trị nên sao lưu
   danh mục không lộ giá trị.
-- **Nhập hàng loạt từ `.env`**: ngoài bản này (Out of Scope); mỗi bí mật nhập tay.
+- **Nhập hàng loạt từ `.env`**: theo FR-069 (US10).
+- **Quên mật khẩu file xuất**: không ai mở được file, kể cả hub và đội xDev Hive. Không có cách khôi phục; người dùng
+  xuất lại từ máy cũ nếu còn (FR-067).
+- **File xuất bị sửa hay hỏng**: báo cùng một lỗi với sai mật khẩu, không nhập gì (FR-068).
+- **File xuất do bản mới hơn tạo** (`version` lạ): từ chối, báo cập nhật xDev Hive (FR-068).
+- **Nhập vào máy đã có bí mật cùng tên**: người dùng chọn bỏ qua hay ghi đè; xem trước cho biết tên nào mới, tên nào
+  trùng, tên nào trùng cả giá trị (FR-068).
+- **Dự án trong file không có trên máy mới**: bí mật vẫn được nhập, dự án đó được liệt kê là không khớp; người dùng gán
+  lại sau (FR-068).
+- **Nhập làm dự án vượt 64 bí mật**: bí mật vẫn nhập được, gán vượt giới hạn bị bỏ và liệt kê trong kết quả; các bí mật
+  khác không bị ảnh hưởng (FR-068).
 - **Biến chưa được agent dùng**: vẫn được đưa vào mọi phiên của dự án (không chọn theo từng lần).
 
 ## Requirements *(mandatory)*
@@ -340,7 +384,8 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
 **Lưu trữ và quản lý**
 
 - **FR-001**: Giá trị bí mật PHẢI chỉ nằm trong kho bí mật của hệ điều hành (Windows Credential Manager, macOS Keychain,
-  Linux Secret Service). Không file thường, không cơ sở dữ liệu của app, không hub.
+  Linux Secret Service). Không file thường, không cơ sở dữ liệu của app, không hub. Ngoại lệ duy nhất là file xuất mã
+  hoá do người dùng chủ động tạo (FR-067); app không tự tạo hay giữ bản nào của file đó.
 - **FR-002**: Danh mục bí mật tại máy PHẢI chỉ chứa tên biến, mô tả, ngày tạo, ngày đổi giá trị, danh sách dự án
   được gán. Danh mục KHÔNG ĐƯỢC chứa giá trị, băm của giá trị hay độ dài giá trị.
 - **FR-003**: Tên biến PHẢI khớp `[A-Z_][A-Z0-9_]*` (chuẩn hoá in hoa), dài tối đa 64 ký tự, và duy nhất trên máy. App
@@ -378,6 +423,12 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
   không qua danh sách cho phép biến máy.
 - **FR-018**: Agent con (spec 028) chạy trên cùng máy và cùng dự án PHẢI nhận cùng bộ biến; agent chạy trên máy khác
   KHÔNG ĐƯỢC nhận, vì bí mật không rời máy.
+- **FR-066**: Mỗi bí mật PHẢI có cờ "Dùng cho mọi dự án" (`allProjects`). Khi bật, bí mật được đưa vào mọi run và mọi
+  phiên terminal/agent của desktop cho mọi dự án trên máy, kể cả dự án thêm sau, như bí mật được gán (FR-011 đến
+  FR-018). Bí mật dùng chung tính vào giới hạn 64 bí mật mỗi dự án (FR-005); bật cờ khi một dự án đã đủ 64 thì bị từ
+  chối. Bật cờ thì bỏ các gán riêng của bí mật; tắt cờ thì người dùng chọn lại dự án. Chưa có loại trừ từng dự án. Che
+  giá trị (FR-030 đến FR-038), nhật ký cấp (FR-040) và chính sách (FR-050 đến FR-053) áp dụng như bí mật được gán. Job
+  không thuộc dự án nào không nhận bí mật dùng chung. Màn Bí mật PHẢI hiện nhãn "Mọi dự án" và cảnh báo phạm vi khi bật.
 
 **Cho agent biết tên biến**
 
@@ -440,14 +491,45 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
   mục nào còn lại để người dùng xoá thủ công.
 - **FR-065**: Mọi chữ trên giao diện có bản tiếng Việt và tiếng Anh theo `src/lib/i18n.ts`; thông báo lỗi tiếng Việt.
 
+**Xuất và nhập (US10)**
+
+- **FR-067**: App PHẢI xuất được các bí mật người dùng chọn ra một file `.hivesecrets` mã hoá bằng mật khẩu (định dạng ở
+  `data-model.md` §9).
+  - Mật khẩu tối thiểu 12 ký tự, nhập hai lần. Mật khẩu chỉ đi qua stdin của sidecar (FR-009), không qua tham số, biến
+    môi trường hay log, và không được lưu ở đâu.
+  - Phần không mã hoá của file KHÔNG ĐƯỢC chứa tên bí mật, tên máy hay tên dự án.
+  - File ghi qua file tạm rồi đổi tên, quyền 0600 trên Unix; không ghi đè file đã có nếu người dùng chưa xác nhận.
+  - Hub không nhận, không lưu, không chuyển file này (giữ nguyên non-goal ở trên). Người dùng tự cất file.
+  - Quên mật khẩu thì không ai mở được file, kể cả hub; app PHẢI nói rõ điều này trước khi xuất.
+- **FR-068**: App PHẢI nhập được file `.hivesecrets`.
+  - Có bước xem trước, không trả giá trị: tên, trạng thái (mới, trùng tên, trùng cả giá trị), dự án sẽ gán, dự án không
+    khớp.
+  - Tên trùng: người dùng chọn bỏ qua (mặc định) hay ghi đè. Ghi đè đổi giá trị và mô tả, thêm gán; không bỏ gán sẵn có.
+  - Dự án ghi trong file bằng tên và remote git (không có `localId`); khớp với dự án trên máy theo remote git trước,
+    rồi theo tên. Dự án không khớp được liệt kê, bí mật vẫn được nhập.
+  - Giới hạn 64 bí mật mỗi dự án (FR-005) áp dụng từng gán: gán vượt giới hạn bị bỏ và liệt kê, không làm hỏng cả lần
+    nhập.
+  - Sai mật khẩu và file bị sửa PHẢI báo cùng một lỗi. File có `version` lạ bị từ chối với lỗi riêng.
+  - Tên, giá trị, mô tả trong file được kiểm như khi lưu tay (FR-003 đến FR-005, FR-021); mục sai được liệt kê, không
+    nhập.
+- **FR-069**: App PHẢI nhập được từ file `.env`: dòng `KEY=VALUE`, bỏ dòng trống và dòng `#`, hiểu `export KEY=` và
+  giá trị trong dấu nháy. Người dùng chọn một dự án, "Mọi dự án" hoặc không gán. Tên sai quy tắc được liệt kê, không
+  dừng. Xem trước, xử lý trùng tên và giới hạn như FR-068. Không xuất ra `.env`.
+- **FR-070**: Mỗi lần xuất hay nhập (không tính xem trước) PHẢI ghi một dòng nhật ký tại máy (FR-040) với loại
+  `export` hay `import` và tên các bí mật; KHÔNG ghi giá trị hay mật khẩu. Giá trị và mật khẩu được xoá khỏi bộ nhớ
+  ngay sau khi dùng, trong giới hạn của ngôn ngữ (FR-036).
+
 ### Key Entities
 
-- **LocalSecret**: `name` (tên biến, duy nhất), `description`, `createdAt`, `valueChangedAt`, `projectIds`. Giá trị KHÔNG
-  nằm trong thực thể này.
+- **LocalSecret**: `name` (tên biến, duy nhất), `description`, `createdAt`, `valueChangedAt`, `projectIds`,
+  `allProjects` (cờ dùng cho mọi dự án, FR-066). Giá trị KHÔNG nằm trong thực thể này.
 - **SecretAssignment**: `secretName`, `projectId` (định danh dự án trên máy).
-- **SecretGrantLog**: `at`, `kind` (`run` | `terminal` | `reveal`), `sessionId`, `projectId`, `secretNames[]`,
+- **SecretGrantLog**: `at`, `kind` (`run` | `terminal` | `reveal` | `export` | `import`), `sessionId`, `projectId`,
+  `secretNames[]`,
   `leakedInOutput` (cờ), `deleted` (nhãn cho tên đã xoá). Không có giá trị.
 - **SecretPolicy**: giá trị `allow` | `approve` | `deny` trong chính sách tổ chức và ảnh chụp chính sách của run.
+- **SecretExportFile** (`.hivesecrets`): vỏ ngoài (`format`, `version`, `kdf`, `cipher`, `createdAt`) và phần mã hoá
+  gồm `{name, description, value, allProjects, projects: [{name, remoteUrl?}]}`. Chỉ nằm ở nơi người dùng chọn.
 
 ## Success Criteria *(mandatory)*
 
@@ -496,8 +578,10 @@ không có giá trị rò vào log; sau khi mở khoá chạy lại thì nhận 
 
 - Công cụ MCP cho agent lấy bí mật theo yêu cầu, có hỏi người dùng duyệt từng lần hoặc theo phiên.
 - Bí mật dùng chung của đội, đồng bộ giữa các máy của cùng một người, hay nạp bí mật từ kho bên ngoài (1Password, Vault).
-- Nhập hàng loạt từ `.env`, xuất bí mật.
+- Gửi file xuất qua hub hay đồng bộ tự động giữa các máy (xuất, nhập và nhập `.env` đã có ở FR-067 đến FR-069).
+- Xuất ra `.env` dạng chữ thường.
 - Chọn bí mật theo từng run thay vì theo dự án; phạm vi theo nhánh hay theo CLI.
 - Nhắc xoay định kỳ, tự xoay tại dịch vụ đích.
 - Công tắc theo dự án "tiếp tục không có bí mật khi kho lỗi" (A4).
 - Báo cáo tên bí mật lên hub cho quản trị (A1).
+- Loại trừ từng dự án khỏi bí mật dùng cho mọi dự án (FR-066).

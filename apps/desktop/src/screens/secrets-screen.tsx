@@ -12,10 +12,22 @@ import { Label } from "@xdev-hive/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
-import { ListIcon, LockIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
+import {
+  DownloadIcon,
+  ListIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  UploadIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { DeliveryCredentials } from "@/components/delivery-credentials.tsx";
+import { SecretExportDialog } from "@/components/secret-export-dialog.tsx";
 import { SecretFormDialog } from "@/components/secret-form-dialog.tsx";
+import { SecretImportDialog } from "@/components/secret-import-dialog.tsx";
 import { SecretValueActions } from "@/components/secret-value-actions.tsx";
 import { SecretsLog } from "@/components/secrets-log.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
@@ -45,6 +57,8 @@ const text: Dict<{
   tabDelivery: string;
   deliveryLead: string;
   add: string;
+  exportLabel: string;
+  importLabel: string;
   reserved: string;
   refresh: string;
   loading: string;
@@ -57,6 +71,8 @@ const text: Dict<{
   colChanged: string;
   colActions: string;
   noProjects: string;
+  shared: string;
+  sharedTitle: string;
   moreProjects: (n: number) => string;
   edit: (name: string) => string;
   editLabel: string;
@@ -68,6 +84,7 @@ const text: Dict<{
   deleteInUse: (n: number) => string;
   deleteInUseHint: string;
   deleteProjects: (n: number) => string;
+  deleteShared: string;
   cancel: string;
   deleteConfirm: string;
   deleting: string;
@@ -92,6 +109,8 @@ const text: Dict<{
       "Credential để worker gọi Jenkins hay Argo CD khi triển khai. Khác bí mật của dự án: không gán cho dự án, không vào biến môi trường của agent hay terminal, và đã lưu thì không xem lại được.",
     lead: "Bí mật của máy này (khoá API, chuỗi kết nối…). Giá trị nằm trong kho của hệ điều hành, không lên hub; agent nhận qua biến môi trường của dự án được gán.",
     add: "Thêm bí mật",
+    exportLabel: "Xuất",
+    importLabel: "Nhập",
     reserved: "Tên dành riêng",
     refresh: "Tải lại",
     loading: "Đang tải…",
@@ -104,6 +123,8 @@ const text: Dict<{
     colChanged: "Đổi giá trị lúc",
     colActions: "Thao tác",
     noProjects: "Chưa gán",
+    shared: "Mọi dự án",
+    sharedTitle: "Đưa vào mọi dự án trên máy, kể cả dự án thêm sau",
     moreProjects: (n) => `+${n}`,
     edit: (name) => `Sửa ${name}`,
     editLabel: "Sửa",
@@ -115,6 +136,7 @@ const text: Dict<{
     deleteInUse: (n) => `Đang có ${n} run dùng bí mật này.`,
     deleteInUseHint: "Run đang chạy vẫn giữ giá trị đã nhận; run mới sẽ không còn thấy biến này.",
     deleteProjects: (n) => `Bí mật đang gán cho ${n} dự án; các dự án đó thôi nhận biến này.`,
+    deleteShared: "Bí mật đang dùng cho mọi dự án; mọi dự án thôi nhận biến này.",
     cancel: "Huỷ",
     deleteConfirm: "Xoá bí mật",
     deleting: "Đang xoá…",
@@ -146,6 +168,8 @@ const text: Dict<{
       "Credentials the worker uses to call Jenkins or Argo CD during delivery. Unlike project secrets they are never assigned to projects, never put in agent or terminal environments, and cannot be viewed once saved.",
     lead: "Secrets of this machine (API keys, connection strings…). Values live in the OS store, never on the hub; agents get them as environment variables of the assigned projects.",
     add: "Add secret",
+    exportLabel: "Export",
+    importLabel: "Import",
     reserved: "Reserved names",
     refresh: "Refresh",
     loading: "Loading…",
@@ -158,6 +182,8 @@ const text: Dict<{
     colChanged: "Value changed",
     colActions: "Actions",
     noProjects: "Not assigned",
+    shared: "All projects",
+    sharedTitle: "Put into every project on this machine, including projects added later",
     moreProjects: (n) => `+${n}`,
     edit: (name) => `Edit ${name}`,
     editLabel: "Edit",
@@ -170,6 +196,7 @@ const text: Dict<{
     deleteInUse: (n) => `${n} runs are using this secret.`,
     deleteInUseHint: "Running runs keep the value they received; new runs will no longer see the variable.",
     deleteProjects: (n) => `The secret is assigned to ${n} projects; they stop receiving this variable.`,
+    deleteShared: "The secret is used by every project; they all stop receiving this variable.",
     cancel: "Cancel",
     deleteConfirm: "Delete secret",
     deleting: "Deleting…",
@@ -224,6 +251,7 @@ export function SecretsScreen() {
   const [form, setForm] = useState<{ secret: SecretItem | null } | null>(null);
   const [deleting, setDeleting] = useState<SecretItem | null>(null);
   const [showReserved, setShowReserved] = useState(false);
+  const [transfer, setTransfer] = useState<"export" | "import" | null>(null);
   const [tab, setTab] = useState<Tab>("list");
   const tabsId = useId();
 
@@ -249,7 +277,10 @@ export function SecretsScreen() {
     void load();
   }, [load]);
 
-  const rows = (data?.secrets ?? []).filter((s) => !filter || s.projects.some((p) => p.localId === filter));
+  // Bí mật dùng chung tới mọi dự án, nên lọc theo dự án nào cũng thấy.
+  const rows = (data?.secrets ?? []).filter(
+    (s) => !filter || s.allProjects === true || s.projects.some((p) => p.localId === filter),
+  );
   // Dự án để lọc lấy từ danh sách gán, không từ projects.json, để dự án đã bị gỡ khỏi máy vẫn chọn được khi còn gán mồ côi.
   const filterable = new Map<string, string>();
   for (const p of projects) if (p.localId) filterable.set(p.localId, p.name);
@@ -266,6 +297,19 @@ export function SecretsScreen() {
             <Button variant="outline" onClick={() => setShowReserved(true)}>
               <ListIcon aria-hidden="true" />
               {t.reserved}
+            </Button>
+            {/* Xuất và nhập đều đọc hay ghi kho: kho khoá thì tắt như nút Thêm. */}
+            <Button
+              variant="outline"
+              disabled={!storeUsable(status) || !data || data.secrets.length === 0}
+              onClick={() => setTransfer("export")}
+            >
+              <UploadIcon aria-hidden="true" />
+              {t.exportLabel}
+            </Button>
+            <Button variant="outline" disabled={!storeUsable(status)} onClick={() => setTransfer("import")}>
+              <DownloadIcon aria-hidden="true" />
+              {t.importLabel}
             </Button>
             <Button disabled={!storeUsable(status)} onClick={() => setForm({ secret: null })}>
               <PlusIcon aria-hidden="true" />
@@ -408,15 +452,21 @@ export function SecretsScreen() {
                         </Td>
                         <Td className="min-w-36">
                           <div className="flex flex-wrap gap-1">
-                            {s.projects.length === 0 && (
+                            {s.allProjects === true && (
+                              <Pill small tone="sel" title={t.sharedTitle}>
+                                {t.shared}
+                              </Pill>
+                            )}
+                            {!s.allProjects && s.projects.length === 0 && (
                               <span className="text-xs text-muted-foreground">{t.noProjects}</span>
                             )}
-                            {s.projects.slice(0, 2).map((p) => (
-                              <Pill key={p.localId} small>
-                                {p.name}
-                              </Pill>
-                            ))}
-                            {s.projects.length > 2 && (
+                            {!s.allProjects &&
+                              s.projects.slice(0, 2).map((p) => (
+                                <Pill key={p.localId} small>
+                                  {p.name}
+                                </Pill>
+                              ))}
+                            {!s.allProjects && s.projects.length > 2 && (
                               <Pill small title={s.projects.map((p) => p.name).join(", ")}>
                                 {t.moreProjects(s.projects.length - 2)}
                               </Pill>
@@ -482,6 +532,17 @@ export function SecretsScreen() {
           setDeleting(null);
           void load();
         }}
+      />
+      <SecretExportDialog
+        open={transfer === "export"}
+        names={(data?.secrets ?? []).map((s) => s.name)}
+        onClose={() => setTransfer(null)}
+      />
+      <SecretImportDialog
+        open={transfer === "import"}
+        projects={projects}
+        onClose={() => setTransfer(null)}
+        onImported={() => void load()}
       />
       <ReservedDialog open={showReserved} reserved={data?.reserved ?? null} onClose={() => setShowReserved(false)} />
     </div>
@@ -549,7 +610,8 @@ function DeleteDialog({
             <AlertDescription>{t.deleteInUseHint}</AlertDescription>
           </Alert>
         )}
-        {secret && secret.projects.length > 0 && (
+        {secret?.allProjects === true && <p className="text-sm text-muted-foreground">{t.deleteShared}</p>}
+        {secret && !secret.allProjects && secret.projects.length > 0 && (
           <p className="text-sm text-muted-foreground">{t.deleteProjects(secret.projects.length)}</p>
         )}
         {error && (

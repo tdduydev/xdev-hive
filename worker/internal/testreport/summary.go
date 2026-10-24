@@ -16,11 +16,28 @@ const MaxBytes = 32 * 1024 * 1024
 const MaxCases = 5000
 const maxDuration = 7 * 86400000
 
+// Options chọn luật tìm mã TC. Library là nguồn CI của specs/036: chỉ nhận mã thư viện `TC-<KHU>-<SỐ>`, test có nhiều
+// mã chỉ bị đếm vào Ambiguous để một test đặt tên sai không làm mất cả báo cáo của pipeline.
+type Options struct {
+	Library bool
+}
+
+// Test là một test đọc từ báo cáo. Name chỉ dùng để tìm mã trong bộ nhớ, không bao giờ đi vào Summary.
+type Test struct {
+	Name       string
+	Status     string
+	Retries    int
+	DurationMs int64
+	// Source là job CI chứa test; Case giữ Source của lần chạy xấu nhất để hub dựng liên kết tới job đó.
+	Source int64
+}
+
 type Case struct {
 	Code       string `json:"code"`
 	Status     string `json:"status"`
 	Retries    int    `json:"retries"`
 	DurationMs int64  `json:"durationMs"`
+	Source     int64  `json:"-"`
 }
 type Totals struct {
 	Total   int `json:"total"`
@@ -36,9 +53,19 @@ type Summary struct {
 	DurationMs int64  `json:"durationMs"`
 	Cases      []Case `json:"cases"`
 	Truncated  bool   `json:"truncated"`
+	// Hai số đếm chỉ có ở Options.Library; omitempty giữ nguyên đầu ra `hive test-summary` của 035.
+	Unmapped  int `json:"unmapped,omitempty"`
+	Ambiguous int `json:"ambiguous,omitempty"`
 }
 
+// Lỗi phân loại được để nơi gọi đổi thành mã riêng (report_too_large, no_report); chữ giữ nguyên như 035.
+var (
+	ErrTooLarge = errors.New("Không đọc được báo cáo hoặc báo cáo vượt 32 MiB.")
+	ErrNoTests  = errors.New("Báo cáo không có test hoặc vượt giới hạn số test.")
+)
+
 var tcCode = regexp.MustCompile(`\bTC-[0-9]{3,5}\b`)
+var libraryCode = regexp.MustCompile(`\bTC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}\b`)
 var sha = regexp.MustCompile(`^([a-f0-9]{40}|[a-f0-9]{64})$`)
 var rank = map[string]int{"passed": 0, "skipped": 1, "flaky": 2, "failed": 3}
 
@@ -47,9 +74,28 @@ func Parse(r io.Reader, format, commit string, limit int) (Summary, error) {
 	if limit < 1 || limit > MaxCases || (commit != "" && !sha.MatchString(commit)) {
 		return s, errors.New("Giới hạn TC hoặc SHA commit không hợp lệ.")
 	}
+	tests, runner, duration, err := Read(r, format)
+	s.Runner = runner
+	if err != nil {
+		return s, err
+	}
+	sum, err := Summarize(tests, limit, Options{})
+	if err != nil {
+		return s, err
+	}
+	s.Totals, s.Cases, s.Truncated, s.DurationMs = sum.Totals, sum.Cases, sum.Truncated, duration
+	return s, nil
+}
+
+// Read đọc một file báo cáo thành danh sách test; format rỗng thì đoán theo ký tự đầu. Runner trả về là định dạng đã
+// chọn, kể cả khi lỗi.
+func Read(r io.Reader, format string) ([]Test, string, int64, error) {
 	b, err := io.ReadAll(io.LimitReader(r, MaxBytes+1))
-	if err != nil || len(b) > MaxBytes {
-		return s, errors.New("Không đọc được báo cáo hoặc báo cáo vượt 32 MiB.")
+	if err != nil {
+		return nil, format, 0, errors.New("Không đọc được báo cáo hoặc báo cáo vượt 32 MiB.")
+	}
+	if len(b) > MaxBytes {
+		return nil, format, 0, ErrTooLarge
 	}
 	if format == "" {
 		if strings.HasPrefix(strings.TrimSpace(string(b)), "<") {
@@ -58,26 +104,36 @@ func Parse(r io.Reader, format, commit string, limit int) (Summary, error) {
 			format = "playwright"
 		}
 	}
-	s.Runner = format
-	var results []Case
+	var tests []Test
+	var duration int64
 	switch format {
 	case "playwright":
-		results, s.DurationMs, err = playwright(b)
+		tests, duration, err = playwright(b)
 	case "junit":
-		results, s.DurationMs, err = junit(b)
+		tests, duration, err = junit(b)
 	default:
 		err = errors.New("Định dạng phải là playwright hoặc junit.")
 	}
-	if err != nil {
-		return s, err
+	return tests, format, duration, err
+}
+
+// Summarize gộp test theo mã: giữ trạng thái xấu nhất, retries lớn nhất, cộng thời gian. `hive test-summary` và việc
+// test-report của worker dùng chung hàm này để hai nơi không gộp khác nhau (specs/036 D8).
+func Summarize(tests []Test, limit int, opt Options) (Summary, error) {
+	s := Summary{Cases: []Case{}}
+	if limit < 1 || limit > MaxCases {
+		return s, errors.New("Giới hạn TC hoặc SHA commit không hợp lệ.")
 	}
-	if len(results) == 0 || len(results) > 1000000 {
+	if len(tests) == 0 {
+		return s, ErrNoTests
+	}
+	if len(tests) > 1000000 {
 		return s, errors.New("Báo cáo không có test hoặc vượt giới hạn số test.")
 	}
 	byCode := map[string]Case{}
-	for _, c := range results {
+	for _, t := range tests {
 		s.Totals.Total++
-		switch c.Status {
+		switch t.Status {
 		case "passed":
 			s.Totals.Passed++
 		case "failed":
@@ -89,12 +145,24 @@ func Parse(r io.Reader, format, commit string, limit int) (Summary, error) {
 		default:
 			return s, errors.New("Trạng thái test không hợp lệ.")
 		}
-		if c.Code == "" {
+		code, n, err := codeOf(t.Name, opt)
+		if err != nil {
+			return s, err
+		}
+		switch {
+		case n == 0:
+			if opt.Library {
+				s.Unmapped++
+			}
+			continue
+		case n > 1:
+			s.Ambiguous++
 			continue
 		}
-		if old, ok := byCode[c.Code]; ok {
-			if rank[old.Status] > rank[c.Status] {
-				c.Status = old.Status
+		c := Case{Code: code, Status: t.Status, Retries: t.Retries, DurationMs: t.DurationMs, Source: t.Source}
+		if old, ok := byCode[code]; ok {
+			if rank[old.Status] >= rank[c.Status] {
+				c.Status, c.Source = old.Status, old.Source
 			}
 			c.DurationMs += old.DurationMs
 			c.Retries = max(c.Retries, old.Retries)
@@ -102,7 +170,7 @@ func Parse(r io.Reader, format, commit string, limit int) (Summary, error) {
 		if c.DurationMs > maxDuration {
 			return s, errors.New("Thời gian TC vượt giới hạn.")
 		}
-		byCode[c.Code] = c
+		byCode[code] = c
 	}
 	for _, c := range byCode {
 		s.Cases = append(s.Cases, c)
@@ -122,17 +190,27 @@ func Parse(r io.Reader, format, commit string, limit int) (Summary, error) {
 	return s, nil
 }
 
-func codeIn(name string) (string, error) {
-	codes := tcCode.FindAllString(name, -1)
-	code := ""
-	for _, c := range codes {
-		if code != "" && code != c {
-			return "", errors.New("Một test chứa nhiều mã TC; cần tách để truy vết.")
-		}
-		code = c
+// codeOf trả mã và số mã khác nhau trong tên. Luật 035 coi nhiều mã là lỗi của cả báo cáo; luật thư viện chỉ đếm.
+func codeOf(name string, opt Options) (string, int, error) {
+	re := tcCode
+	if opt.Library {
+		re = libraryCode
 	}
-	return code, nil
+	code, n := "", 0
+	seen := map[string]bool{}
+	for _, c := range re.FindAllString(name, -1) {
+		if seen[c] {
+			continue
+		}
+		if n > 0 && !opt.Library {
+			return "", 0, errors.New("Một test chứa nhiều mã TC; cần tách để truy vết.")
+		}
+		seen[c] = true
+		code, n = c, n+1
+	}
+	return code, n, nil
 }
+
 func millis(n float64) (int64, error) {
 	if math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > maxDuration {
 		return 0, errors.New("Thời gian test không hợp lệ.")
@@ -159,7 +237,7 @@ type pwSuite struct {
 	Specs  []pwSpec
 }
 
-func playwright(b []byte) ([]Case, int64, error) {
+func playwright(b []byte) ([]Test, int64, error) {
 	var doc struct {
 		Suites []pwSuite
 		Stats  struct{ Duration float64 }
@@ -175,17 +253,13 @@ func playwright(b []byte) ([]Case, int64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	var out []Case
+	var out []Test
 	var walk func(pwSuite, string) error
 	walk = func(suite pwSuite, parent string) error {
 		path := parent + " " + suite.Title
 		for _, spec := range suite.Specs {
-			code, err := codeIn(path + " " + spec.Title)
-			if err != nil {
-				return err
-			}
 			for _, test := range spec.Tests {
-				c := Case{Code: code, Status: "passed", Retries: max(0, len(test.Results)-1)}
+				c := Test{Name: path + " " + spec.Title, Status: "passed", Retries: max(0, len(test.Results)-1)}
 				if c.Retries > 100 {
 					return errors.New("Số lần thử lại vượt giới hạn.")
 				}
@@ -263,12 +337,12 @@ type junitSuite struct {
 	Errors  []struct{}   `xml:"error"`
 }
 
-func junit(b []byte) ([]Case, int64, error) {
+func junit(b []byte) ([]Test, int64, error) {
 	var root junitSuite
 	if xml.Unmarshal(b, &root) != nil || (root.XMLName.Local != "testsuite" && root.XMLName.Local != "testsuites") {
 		return nil, 0, errors.New("Báo cáo JUnit XML không hợp lệ.")
 	}
-	var out []Case
+	var out []Test
 	var duration int64
 	var walk func(junitSuite) error
 	walk = func(suite junitSuite) error {
@@ -276,15 +350,11 @@ func junit(b []byte) ([]Case, int64, error) {
 			return errors.New("JUnit có lỗi ngoài test; cần chạy lại bộ test.")
 		}
 		for _, test := range suite.Cases {
-			code, err := codeIn(test.Class + " " + test.Name)
-			if err != nil {
-				return err
-			}
 			ms, err := millis(test.Time * 1000)
 			if err != nil {
 				return err
 			}
-			c := Case{Code: code, Status: "passed", DurationMs: ms, Retries: len(test.Flaky) + len(test.Rerun) + len(test.FlakyErrors) + len(test.RerunErrors)}
+			c := Test{Name: test.Class + " " + test.Name, Status: "passed", DurationMs: ms, Retries: len(test.Flaky) + len(test.Rerun) + len(test.FlakyErrors) + len(test.RerunErrors)}
 			if c.Retries > 100 {
 				return errors.New("Số lần thử lại vượt giới hạn.")
 			}

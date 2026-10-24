@@ -43,7 +43,16 @@ Quy tắc:
       "description": "Khoá Stripe môi trường test, quyền đọc",
       "createdAt": "2026-10-23T08:00:00Z",
       "valueChangedAt": "2026-10-23T08:00:00Z",
-      "projects": ["3f9a1c0e7b2d4a55"]
+      "projects": ["3f9a1c0e7b2d4a55"],
+      "allProjects": false
+    },
+    {
+      "name": "SENTRY_DSN",
+      "description": "DSN Sentry dùng chung",
+      "createdAt": "2026-10-23T08:00:00Z",
+      "valueChangedAt": "2026-10-23T08:00:00Z",
+      "projects": [],
+      "allProjects": true
     }
   ]
 }
@@ -56,11 +65,20 @@ Quy tắc:
 | `secrets[].description` | string | ≤500 ký tự; `looksSecret` false (FR-021). Rỗng được |
 | `secrets[].createdAt` | RFC 3339 UTC | |
 | `secrets[].valueChangedAt` | RFC 3339 UTC | Đổi mỗi lần đặt giá trị |
-| `secrets[].projects` | string[] | `localId` của `projects.json`, không trùng (FR-010) |
+| `secrets[].projects` | string[] | `localId` của `projects.json`, không trùng (FR-010). Luôn `[]` khi `allProjects` |
+| `secrets[].allProjects` | bool | Dùng cho mọi dự án (FR-066). Thiếu trường (danh mục cũ) → `false` |
 
 Ràng buộc chéo:
 
-- Mỗi `localId` có tối đa 64 bí mật gán (FR-005). Gán thứ 65 bị từ chối với lỗi "Dự án đã có 64 bí mật".
+- Mỗi `localId` có tối đa 64 bí mật gán, tính cả bí mật `allProjects` (FR-005, FR-066). Gán thứ 65 bị từ chối với lỗi
+  "Dự án đã có 64 bí mật". Bật `allProjects` bị từ chối khi một dự án có gán đã đủ 64 (không tính dự án bí mật đó đã
+  gán sẵn), hoặc khi đã có 64 bí mật `allProjects`.
+- Bật `allProjects` xoá `projects` về `[]`; tắt thì `projects` vẫn rỗng tới khi người dùng gán lại. `assign` riêng cho
+  bí mật `allProjects` không làm gì.
+- Bí mật cho một job = các bí mật có `localId` trong `projects` cộng các bí mật `allProjects`, mỗi tên một lần, xếp
+  theo tên. Job có `localId` rỗng không nhận gì.
+- `version` giữ `1`: trường mới chỉ thêm, bản cũ đọc được. Bản worker cũ ghi lại file sẽ bỏ trường `allProjects`, bí
+  mật trở lại không gán dự án nào; lỗi này nghiêng về phía an toàn (bí mật không tới đâu cả), không làm lộ thêm.
 - **[Inference]** Tổng `len(name)+len(value)+2` của bí mật gán cho một dự án nên ≤ 24 KiB trên Windows. Khối env của
   Windows giới hạn 32 KiB, và cần chừa chỗ cho env của máy.
   - Khi gán, `secretstore` chỉ kiểm được tên, vì danh mục không có độ dài giá trị.
@@ -104,7 +122,7 @@ Mỗi dòng một JSON:
 |---|---|---|
 | `id` | string | `g_` + 26 ký tự ULID-tương đương; dùng cho `MarkLeaked` |
 | `at` | RFC 3339 UTC | |
-| `kind` | `run` \| `terminal` \| `reveal` | `reveal` gồm cả Sao chép (`copy: true`) (FR-041) |
+| `kind` | `run` \| `terminal` \| `reveal` \| `export` \| `import` | `reveal` gồm cả Sao chép (`copy: true`) (FR-041); `export`, `import` theo FR-070 |
 | `sessionId` | string | `<runId>#<attempt>`, mã phiên terminal hay rỗng với `reveal` |
 | `project` | string | `localId`; rỗng với `reveal` |
 | `projectName` | string | tên lúc ghi, để vẫn đọc được sau khi dự án bị gỡ |
@@ -194,3 +212,61 @@ yêu cầu (run / terminal)
                  ├─ ok ─────────────────────────────▶ outcome=granted, env + khối tên + Masker
                  └─ khoá / không có / thiếu mục ────▶ outcome=store_error, run dừng trước spawn (FR-060)
 ```
+
+## 9. File `.hivesecrets` — xuất và nhập (FR-067, FR-068)
+
+File JSON do người dùng tạo và cất ở chỗ của họ. App không giữ bản nào; hub không bao giờ thấy file.
+
+```json
+{
+  "format": "hive-secrets",
+  "version": 1,
+  "createdAt": "2026-10-24T08:00:00Z",
+  "kdf": { "name": "argon2id", "salt": "<base64, 16 byte>", "time": 3, "memory": 65536, "threads": 4 },
+  "cipher": { "name": "aes-256-gcm", "nonce": "<base64, 12 byte>" },
+  "data": "<base64 bản mã + tag>"
+}
+```
+
+| Trường | Ghi chú |
+|---|---|
+| `format` | Luôn `hive-secrets`. Khác → lỗi `file_format` |
+| `version` | `1`. Lớn hơn hay lạ → lỗi `file_version`, không giải mã |
+| `createdAt` | RFC 3339 UTC, lúc xuất |
+| `kdf` | Argon2id (`golang.org/x/crypto/argon2`), salt ngẫu nhiên 16 byte. `memory` tính bằng KiB. Mặc định time=3, memory=64 MiB, threads=4. Đọc chấp nhận time 1–10, memory 1 MiB–1 GiB, threads 1–16 để file lạ không chiếm hết RAM |
+| `cipher` | AES-256-GCM, khoá 32 byte từ `kdf`, nonce ngẫu nhiên 12 byte |
+| `data` | Bản mã của phần dưới. AAD là JSON gọn của `{format, version, createdAt, kdf, cipher}` theo đúng thứ tự trường này, nên sửa vỏ ngoài cũng làm giải mã thất bại |
+
+Vỏ ngoài **không** chứa tên bí mật, tên máy hay tên dự án.
+
+Phần mã hoá:
+
+```json
+{
+  "secrets": [
+    {
+      "name": "DATABASE_URL",
+      "description": "Postgres của môi trường thử",
+      "value": "…",
+      "allProjects": false,
+      "projects": [{ "name": "shop-api", "remoteUrl": "https://github.com/acme/shop-api.git" }]
+    }
+  ]
+}
+```
+
+- Dự án ghi bằng thứ nhận ra được trên máy khác: tên trong "Dự án trên máy" và remote `origin` (đã bỏ tên đăng nhập và
+  mật khẩu bằng `projects.Redact`; thiếu remote thì bỏ trường). Không ghi `localId`, thư mục hay `projectId`.
+- `allProjects: true` thì `projects` rỗng.
+- Mật khẩu tối thiểu 12 ký tự. Sai mật khẩu, bản mã hay vỏ ngoài bị sửa, base64 hỏng, tham số `kdf` ngoài khoảng: cùng
+  lỗi `decrypt_failed` ("Sai mật khẩu hoặc file đã bị sửa."), để lỗi không cho biết phần nào sai.
+- Nhập: khớp dự án theo remote (`projects.SameRepo`) trước, không có thì theo tên (không phân biệt hoa thường). Một
+  dự án trong file có thể khớp nhiều dự án trên máy (cùng repo clone hai lần); khi đó gán cho tất cả.
+
+### Nhập từ `.env` (FR-069)
+
+- Mỗi dòng `KEY=VALUE`; bỏ dòng trống và dòng bắt đầu bằng `#`; bỏ tiền tố `export `.
+- Giá trị trong `"…"` hiểu `\n`, `\r`, `\t`, `\"`, `\` và có thể kéo qua nhiều dòng; trong `'…'` giữ nguyên chữ.
+  Giá trị không có nháy bỏ khoảng trắng hai đầu và phần chú thích sau ` #`.
+- Tên được chuẩn hoá in hoa rồi kiểm như FR-003, FR-004. Tên lặp lại trong file: giữ lần đầu, các lần sau bị liệt kê.
+- Dòng sai cú pháp được báo theo số dòng, không chép lại nội dung (dòng đó có thể là giá trị).

@@ -25,7 +25,7 @@ review your branch and your report afterwards, often without having watched you 
 - Match the surrounding code: naming, comment style, error handling, file layout.
 - Commit after each coherent step with a clear message in the project's convention. No WIP or "fix" commits.
 - Never commit secrets, tokens, `.env` files, generated build output or files the hub writes for you
-  (`.hive-*`, skill folders copied into `.claude/skills/`).
+  (`.hive-*`, skill folders copied into `.claude/skills/`). See "Local secrets" below.
 - Do not push, force-push, rewrite history, change CI settings or touch other branches; the worker pushes for you.
 
 ## 4. Verify before you say done
@@ -42,6 +42,22 @@ End with a short report the reviewer can read in a minute:
 If you learned a decision, convention or trap that others will need and memory does not have it yet, record it with
 `memory_write` when the run allows it: a few sentences, with the related files. Do not record things that are only
 true for this task.
+
+## Local secrets
+The user can give a project secrets saved on their machine. When the prompt has a "Bí mật tại máy" section, the
+variables it lists are already in your environment.
+- Use them by name only (`$DB_PASSWORD`, `process.env.DB_PASSWORD`, `os.Getenv("DB_PASSWORD")`). Never print, echo or
+  log a value, and never write one into a file (code, `.env`, config, test fixtures), a commit message, the report or
+  memory. Use placeholders in examples and `.env.example`.
+- Do not ask the user to paste a value that is listed. If you need a credential that is not listed, stop and say which
+  variable name you need and what for: the user adds it on the desktop app's Secrets screen (or imports a `.env` or
+  `.hivesecrets` file) and assigns it to the project. Do not search the machine for it (other repos' `.env`,
+  `~/.aws`, key stores, shell history).
+- If the section says no secret was granted, the organisation or the user refused: stop and report instead of working
+  around it.
+- Do not run `hive-worker secrets` commands (list, export, import, assign, reveal). Managing secrets is the user's job.
+- Output is masked as `[đã che]` in logs, but the model has already seen what a command printed. Masking is a safety
+  net, not permission to print.
 
 ## Review runs
 You only read. Use the diff file the worker wrote (`.hive-review.diff`) and the files it touches, check the change

@@ -22,8 +22,9 @@ const secretsUsage = `Cách dùng: hive-worker secrets <lệnh> [--config FILE] 
                                             giá trị là JSON {"value":"…"} trên stdin, bắt buộc khi tạo
   rename    --name TÊN --to TÊN_MỚI
   describe  --name TÊN --description-file FILE
-  assign    --name TÊN --project LOCAL_ID
-  unassign  --name TÊN --project LOCAL_ID
+  assign    --name TÊN --project LOCAL_ID|--all-projects
+                                            --all-projects: dùng cho mọi dự án, kể cả dự án thêm sau
+  unassign  --name TÊN --project LOCAL_ID|--all-projects
   delete    --name TÊN
   log       [--name TÊN] [--project LOCAL_ID] [--limit 200]
   log clear                                 xoá nhật ký cấp tại máy
@@ -32,6 +33,11 @@ const secretsUsage = `Cách dùng: hive-worker secrets <lệnh> [--config FILE] 
   reveal    --name TÊN [--copy]
   purge     --project LOCAL_ID|--all
   delivery  status|list|set|delete          credential triển khai (Jenkins, Argo CD), không gán cho dự án
+  export    --out FILE [--name TÊN ...] [--force]
+                                            mật khẩu là JSON {"password":"…"} trên stdin
+  import    --in FILE [--dry-run] [--on-conflict skip|overwrite]
+                                            mật khẩu là JSON {"password":"…"} trên stdin
+  import    --env FILE [--dry-run] [--on-conflict skip|overwrite] [--project LOCAL_ID|--all-projects]
 Giá trị chỉ đọc từ stdin, không bao giờ từ tham số hay biến môi trường.`
 
 // Kiểu ra của lệnh, khớp contracts/sidecar-cli.md và fixture testdata/cli của secretstore.
@@ -47,6 +53,7 @@ type (
 		CreatedAt      time.Time       `json:"createdAt"`
 		ValueChangedAt time.Time       `json:"valueChangedAt"`
 		Projects       []secretProject `json:"projects"`
+		AllProjects    bool            `json:"allProjects"`
 		// InUseBy luôn 0 tới khi worker theo dõi phiên dùng bí mật (FR-016).
 		InUseBy int `json:"inUseBy"`
 	}
@@ -93,6 +100,9 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	if len(args) > 0 && args[0] == "delivery" {
 		return deliveryCredsCommand(args[1:], stdin, stdout, stderr)
 	}
+	if len(args) > 0 && (args[0] == "export" || args[0] == "import") {
+		return secretsTransferCommand(args[0], args[1:], stdin, stdout, stderr)
+	}
 	action := ""
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		action, args = args[0], args[1:]
@@ -121,6 +131,7 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	deny := fs.Bool("deny", false, "từ chối")
 	copyValue := fs.Bool("copy", false, "ghi thao tác sao chép")
 	all := fs.Bool("all", false, "xoá mọi bí mật")
+	allProjects := fs.Bool("all-projects", false, "gán cho mọi dự án")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
 		fmt.Fprintln(stderr, "Tham số không hợp lệ.")
 		return usage()
@@ -180,10 +191,14 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 		}
 		view, err = cmd.describe(*name, *descFile)
 	case "assign", "unassign":
-		if *name == "" || *project == "" {
+		if *name == "" || (*project != "") == *allProjects {
 			return usage()
 		}
-		view, err = cmd.assign(*name, *project, action == "assign")
+		if *allProjects {
+			view, err = cmd.share(*name, action == "assign")
+		} else {
+			view, err = cmd.assign(*name, *project, action == "assign")
+		}
 	case "delete":
 		if *name == "" {
 			return usage()
@@ -413,6 +428,18 @@ func (c secretsCmd) assign(rawName, localID string, on bool) (secretItem, error)
 	})
 }
 
+// share bật hay tắt cờ dùng cho mọi dự án (FR-066).
+func (c secretsCmd) share(rawName string, on bool) (secretItem, error) {
+	name, err := lookupName(rawName)
+	if err != nil {
+		return secretItem{}, err
+	}
+	return c.modify(name, func(cat *secretstore.Catalog) error {
+		_, err := cat.SetAllProjects(name, on)
+		return err
+	})
+}
+
 // delete xoá trong kho trước rồi mới gỡ khỏi danh mục (data-model §1).
 func (c secretsCmd) delete(rawName string) (secretDeleteView, error) {
 	name, err := lookupName(rawName)
@@ -458,7 +485,8 @@ func (c secretsCmd) modify(name string, change func(*secretstore.Catalog) error)
 	return secretItemOf(s, local), nil
 }
 
-// secretItemOf bỏ localId không còn trong projects.json (data-model §2) thay vì hiện dự án không tên.
+// secretItemOf bỏ localId không còn trong projects.json (data-model §2) thay vì hiện dự án không tên. Bí mật dùng chung
+// liệt kê mọi dự án trên máy: projects là các dự án nhận bí mật, và desktop dựa vào đó để bọc terminal của dự án.
 func secretItemOf(s secretstore.Secret, local []projects.Project) secretItem {
 	item := secretItem{
 		Name:           s.Name,
@@ -466,8 +494,18 @@ func secretItemOf(s secretstore.Secret, local []projects.Project) secretItem {
 		CreatedAt:      s.CreatedAt,
 		ValueChangedAt: s.ValueChangedAt,
 		Projects:       []secretProject{},
+		AllProjects:    s.AllProjects,
 	}
-	for _, id := range s.Projects {
+	ids := s.Projects
+	if s.AllProjects {
+		ids = nil
+		for _, p := range local {
+			if p.LocalID != "" {
+				ids = append(ids, p.LocalID)
+			}
+		}
+	}
+	for _, id := range ids {
 		if p := projects.FindLocal(local, id); p != nil {
 			item.Projects = append(item.Projects, secretProject{LocalID: id, Name: p.Name, Folder: p.Folder})
 		}

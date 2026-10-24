@@ -34,6 +34,11 @@ export interface SecretItem {
   createdAt: string;
   valueChangedAt: string;
   projects: SecretProject[];
+  /**
+   * Dùng cho mọi dự án, kể cả dự án thêm sau (FR-066); khi đó `projects` là mọi dự án đang có trên máy. Worker cũ chưa
+   * trả trường này.
+   */
+  allProjects?: boolean | undefined;
   /** Số run đang chạy dùng bí mật này; > 0 thì xoá phải báo trước (FR-016). */
   inUseBy: number;
   /** Có tên trong danh mục mà kho không có giá trị (vd. người dùng xoá trong Keychain). Worker cũ chưa trả trường này. */
@@ -50,7 +55,7 @@ export interface SecretsList {
   reserved: ReservedNames;
 }
 
-export type GrantKind = "run" | "terminal" | "reveal";
+export type GrantKind = "run" | "terminal" | "reveal" | "export" | "import";
 
 export interface GrantName {
   name: string;
@@ -99,7 +104,51 @@ export interface SecretSave {
   value?: string | undefined;
   /** localId các dự án được cấp; bỏ qua thì giữ nguyên. */
   projects?: string[] | undefined;
+  /** Bật hay tắt cờ dùng cho mọi dự án; bỏ qua thì giữ nguyên. Bật thì worker bỏ các gán riêng. */
+  allProjects?: boolean | undefined;
 }
+
+/** Kết quả xuất: đường dẫn file đã ghi và tên các bí mật trong file. */
+export interface ExportResult {
+  out: string;
+  names: string[];
+}
+
+/** Tên đã có trên máy: bỏ qua (mặc định) hay ghi đè giá trị và mô tả (FR-068). */
+export type OnConflict = "skip" | "overwrite";
+export type ImportStatus = "new" | "same_name" | "same_value" | "invalid";
+export type ImportAction = "create" | "overwrite" | "skip";
+
+export interface ImportProject {
+  localId: string;
+  name: string;
+}
+
+/** Một bí mật trong file nhập. Không có giá trị: xem trước và kết quả chỉ có tên, trạng thái và dự án. */
+export interface ImportItem {
+  /** Rỗng khi dòng `.env` không đọc được tên. */
+  name: string;
+  status: ImportStatus;
+  action: ImportAction;
+  allProjects: boolean;
+  /** Dự án sẽ được gán thêm (hay đã gán, khi không phải xem trước). */
+  projects: ImportProject[];
+  /** Dự án ghi trong file mà máy này không khớp được theo remote git hay tên. */
+  unmatched: { name: string; remoteUrl?: string | undefined }[];
+  /** Gán bị bỏ vì dự án đã đủ 64 bí mật (FR-005). */
+  limited: ImportProject[];
+  error?: { code: string; message: string } | undefined;
+  /** Dòng trong file `.env`. */
+  line?: number | undefined;
+}
+
+export interface ImportResult {
+  dryRun: boolean;
+  items: ImportItem[];
+}
+
+/** Đích gán khi nhập `.env`: không gán, một dự án (localId) hay mọi dự án (FR-069). */
+export type EnvTarget = { kind: "none" } | { kind: "project"; localId: string } | { kind: "all" };
 
 export const secretsStatus = () => invoke<StoreStatus>("secrets_status");
 export const secretsList = (project?: string) => invoke<SecretsList>("secrets_list", project ? { project } : undefined);
@@ -119,6 +168,49 @@ export const secretsPurge = (scope: { project: string } | { all: true }) =>
   invoke<PurgeResult>("secrets_purge", { ...scope });
 export const secretApprovals = () => invoke<{ pending: ApprovalRequest[] }>("secret_approvals");
 export const secretApprove = (id: string, allow: boolean) => invoke<null>("secret_approve", { id, allow });
+
+/**
+ * Xuất ra file `.hivesecrets` (FR-067). Mật khẩu chỉ đi qua lệnh Tauri tới stdin của worker; người gọi xoá ô mật khẩu
+ * ngay sau đó. `force` chỉ bật khi người dùng đã xác nhận ghi đè.
+ */
+export const secretsExport = (input: { path: string; password: string; names: string[]; force: boolean }) =>
+  invoke<ExportResult>("secrets_export", { ...input });
+/** Xem trước file `.hivesecrets`: chạy đúng như nhập thật nhưng không ghi gì (FR-068). */
+export const secretsImportPreview = (path: string, password: string, onConflict: OnConflict) =>
+  invoke<ImportResult>("secrets_import_preview", { path, password, onConflict });
+export const secretsImport = (path: string, password: string, onConflict: OnConflict) =>
+  invoke<ImportResult>("secrets_import", { path, password, onConflict });
+/** Nhập file `.env` (FR-069); `dryRun` là xem trước. */
+export const secretsImportEnv = (path: string, dryRun: boolean, onConflict: OnConflict, target: EnvTarget) =>
+  invoke<ImportResult>("secrets_import_env", {
+    path,
+    dryRun,
+    onConflict,
+    ...(target.kind === "project" ? { project: target.localId } : {}),
+    ...(target.kind === "all" ? { allProjects: true } : {}),
+  });
+
+/** Phần mở rộng của file xuất (data-model.md §9). */
+export const SECRETS_FILE_EXTENSION = "hivesecrets";
+
+/** Hộp chọn file của hệ điều hành (tauri-plugin-dialog). `.env` không lọc đuôi vì tên file thường chỉ là `.env`. */
+export async function pickSecretsFile(title: string, kind: "hivesecrets" | "env"): Promise<string | null> {
+  const picked = await invoke<string | string[] | null>("plugin:dialog|open", {
+    options: {
+      title,
+      multiple: false,
+      directory: false,
+      ...(kind === "hivesecrets" ? { filters: [{ name: "xDev Hive", extensions: [SECRETS_FILE_EXTENSION] }] } : {}),
+    },
+  });
+  return Array.isArray(picked) ? (picked[0] ?? null) : picked;
+}
+
+/** Hộp lưu file của hệ điều hành; huỷ thì trả null. */
+export const pickExportPath = (title: string, defaultPath: string) =>
+  invoke<string | null>("plugin:dialog|save", {
+    options: { title, defaultPath, filters: [{ name: "xDev Hive", extensions: [SECRETS_FILE_EXTENSION] }] },
+  });
 
 export { SECRET_NAME_MAX_LENGTH };
 
@@ -147,6 +239,21 @@ export function checkSecretValue(value: string): ValueProblem | null {
   if (value.includes("\0")) return "nul";
   return null;
 }
+
+/** Mật khẩu file xuất tối thiểu, như secretstore.MinPasswordLen của worker (đếm theo ký tự). */
+export const SECRETS_PASSWORD_MIN_LENGTH = 12;
+
+export type PasswordProblem = "short" | "mismatch";
+
+/** Kiểm mật khẩu xuất trước khi gọi worker; worker vẫn kiểm lại độ dài. */
+export function checkExportPassword(password: string, confirm: string): PasswordProblem | null {
+  if ([...password].length < SECRETS_PASSWORD_MIN_LENGTH) return "short";
+  if (password !== confirm) return "mismatch";
+  return null;
+}
+
+/** Mục sẽ được ghi khi nhập thật: thêm mới hay ghi đè. */
+export const importWrites = (item: ImportItem): boolean => item.action !== "skip";
 
 /** Bí mật có tên trong danh mục nhưng không có giá trị trong kho: người dùng phải đặt lại. */
 export const isMissingValue = (s: SecretItem): boolean => s.missingInStore === true;

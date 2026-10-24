@@ -60,12 +60,78 @@
                     },
                     "wordImportDoc": {
                       "type": "boolean"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "api",
+                          "jobs"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "dbEpoch": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "dbRestoredTo": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
                     "status",
                     "version",
                     "time"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health/jobs": {
+      "get": {
+        "operationId": "system.healthJobs",
+        "summary": "Trạng thái vai trò jobs",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    },
+                    "lastTickAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "lastTickAt"
                   ]
                 }
               }

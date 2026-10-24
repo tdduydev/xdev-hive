@@ -12,6 +12,7 @@ Sinh từ `HUB_DATA_INVENTORY` trong `packages/contracts/src/hub-data.ts`. Cập
 | Loại dữ liệu | Bảng | Nguồn | Thời gian giữ | Gửi có chủ đích |
 |---|---|---|---|---|
 | Lịch sử nâng cấp database | `hive.migrations` | Tiến trình migration của hub. | Giữ cùng database để xác định phiên bản schema. | Tự động / hỗn hợp |
+| Mốc khôi phục database | `hive.db_epoch` | Script khôi phục ghi mã mới và thời điểm khôi phục; worker đọc qua health để gửi lại hộp thư đi. | Một dòng, ghi đè mỗi lần khôi phục. | Tự động / hỗn hợp |
 | Danh tính và xác thực hub | `auth.user`, `auth.session`, `auth.account`, `auth.verification`, `auth.ssoProvider`, `auth.jwks`, `auth.oauthClient`, `auth.oauthResource`, `auth.oauthClientResource`, `auth.oauthRefreshToken`, `auth.oauthAccessToken`, `auth.oauthConsent`, `auth.oauthClientAssertion` | Đăng nhập, SSO, OAuth; có thông tin xác thực của hub và nhà cung cấp đăng nhập. | Tài khoản tới khi xoá; phiên và token theo hạn của cơ chế xác thực. | Có |
 | Tổ chức và quyền | `hive.orgs`, `hive.org_members`, `hive.teams`, `hive.team_members`, `hive.systems`, `hive.invitations`, `hive.custom_roles`, `hive.member_custom_roles`, `hive.team_custom_roles` | Quản trị tổ chức và thành viên. | Tới khi xoá tổ chức, thành viên hoặc lời mời. | Có |
 | Metadata dự án | `hive.projects`, `hive.project_members`, `hive.project_provision_steps`, `hive.merge_queue_entries` | Người dùng và API nhà cung cấp Git; không phải bản clone repo. | Tới khi xoá dự án hoặc bản ghi liên quan. | Có |

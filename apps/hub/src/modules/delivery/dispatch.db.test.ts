@@ -194,14 +194,19 @@ describe("giao lần triển khai cho máy chạy", () => {
     // Máy trực tuyến nhưng thiếu credential: vẫn chờ, lý do đổi để người bấm biết thêm credential ở đâu.
     const machine = await newMachine("deploy-1");
     await withTenant(app, { orgId: org.orgId }, (tx) =>
-      recordDeliveryCapability(tx, machine, { methods: ["jenkins-job"], credentials: ["khac"] }, h.at()),
+      recordDeliveryCapability(tx, machine, { methods: ["jenkins-job"], credentials: ["khac"], kinds: [] }, h.at()),
     );
     h.advance(30_000);
     await h.check(String(waiting?.id));
     expect((await jobsOf(deploy.id))[0]?.wait_reason).toContain("credential");
 
     await withTenant(app, { orgId: org.orgId }, (tx) =>
-      recordDeliveryCapability(tx, machine, { methods: ["jenkins-job"], credentials: ["jenkins-ci"] }, h.at()),
+      recordDeliveryCapability(
+        tx,
+        machine,
+        { methods: ["jenkins-job"], credentials: ["jenkins-ci"], kinds: [] },
+        h.at(),
+      ),
     );
     h.advance(30_000);
     await h.check(String(waiting?.id));

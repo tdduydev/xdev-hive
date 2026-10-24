@@ -181,17 +181,17 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 
 ## Phase 7: User Story 4 - Hub bền (P2)
 
-- [ ] T041 [US4] Tách vai trò `api`/`jobs`, healthcheck `/api/v1/health/jobs` · `apps/hub/src/main.ts`,
+- [x] T041 [US4] Tách vai trò `api`/`jobs`, healthcheck `/api/v1/health/jobs` · `apps/hub/src/main.ts`,
   `deploy/compose.yaml`
-- [ ] T042 [US4] `db_epoch`, health trả `dbEpoch`, hộp thư đi gửi lại sau khôi phục · `apps/hub/src/modules/system/`,
+- [x] T042 [US4] `db_epoch`, health trả `dbEpoch`, hộp thư đi gửi lại sau khôi phục · `apps/hub/src/modules/system/`,
   `worker/internal/outbox/epoch.go`
-- [ ] T043 [US4] pgBackRest, diễn tập hằng tháng · `deploy/postgres/Dockerfile`, `deploy/pitr-restore.sh`,
+- [x] T043 [US4] pgBackRest, diễn tập hằng tháng · `deploy/postgres/Dockerfile`, `deploy/pitr-restore.sh`,
   `deploy/drill.sh`
-- [ ] T044 [P] [US4] ADR 0035 · `docs/adr/0035-continuous-backup-with-pgbackrest.md`
+- [x] T044 [P] [US4] ADR 0035 · `docs/adr/0035-continuous-backup-with-pgbackrest.md`
 
 ## Phase 8: Polish
 
-- [ ] T045 SRS mã `HCM-*`; bỏ **[Chưa làm]** ở `docs/architecture.md` §6, §10 khi xong · `docs/srs.md`,
+- [x] T045 SRS mã `HCM-*`; bỏ **[Chưa làm]** ở `docs/architecture.md` §6, §10 khi xong · `docs/srs.md`,
   `docs/architecture.md`
 - [ ] T046 Chạy quickstart.md trên Linux, macOS, Windows
 
