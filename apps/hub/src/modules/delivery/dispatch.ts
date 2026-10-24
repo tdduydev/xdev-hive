@@ -124,6 +124,8 @@ async function select(tx: Tx, env: EnvRow, spec: Omit<DeliveryJobSpec, "jobId">)
   // Môi trường chưa chọn máy thì máy trực tuyến nào của đội đủ điều kiện cũng được.
   const machines = env.runnerMachines.length > 0 ? env.runnerMachines : online.map((c) => c.machineId);
   if (machines.length === 0) return { ok: false as const, message: RUNNER_OFFLINE };
+  // Hàm này chỉ chọn máy cho deploy; việc `test-report` chọn theo `kinds` máy đã báo (specs/036 T052).
+  if (spec.kind === "test-report") throw new Error("Việc test-report không đi qua hàng giao deploy.");
   return selectRunner(candidates, machines, {
     orgId: env.orgId,
     method: spec.kind,

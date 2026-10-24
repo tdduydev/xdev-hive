@@ -44,7 +44,7 @@ cleanup() {
   [ -z "$sql_tmp" ] || rm -f -- "$sql_tmp"
   if [ "$stopped" -ne 0 ]; then
     # Hub vừa tái tạo có thể đã ghi dữ liệu dù chưa healthy; dừng lại khi bất kỳ bước khôi phục nào lỗi.
-    compose stop hub >/dev/null 2>&1 || true
+    compose stop hub hub-jobs >/dev/null 2>&1 || true
     echo "Khôi phục chưa hoàn tất; đã yêu cầu dừng hub. Kiểm tra trạng thái, sửa lỗi rồi chạy lại restore.sh với bản sao lưu này." >&2
   fi
   rmdir "$lock"
@@ -70,16 +70,19 @@ id=$(compose ps -aq hub)
 [ -n "$id" ] || fail "Không thấy container hub của bản triển khai."
 HIVE_VERSION=$($docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$id" | sed -n 's/^HIVE_VERSION=//p')
 export HIVE_VERSION
+# backup.sh đặt tên thư mục theo giờ bắt đầu dump, sớm hơn snapshot một chút: worker gửi lại dư chứ không thiếu.
+dumped_at=$(basename "$backup" | sed -n 's/^\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)T\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)Z$/\1-\2-\3T\4:\5:\6Z/p')
 sql_tmp=$(mktemp "$dir/.restore.XXXXXX")
 compose exec -T postgres pg_restore --clean --if-exists --file=- <"$backup/hive.dump" >"$sql_tmp"
 echo "Dừng hub và khôi phục database hive của project ${project}…"
-compose stop hub
+compose stop hub hub-jobs
 stopped=1
 # PostgreSQL 18 không clean được constraint kế thừa của partition pg-boss còn tồn tại. Xoá schema hàng đợi trước
 # trong cùng transaction với SQL của pg_restore, để lỗi vẫn rollback cả dữ liệu và schema. Không DROP DATABASE/ROLE.
 {
   printf 'BEGIN;\nSET LOCAL client_min_messages = warning;\nDROP SCHEMA IF EXISTS pgboss CASCADE;\n'
   cat "$sql_tmp"
+  db_epoch_sql "$dumped_at"
   printf '\nCOMMIT;\n'
 } | compose exec -T postgres psql -U postgres -d hive -v ON_ERROR_STOP=1 >/dev/null
 # Role postgres nằm ngoài dump. Đồng bộ mật khẩu với .env trước khi hub bootstrap các role còn lại.
@@ -96,5 +99,7 @@ fi
 chmod 600 "$env"
 compose up -d --no-build --no-deps --force-recreate hub
 wait_healthy
+# hub-jobs bỏ bước migrate; chỉ chạy lại khi hub đã migrate database vừa khôi phục.
+compose up -d --no-build --no-deps --force-recreate hub-jobs
 stopped=0
 echo "Đã khôi phục $backup; hub healthy."

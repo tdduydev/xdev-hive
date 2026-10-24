@@ -29,6 +29,23 @@ func TestHealthOK(t *testing.T) {
 	}
 }
 
+func TestHealthDBEpoch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","version":"2","time":"2026-10-11T00:00:00Z",` +
+			`"dbEpoch":"7f1c0b7e-3c2a-4d7e-9a51-2b8f6c1d0e4a","dbRestoredTo":"2026-10-11T03:00:00.000Z"}`))
+	}))
+	defer srv.Close()
+
+	h, err := New(srv.URL).Health(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.DBEpoch != "7f1c0b7e-3c2a-4d7e-9a51-2b8f6c1d0e4a" || h.DBRestoredTo == nil || h.DBRestoredTo.Hour() != 3 {
+		t.Fatalf("mốc: %q %v", h.DBEpoch, h.DBRestoredTo)
+	}
+}
+
 func TestHealthErrorStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)

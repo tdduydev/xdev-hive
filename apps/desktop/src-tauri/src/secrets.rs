@@ -528,6 +528,141 @@ pub async fn secret_approve(app: AppHandle, id: String, allow: bool) -> Result<(
         .map(|_| ())
 }
 
+/// Đường dẫn lấy từ hộp thoại của hệ điều hành; chỉ chặn thứ làm hỏng dòng lệnh, worker báo lỗi đọc ghi.
+fn path_arg(key: &str, path: &str) -> Result<String, String> {
+    if path.trim().is_empty() || path.len() > 4096 || path.chars().any(char::is_control) {
+        return Err("Đường dẫn file không hợp lệ.".into());
+    }
+    Ok(arg(key, path))
+}
+
+fn on_conflict_arg(on_conflict: &str) -> Result<String, String> {
+    match on_conflict {
+        "skip" | "overwrite" => Ok(arg("on-conflict", on_conflict)),
+        _ => Err("Cách xử lý khi trùng tên không hợp lệ.".into()),
+    }
+}
+
+fn export_args(path: &str, names: &[String], force: bool) -> Result<Vec<String>, String> {
+    let mut args = base(&["export"]);
+    args.push(path_arg("out", path)?);
+    for n in names {
+        args.push(name_arg("name", n)?);
+    }
+    if force {
+        args.push("--force".into());
+    }
+    Ok(args)
+}
+
+fn import_args(path: &str, dry_run: bool, on_conflict: &str) -> Result<Vec<String>, String> {
+    let mut args = base(&["import"]);
+    args.push(path_arg("in", path)?);
+    args.push(on_conflict_arg(on_conflict)?);
+    if dry_run {
+        args.push("--dry-run".into());
+    }
+    Ok(args)
+}
+
+fn import_env_args(
+    path: &str,
+    dry_run: bool,
+    on_conflict: &str,
+    project: Option<&str>,
+    all_projects: bool,
+) -> Result<Vec<String>, String> {
+    let project = project.filter(|p| !p.trim().is_empty());
+    if all_projects && project.is_some() {
+        return Err("Chọn một dự án hoặc mọi dự án, không chọn cả hai.".into());
+    }
+    let mut args = base(&["import"]);
+    args.push(path_arg("env", path)?);
+    args.push(on_conflict_arg(on_conflict)?);
+    if dry_run {
+        args.push("--dry-run".into());
+    }
+    if let Some(p) = project {
+        args.push(project_arg(p)?);
+    }
+    if all_projects {
+        args.push("--all-projects".into());
+    }
+    Ok(args)
+}
+
+/// Mật khẩu của file .hivesecrets đi vào stdin như giá trị bí mật (FR-067).
+#[derive(Serialize)]
+struct PasswordIn<'a> {
+    password: &'a str,
+}
+
+fn password_input(password: &str) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&PasswordIn { password }).map_err(|e| e.to_string())
+}
+
+/// Chạy lệnh cần mật khẩu: mật khẩu bị xoá ngay khi đã thành vùng đệm stdin, kể cả khi tham số sai.
+async fn call_with_password(
+    app: &AppHandle,
+    args: Result<Vec<String>, String>,
+    password: String,
+) -> Result<Value, String> {
+    let input = password_input(&password);
+    wipe(password);
+    call_json(app, args?, Some(input?), RUN_TIMEOUT).await
+}
+
+#[tauri::command]
+pub async fn secrets_export(
+    app: AppHandle,
+    path: String,
+    password: String,
+    names: Option<Vec<String>>,
+    force: Option<bool>,
+) -> Result<Value, String> {
+    let args = export_args(&path, &names.unwrap_or_default(), force.unwrap_or(false));
+    call_with_password(&app, args, password).await
+}
+
+#[tauri::command]
+pub async fn secrets_import_preview(
+    app: AppHandle,
+    path: String,
+    password: String,
+    on_conflict: String,
+) -> Result<Value, String> {
+    call_with_password(&app, import_args(&path, true, &on_conflict), password).await
+}
+
+#[tauri::command]
+pub async fn secrets_import(
+    app: AppHandle,
+    path: String,
+    password: String,
+    on_conflict: String,
+) -> Result<Value, String> {
+    call_with_password(&app, import_args(&path, false, &on_conflict), password).await
+}
+
+#[tauri::command]
+pub async fn secrets_import_env(
+    app: AppHandle,
+    path: String,
+    dry_run: bool,
+    on_conflict: String,
+    project: Option<String>,
+    all_projects: Option<bool>,
+) -> Result<Value, String> {
+    let args = import_env_args(
+        &path,
+        dry_run,
+        &on_conflict,
+        project.as_deref(),
+        all_projects.unwrap_or(false),
+    )?;
+    call_json(&app, args, None, RUN_TIMEOUT).await
+}
+
 /// Credential triển khai (specs/032 FR-060…FR-066) qua `hive-worker secrets delivery …`: kho và danh mục riêng, không
 /// gán được cho dự án. Không có lệnh hiện hay chép giá trị: đã lưu thì UI không bao giờ thấy lại.
 fn delivery_args(action: &str, name: Option<&str>) -> Result<Vec<String>, String> {
@@ -783,5 +918,75 @@ mod tests {
         assert!(delivery_args("set", Some("")).is_err());
         let args = delivery_args("set", Some("argocd")).unwrap();
         assert!(args.iter().all(|a| !a.contains(FAKE)));
+    }
+
+    #[test]
+    fn export_and_import_args_follow_the_cli() {
+        assert_eq!(
+            export_args("/tmp/b.hivesecrets", &["A_B".into(), "C".into()], true).unwrap(),
+            [
+                "secrets",
+                "export",
+                "--json",
+                "--out=/tmp/b.hivesecrets",
+                "--name=A_B",
+                "--name=C",
+                "--force",
+            ]
+        );
+        assert_eq!(
+            import_args("/tmp/b.hivesecrets", true, "skip").unwrap(),
+            [
+                "secrets",
+                "import",
+                "--json",
+                "--in=/tmp/b.hivesecrets",
+                "--on-conflict=skip",
+                "--dry-run",
+            ]
+        );
+        assert_eq!(
+            import_env_args("/tmp/.env", false, "overwrite", Some("p1"), false).unwrap(),
+            [
+                "secrets",
+                "import",
+                "--json",
+                "--env=/tmp/.env",
+                "--on-conflict=overwrite",
+                "--project=p1",
+            ]
+        );
+        assert_eq!(
+            import_env_args("/tmp/.env", true, "skip", Some(" "), true).unwrap(),
+            [
+                "secrets",
+                "import",
+                "--json",
+                "--env=/tmp/.env",
+                "--on-conflict=skip",
+                "--dry-run",
+                "--all-projects",
+            ]
+        );
+        assert!(import_env_args("/tmp/.env", true, "skip", Some("p1"), true).is_err());
+        assert!(import_args("/tmp/b", true, "replace").is_err());
+        assert!(import_args("", true, "skip").is_err());
+        assert!(export_args("/tmp/a\nb", &[], false).is_err());
+        // Đường dẫn bắt đầu bằng `-` vẫn nằm sau `--out=`.
+        assert_eq!(export_args("-x", &[], false).unwrap()[3], "--out=-x");
+    }
+
+    #[test]
+    fn password_goes_to_stdin_and_never_to_argv() {
+        let input = password_input(FAKE).unwrap();
+        assert_eq!(
+            String::from_utf8(input).unwrap(),
+            format!(r#"{{"password":"{FAKE}"}}"#)
+        );
+        let all: Vec<Vec<String>> = vec![
+            export_args("/tmp/b", &[], false).unwrap(),
+            import_args("/tmp/b", false, "overwrite").unwrap(),
+        ];
+        assert!(all.iter().flatten().all(|a| !a.contains(FAKE)));
     }
 }

@@ -35,7 +35,7 @@ const text: Dict<{
   colProject: string;
   colNames: string;
   colOutcome: string;
-  kinds: { run: string; terminal: string; reveal: string; copy: string };
+  kinds: { run: string; terminal: string; reveal: string; copy: string; export: string; import: string };
   outcomes: Record<"granted" | "denied" | "declined" | "timeout" | "store_error", string>;
   policies: Record<"allow" | "approve" | "deny", string>;
   deleted: string;
@@ -64,7 +64,14 @@ const text: Dict<{
     colProject: "Dự án",
     colNames: "Bí mật",
     colOutcome: "Kết quả",
-    kinds: { run: "Run", terminal: "Terminal", reveal: "Hiện", copy: "Sao chép" },
+    kinds: {
+      run: "Run",
+      terminal: "Terminal",
+      reveal: "Hiện",
+      copy: "Sao chép",
+      export: "Xuất file",
+      import: "Nhập file",
+    },
     outcomes: {
       granted: "Đã cấp",
       denied: "Bị chặn",
@@ -99,7 +106,7 @@ const text: Dict<{
     colProject: "Project",
     colNames: "Secrets",
     colOutcome: "Result",
-    kinds: { run: "Run", terminal: "Terminal", reveal: "Show", copy: "Copy" },
+    kinds: { run: "Run", terminal: "Terminal", reveal: "Show", copy: "Copy", export: "Export", import: "Import" },
     outcomes: {
       granted: "Granted",
       denied: "Blocked",

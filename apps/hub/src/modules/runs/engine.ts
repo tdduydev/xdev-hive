@@ -3377,9 +3377,15 @@ export function createRunsEngine(deps: RunsDeps) {
     },
     /** Kiểm HIVE_RUN_TOKEN cho cổng /mcp; cùng khoá với token engine ký khi giao lease. */
     mcpRunTokens: createMcpRunTokens({ pool: deps.pool, authSecret: deps.authSecret, publicUrl: deps.publicUrl }),
-    /** Xử lý hẹn giờ trên pg-boss; chỉ gọi ở tiến trình có vai trò `jobs` (cùng tiến trình với gateway). */
-    async registerJobs(jobs: Jobs) {
+    /**
+     * Xử lý hẹn giờ của run trên pg-boss; chỉ gọi ở tiến trình có vai trò `api`. Hẹn giờ giao và kiểm lease phải chạy
+     * cùng tiến trình với gateway vì gói job_offer, lease chỉ gửi được qua kết nối WSS tiến trình đó giữ (specs/027 R13).
+     */
+    async registerTimers(jobs: Jobs) {
       await jobs.work<RunTimer>(RUNS_TIMER_QUEUE, (job) => fire(job.data), { pollingIntervalSeconds: 1 });
+    },
+    /** Job nền của run không cần kết nối máy; chỉ gọi ở tiến trình có vai trò `jobs`. */
+    async registerJobs(jobs: Jobs) {
       if (gitTokens) {
         await registerRunGitTokenSweep(jobs, {
           ...gitTokens,

@@ -108,6 +108,10 @@ describe("loadConfig: khoá chủ và vai trò", () => {
   it("báo lỗi khoá sai độ dài", () => expect(() => loadConfig({ HIVE_MASTER_KEY: "YWJj" })).toThrow(/32 byte/));
   it("mặc định chạy cả api và jobs", () => expect(loadConfig({}).roles).toEqual(["api", "jobs"]));
   it("từ chối vai trò lạ", () => expect(() => loadConfig({ HIVE_ROLES: "api,gw" })).toThrow(/gw/));
+  it("tách vai trò theo service của compose", () => {
+    expect(loadConfig({ HIVE_ROLES: "api" }).roles).toEqual(["api"]);
+    expect(loadConfig({ HIVE_ROLES: " jobs " }).roles).toEqual(["jobs"]);
+  });
 });
 
 describe("loadConfig: MCP qua http", () => {

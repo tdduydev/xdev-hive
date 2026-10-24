@@ -106,6 +106,9 @@ func TestContractEventFieldsAreKnown(t *testing.T) {
 		"step":     {"name", "state", "exitCode"},
 		"external": {"ref", "url"},
 		"finished": {"state", "error"},
+		"test-results": {"pipeline", "jobIds", "totals", "unmapped", "ambiguous", "unknownCodes", "truncated",
+			"cases"},
+		"pipelines": {"items"},
 	}
 	all := f.Events
 	for _, r := range f.Runs {
@@ -137,6 +140,101 @@ func TestContractEventFieldsAreKnown(t *testing.T) {
 		if _, err := time.Parse(time.RFC3339, ev["at"].(string)); err != nil {
 			t.Errorf("at = %v", ev["at"])
 		}
+	}
+}
+
+// Kiểu Go của test-report phải đọc và ghi lại đúng sự kiện mẫu, không thêm hay bớt trường (zod ở hub là strict).
+func TestContractTestReportEventsRoundTrip(t *testing.T) {
+	f := loadContract(t)
+	seen := map[string]bool{}
+	for _, raw := range f.Events {
+		var base struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &base); err != nil {
+			t.Fatal(err)
+		}
+		var body Event
+		switch base.Type {
+		case "test-results":
+			body = decodeEvent[TestResults](t, raw).event()
+		case "pipelines":
+			body = decodeEvent[Pipelines](t, raw).event()
+		default:
+			continue
+		}
+		seen[base.Type] = true
+		var want map[string]any
+		if err := json.Unmarshal(raw, &want); err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range []string{"jobId", "seq", "type", "at"} {
+			body[k] = want[k]
+		}
+		if got := asAny(t, body); !reflect.DeepEqual(got, any(want)) {
+			t.Errorf("%s: ghi lại lệch\n got  %v\n want %v", base.Type, got, want)
+		}
+	}
+	if !seen["test-results"] || !seen["pipelines"] {
+		t.Fatalf("file mẫu thiếu sự kiện test-report: %v", seen)
+	}
+}
+
+func decodeEvent[T any](t *testing.T, raw json.RawMessage) T {
+	t.Helper()
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"jobId", "seq", "type", "at"} {
+		delete(m, k)
+	}
+	b, _ := json.Marshal(m)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	var v T
+	if err := dec.Decode(&v); err != nil {
+		t.Fatalf("kiểu Go không đọc được sự kiện mẫu: %v", err)
+	}
+	return v
+}
+
+func TestContractTestReportParams(t *testing.T) {
+	f := loadContract(t)
+	n := 0
+	for _, raw := range f.JobSpecs {
+		spec := decodeSpec(t, raw)
+		if spec.Kind != KindTestReport {
+			continue
+		}
+		n++
+		p, err := ParseTestReportParams(spec.Params)
+		if err != nil {
+			t.Fatalf("%s: %v", spec.JobID, err)
+		}
+		if got := asAny(t, p); !reflect.DeepEqual(got, asAny(t, spec.Params)) {
+			t.Errorf("%s: params ghi lại lệch: %v", spec.JobID, got)
+		}
+	}
+	if n == 0 {
+		t.Fatal("file mẫu không có việc test-report")
+	}
+	for _, bad := range []map[string]any{
+		{"op": "read", "projectPath": "g/p", "pipelineId": 1, "mode": "junit-artifact", "artifactPath": "../x.xml"},
+		{"op": "read", "projectPath": "g/p", "pipelineId": 1, "mode": "junit-artifact", "artifactPath": `a\..\x.xml`},
+		{"op": "read", "projectPath": "g/p", "pipelineId": 1, "mode": "junit-artifact"},
+		{"op": "read", "projectPath": "../p", "pipelineId": 1, "mode": "pipeline-report"},
+		{"op": "read", "projectPath": "g/p", "pipelineId": 0, "mode": "pipeline-report"},
+		{"op": "read", "projectPath": "g/p", "pipelineId": 1, "mode": "pipeline-report", "token": "x"},
+		{"op": "list", "projectPath": "g/p", "limit": 501},
+		{"op": "write", "projectPath": "g/p"},
+	} {
+		if _, err := ParseTestReportParams(bad); CodeOf(err) != CodeBadRequest {
+			t.Errorf("nhận params sai %v: %v", bad, err)
+		}
+	}
+	if _, err := ParseTestReportParams(map[string]any{"op": "read", "projectPath": "g/p", "pipelineId": 1, "mode": "html"}); CodeOf(err) != CodeUnsupported {
+		t.Errorf("mode lạ phải là unsupported: %v", err)
 	}
 }
 
