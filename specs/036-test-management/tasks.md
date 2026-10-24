@@ -154,7 +154,7 @@ Chặn mọi story. Không có nhãn story.
   `effectivePermissions().has(perm)`; thiếu quyền trả `ForbiddenError` "Cần quyền `<quyền>` ở đội của dự án này."
   (FR-016); dự án chưa bật thư viện trả `QA_LIBRARY_DISABLED`, trừ route `projectSettings.*`. Sau T004, T007
   (`apps/hub/src/modules/qa/access.ts`, `apps/hub/src/modules/qa/access.db.test.ts`)
-- [ ] T015 H — Bảng chiếu `qa_case_status` (D12, FR-052): bên mới hơn thắng, bằng giờ thì kết quả tay thắng, không có dữ liệu
+- [x] T015 H — Bảng chiếu `qa_case_status` (D12, FR-052): bên mới hơn thắng, bằng giờ thì kết quả tay thắng, không có dữ liệu
   là null; thứ tự xấu nhất `failed` > `other` > `flaky` > `skipped` > `passed`; CI `skipped` tính là có kết quả. Hàm
   cập nhật cho: run `done` trên nhánh tham chiếu, gửi lại, đổi `reference_branch`, lưu kết quả tay, xoá nguồn hoặc
   dọn dữ liệu, TC mới (thêm hàng rỗng) (`apps/hub/src/modules/qa/status.ts`, `apps/hub/src/modules/qa/status.db.test.ts`)
