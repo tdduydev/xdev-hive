@@ -184,7 +184,7 @@ Chặn mọi story. Không có nhãn story.
 **Kiểm độc lập**: "tạo một khu có 3 TC hợp lệ. Thư viện hiện 3 TC đủ trường. Sửa một TC trong repo docs, đợi đồng bộ.
 Thư viện có nội dung mới và lịch sử phiên bản của TC."
 
-- [ ] T020 [P] [US1] C — Bộ đọc file khu theo contracts/tc-markdown.md: `# <KHU> <tên>`, `### TC-<KHU>-<SỐ> <tên>`,
+- [x] T020 [P] [US1] C — Bộ đọc file khu theo contracts/tc-markdown.md: `# <KHU> <tên>`, `### TC-<KHU>-<SỐ> <tên>`,
   trường `- <Trường>: <giá trị>`, bảng `| # | Thao tác | Kết quả mong đợi |`. Trả `ParsedArea`
   (`area`, `cases`, `errors` có `line`, `message`), tối đa 100 lỗi. Kiểm trường bắt buộc (FR-002), mã TC (FR-003) và mã
   yêu cầu theo thứ tự ở contracts/tc-markdown.md. Hàm chuẩn hoá TC bỏ `line` để hub băm. Hàm

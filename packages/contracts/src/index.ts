@@ -86,6 +86,7 @@ export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
 export * from "./terminal.ts";
+export * from "./test-library.ts";
 export * from "./testing.ts";
 export * from "./version.ts";
 export * from "./workflows.ts";
