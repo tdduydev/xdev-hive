@@ -192,7 +192,7 @@ Thư viện có nội dung mới và lịch sử phiên bản của TC."
   không có bước, quá 100 lỗi, `automated` thiếu `script`, mã yêu cầu `FR-001`, `036/AC-012.2`, `OPD02`, `OPD02P00108`,
   `USR01` được nhận, `FR001` và `NFR` báo lỗi mã spec sai dạng, `opd02` và `OPD-02` báo lỗi sai mẫu
   (`packages/contracts/src/test-library.ts`, `test-library.test.ts`, `index.ts`)
-- [ ] T021 [US1] H — Áp dụng file khu trong tx lưu tài liệu. `content_hash` là SHA-256 của JSON đã chuẩn hoá. Sáu quy
+- [x] T021 [US1] H — Áp dụng file khu trong tx lưu tài liệu. `content_hash` là SHA-256 của JSON đã chuẩn hoá. Sáu quy
   tắc của data-model.md (quy tắc 3–5 là FR-006):
   1. mã mới: thêm, `version = 1`;
   2. cùng khu: cập nhật; hash đổi thì `version + 1` và thêm hàng `qa_case_versions`;

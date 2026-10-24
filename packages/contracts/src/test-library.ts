@@ -291,7 +291,7 @@ export function parseTestArea(md: string): ParsedArea {
       line: 1,
       message: "Dòng 1: file khu phải bắt đầu bằng `# <MÃ KHU> <tên khu>`, ví dụ `# DANGNHAP Đăng nhập`.",
     });
-  return { area, cases, errors: capErrors(errors) };
+  return { area, cases, errors: capParseErrors(errors) };
 }
 
 function openCase(
@@ -370,7 +370,8 @@ function readStep(d: Draft, cells: string[], n: number) {
   steps.push({ n: k, action, expected });
 }
 
-function capErrors(errors: TestParseError[]): TestParseError[] {
+/** Xếp lỗi theo dòng và cắt còn `QA_PARSE_ERRORS_MAX`; hub dùng lại khi thêm lỗi lúc áp dụng file. */
+export function capParseErrors(errors: TestParseError[]): TestParseError[] {
   const sorted = errors.map((e, i) => ({ e, i })).sort((a, b) => a.e.line - b.e.line || a.i - b.i);
   const all = sorted.map((x) => x.e);
   if (all.length <= QA_PARSE_ERRORS_MAX) return all;
