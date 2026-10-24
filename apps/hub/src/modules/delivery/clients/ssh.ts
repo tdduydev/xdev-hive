@@ -48,8 +48,15 @@ export class SshError extends Error {
  * Node (spike T001).
  */
 export function generateServerKey(): { privateKey: string; publicKey: string } {
-  const pair = ssh2.utils.generateKeyPairSync("ed25519", { comment: KEY_COMMENT });
-  return { privateKey: pair.private, publicKey: pair.public.trim() };
+  // ssh2 1.17 bỏ mọi byte 0 đầu bit string của khoá công khai, kể cả byte của chính khoá: khoảng 1/256 cặp sinh ra hỏng
+  // (ssh2 và ssh-keygen đều không đọc được). Sinh lại tới khi đọc được.
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const pair = ssh2.utils.generateKeyPairSync("ed25519", { comment: KEY_COMMENT });
+    if (!(ssh2.utils.parseKey(pair.private) instanceof Error)) {
+      return { privateKey: pair.private, publicKey: pair.public.trim() };
+    }
+  }
+  throw new Error("Không sinh được khoá ed25519 hợp lệ");
 }
 
 /** Lệnh quản trị dán vào máy chủ. Khoá công khai chỉ có chữ, số, `+/=` và chú thích cố định nên nằm gọn trong `'…'`. */
