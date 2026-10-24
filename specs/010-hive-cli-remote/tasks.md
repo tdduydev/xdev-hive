@@ -1,5 +1,7 @@
 # Tasks: CLI `hive` và điều khiển agent từ xa qua web trên điện thoại
 
+> `- [-]`: bỏ, ngoài phạm vi (lý do ghi trong từng task). Giữ task để ghi lại.
+
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [ADR 0019](../../docs/adr/0019-hive-cli-and-remote-sessions.md)
 
 **Tests**: bắt buộc (feature-checklist mục 5). Mỗi task tự viết test của phần mình và để `pnpm check` xanh; task Go
@@ -589,7 +591,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 8: User Story 7 — PWA và thông báo đẩy (P2)
 
-- [ ] T070 [US7] Web: PWA
+- [-] T070 [US7] Web: PWA
   - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Một phần (SPEC10NEXT): vite-plugin-pwa `injectManifest`, `sw.ts` chỉ đệm vỏ, manifest `manifest.json`, icon, nút
     cài + hướng dẫn iOS, thanh phím + ô soạn ở trang terminal Leader (phần của T032), e2e `pwa.spec.ts`,
@@ -603,7 +605,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
     `pnpm-lock.yaml`, `apps/web/e2e/pwa.spec.ts`
   - **Phụ thuộc**: T028 (cùng làn) · **Mức**: vừa
 
-- [ ] T071 [US7] Hub: Web Push
+- [-] T071 [US7] Hub: Web Push
   - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - `push.ts`: khoá VAPID sinh lần đầu, mã hoá bằng khoá chủ; route `pushKey|pushSubscribe|pushUnsubscribe`; gửi khi
     `term_event{attention|idle}`, `term_exit`, phiên mở từ xa; xoá subscription hết hạn (404/410); nội dung không có
@@ -612,7 +614,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
     `pnpm-lock.yaml`
   - **Phụ thuộc**: T051 (cùng làn) · **Mức**: vừa
 
-- [ ] T072 [US7] Worker: tín hiệu "agent cần bạn"
+- [-] T072 [US7] Worker: tín hiệu "agent cần bạn"
   - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Claude tương tác: file settings tạm với hook `Notification` (+ `Stop`) gọi `hive __hook attention`, ghép với hook
     quản lý của tổ chức như `runner/hooks.go`; CLI khác: im 60 s sau output → `idle`; gửi `term_event`.
@@ -624,14 +626,14 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 9: User Story 8 — Xem cùng (P3)
 
-- [ ] T080 [US8] Hub: chế độ xem `team`
+- [-] T080 [US8] Hub: chế độ xem `team`
   - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - Quyền xem cho thành viên đội / người xem run của dự án; đóng người xem khác khi tắt; giới hạn số người xem; danh sách
     người đang xem cho chủ.
   - **Scope**: `apps/hub/src/modules/terminal/{queries.ts,live.ts,visibility.db.test.ts}`
   - **Phụ thuộc**: T071 (cùng làn) · **Mức**: vừa
 
-- [ ] T081 [US8] Web: nút "Cho đội xem" và danh sách người xem
+- [-] T081 [US8] Web: nút "Cho đội xem" và danh sách người xem
   - ngoài phạm vi (quyết định 2026-10-23: tính năng web mới nằm ngoài bốn nhóm của hub và web; việc chạy và xem phiên agent thuộc desktop và worker)
   - **Scope**: `apps/web/src/pages/remote/session-page.tsx`, `apps/web/e2e/{remote-share.spec.ts,fake-hub.ts}`
   - **Phụ thuộc**: T070 (cùng làn), T080 · **Mức**: nhẹ
