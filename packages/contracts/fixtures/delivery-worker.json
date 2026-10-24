@@ -48,6 +48,42 @@
       "credential": "jenkins-missing",
       "params": {},
       "timeoutSeconds": 1800
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e04",
+      "kind": "test-report",
+      "deployId": null,
+      "configVersion": 0,
+      "target": {
+        "baseUrl": "https://gitlab.example.com"
+      },
+      "credential": "gitlab-main",
+      "params": {
+        "op": "read",
+        "projectPath": "group/e2e-tests",
+        "pipelineId": 18342,
+        "mode": "playwright-artifact",
+        "jobFilter": ["e2e:*"],
+        "artifactPath": "playwright-report/results.json"
+      },
+      "timeoutSeconds": 600
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e05",
+      "kind": "test-report",
+      "deployId": null,
+      "configVersion": 0,
+      "target": {
+        "baseUrl": "https://gitlab.example.com"
+      },
+      "credential": "gitlab-main",
+      "params": {
+        "op": "list",
+        "projectPath": "group/e2e-tests",
+        "ref": "main",
+        "limit": 20
+      },
+      "timeoutSeconds": 120
     }
   ],
   "runs": [
@@ -203,6 +239,59 @@
       "error": {
         "code": "canceled",
         "message": "Đã huỷ."
+      }
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e04",
+      "seq": 1,
+      "type": "test-results",
+      "at": "2026-10-23T08:10:00Z",
+      "pipeline": {
+        "ref": "main",
+        "sha": "9fceb02d0ae598e95dc970b74767f19372d61af8",
+        "status": "failed",
+        "source": "push",
+        "startedAt": "2026-10-23T07:52:00Z",
+        "finishedAt": "2026-10-23T08:05:00Z"
+      },
+      "jobIds": [99120, 99121],
+      "totals": { "total": 4, "passed": 1, "failed": 1, "skipped": 0, "flaky": 1 },
+      "unmapped": 1,
+      "ambiguous": 0,
+      "unknownCodes": ["TC-KHAM-001", "TC-KHAM-002", "TC-KHAM-003"],
+      "truncated": false,
+      "cases": [
+        { "code": "TC-KHAM-002", "status": "failed", "retries": 0, "durationMs": 3, "worstJobId": 99121 },
+        { "code": "TC-KHAM-001", "status": "flaky", "retries": 1, "durationMs": 12, "worstJobId": 99120 },
+        { "code": "TC-KHAM-003", "status": "passed", "retries": 0, "durationMs": 7 }
+      ]
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e05",
+      "seq": 1,
+      "type": "pipelines",
+      "at": "2026-10-23T08:00:00Z",
+      "items": [
+        {
+          "pipelineId": 18342,
+          "ref": "main",
+          "sha": "9fceb02d0ae598e95dc970b74767f19372d61af8",
+          "status": "failed",
+          "source": "push",
+          "startedAt": null,
+          "finishedAt": "2026-10-23T08:05:00Z"
+        }
+      ]
+    },
+    {
+      "jobId": "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e04",
+      "seq": 2,
+      "type": "finished",
+      "at": "2026-10-23T08:00:00Z",
+      "state": "failed",
+      "error": {
+        "code": "no_report",
+        "message": "Pipeline chưa có báo cáo test."
       }
     }
   ]

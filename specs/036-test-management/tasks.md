@@ -75,7 +75,7 @@ Chặn mọi story. Không có nhãn story.
   "Kiểm thử" (FR-010). Vai trò `team-tester` trong `systemRoleId`, tập `TEAM_TESTER` liệt kê đủ quyền như `TEAM_BA`
   (FR-012). Gán quyền cho vai trò có sẵn theo FR-014 và research.md D5. Test: `team-tester` không có quyền nào ở
   FR-013 (`packages/contracts/src/roles.ts`, `roles.test.ts`)
-- [ ] T006 [P] C, W — `test-report` vào `DELIVERY_JOB_KINDS`, không vào `DELIVERY_METHODS`. Khả năng `kinds` mặc định
+- [x] T006 [P] C, W — `test-report` vào `DELIVERY_JOB_KINDS`, không vào `DELIVERY_METHODS`. Khả năng `kinds` mặc định
   `[]` nếu specs/032 T020 chưa thêm. `params` là union theo `op`:
   - `read`: `projectPath` `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$` (1–255), `pipelineId` ≥ 1, `mode`, `jobFilter`
     tối đa 20 mục, mỗi mục tối đa 100, `artifactPath` tối đa 255;
