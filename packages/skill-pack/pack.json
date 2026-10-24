@@ -1,7 +1,7 @@
 {
   "source": {
     "repo": "tdduydev/xdev-skills",
-    "commit": "d246ca68816356dc3cea9737e7d41a82569582eb",
+    "commit": "f107d20fc80313d6cd8aa355fcce57b9252ed682",
     "path": "library"
   },
   "skills": [
@@ -505,10 +505,10 @@
       "defaultOn": true,
       "license": "MIT",
       "upstream": null,
-      "hash": "c97112392618a692aa145391b749381f749ffd7a003f7d2a2a913c4bfbe4ea3c",
-      "version": 1,
+      "hash": "72f146f59848a9b8d71c6527e781eb8bd469dec3fa87e6062b2bac43fa071a91",
+      "version": 2,
       "files": 3,
-      "bytes": 4411
+      "bytes": 5707
     },
     {
       "name": "vietnamese-ui-copy",
