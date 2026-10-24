@@ -66,7 +66,7 @@ Thông điệp chờ của `test-report` (hiện ở dòng lần chạy CI, tr�
 
 | Trường | Kiểu | Ràng buộc |
 |---|---|---|
-| `projectPath` | string | 1–255 ký tự, mẫu `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$` |
+| `projectPath` | string | 1–255 ký tự, mẫu `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$`, không có đoạn `.` hay `..` |
 | `pipelineId` | int | ≥ 1 |
 | `mode` | enum | `pipeline-report`, `junit-artifact`, `playwright-artifact` |
 | `jobFilter` | mảng string | tối đa 20, mỗi mục ≤ 100 ký tự, `*` là ký tự đại diện; rỗng là mọi job |
@@ -88,8 +88,12 @@ Worker chỉ trả pipeline đã xong (`success`, `failed`, `canceled`, `skipped
 
 ## Sự kiện
 
-Hai nhánh mới của `deliveryEvent`, đều dùng `eventBase` (`jobId`, `seq`, `at`) và đều `.strict()`. Việc vẫn kết thúc bằng
+Hai loại sự kiện mới, đều dùng `eventBase` (`jobId`, `seq`, `at`) và đều `.strict()`. Việc vẫn kết thúc bằng
 `finished`.
+
+Hai loại này nằm trong hợp `deliveryJobEvent` (= `deliveryEvent` cộng `testResultsEvent`, `pipelinesEvent`), không thêm
+vào `deliveryEvent`. `deliveryEvent` vẫn là sự kiện của lần triển khai mà `delivery/job-events.ts` áp vào tiến trình
+deploy. Cổng nhận sự kiện của worker (T052) parse bằng `deliveryJobEvent` rồi chuyển hai loại mới cho module `testing`.
 
 ### `test-results` (một lần cho `op = read`)
 
@@ -133,7 +137,7 @@ Hai nhánh mới của `deliveryEvent`, đều dùng `eventBase` (`jobId`, `seq`
 | `cases[].status` | `passed`, `failed`, `skipped`, `flaky` |
 | `cases[].retries` | int 0–20 |
 | `cases[].durationMs` | int ≥ 0 |
-| `cases[].worstJobId` | job có kết quả xấu nhất của mã đó; hub dựng liên kết job từ `repo_web_url` |
+| `cases[].worstJobId` | job có kết quả xấu nhất của mã đó; hub dựng liên kết job từ `repo_web_url`. Không bắt buộc: vắng khi GitLab không cho biết test thuộc job nào (mode `pipeline-report` thiếu `build_ids`) |
 | `truncated` | `true` khi worker cắt `cases` ở 5.000 |
 
 `unknownCodes` là mã worker thấy trong báo cáo. Hub so với thư viện và chỉ giữ mã không có trong thư viện.
