@@ -57,7 +57,7 @@ description: "Task list: quản lý kiểm thử cấp dự án, vai trò Tester
 
 Chặn mọi story. Không có nhãn story.
 
-- [ ] T003 C — `testing.ts`: hằng D11 (`QA_READ_WAIT_HOURS` 24, `QA_REFETCH_DAYS` 7, `QA_BACKFILL_PIPELINES` 20,
+- [x] T003 C — `testing.ts`: hằng D11 (`QA_READ_WAIT_HOURS` 24, `QA_REFETCH_DAYS` 7, `QA_BACKFILL_PIPELINES` 20,
   `QA_TREND_DAYS` 90, `QA_FLAKY_WINDOW` 10, `QA_FLAKY_FLIPS` 3, `QA_UNKNOWN_CODES_MAX` 200, `QA_NOTE_MAX` 500,
   `QA_LINKS_MAX` 5, `QA_RETENTION_DAYS_DEFAULT` 365, `QA_RETENTION_DAYS_MIN` 90); enum trạng thái CI
   (`passed`, `flaky`, `failed`, `skipped`), trạng thái tay (`passed`, `failed`, `untested`, `not-applicable`,
@@ -68,7 +68,7 @@ Chặn mọi story. Không có nhãn story.
   `QA_ERRORS` đủ 12 mã và thông báo ở contracts/hub-api.md; nhãn tiếng Việt của trạng thái ở data-model.md. Dùng lại
   `qaPriority` của `qa.ts`, không sửa `qa.ts`. Thêm `export *` ở `index.ts`
   (`packages/contracts/src/testing.ts`, `testing.test.ts`, `index.ts`)
-- [ ] T004 C — `testingContract` đủ route của contracts/hub-api.md: `settings`, `projectSettings`, `areas`, `cases`,
+- [x] T004 C — `testingContract` đủ route của contracts/hub-api.md: `settings`, `projectSettings`, `areas`, `cases`,
   `sources`, `rounds` (gồm `export`), `myWork`, `dashboard`. Mọi route là `orgRoute` dưới `/v1/testing/...`. Phân trang
   `cursor` tối đa 2000, `limit` 1–100, mặc định 20. Thêm `testing: testingContract` vào object contract. Chạy
   `pnpm openapi` (`packages/contracts/src/testing.ts`, `testing.test.ts`, `index.ts`, `packages/contracts/openapi.json`)
