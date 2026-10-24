@@ -532,10 +532,10 @@ không chứa giá trị.
 - [x] T047 Điều phối·nhẹ — Spec: US10, FR-067 đến FR-070, Edge Cases, Out of Scope; `data-model.md` §4 (loại
   `export`, `import`) và §9 (file `.hivesecrets`, `.env`); [contracts/sidecar-cli.md](contracts/sidecar-cli.md)
   (`secrets export`, `secrets import`, `ImportResult`, mã lỗi); [contracts/tauri-commands.md](contracts/tauri-commands.md).
-- [ ] T048 A·nặng — Worker, định dạng: `secretstore/transfer.go` (Argon2id, AES-256-GCM, vỏ ngoài làm AAD, kiểm `format`,
+- [x] T048 A·nặng — Worker, định dạng: `secretstore/transfer.go` (Argon2id, AES-256-GCM, vỏ ngoài làm AAD, kiểm `format`,
   `version`, khoảng `kdf`) và `secretstore/dotenv.go` (bộ đọc `.env`). Test: khứ hồi, sai mật khẩu, sửa một byte, version
   lạ, vỏ ngoài không có tên, cú pháp `.env`.
-- [ ] T049 A·nặng — Worker, lệnh: `cmd/hive-worker/secrets_transfer.go` (`secrets export`, `secrets import --in|--env`),
+- [x] T049 A·nặng — Worker, lệnh: `cmd/hive-worker/secrets_transfer.go` (`secrets export`, `secrets import --in|--env`),
   khớp dự án theo remote rồi theo tên, giới hạn 64 từng gán, `--dry-run`, `--on-conflict`, nhật ký `export`/`import`.
   Test: trùng tên, trùng giá trị, ghi đè, khớp dự án, giới hạn 64, mật khẩu không ra output; fixture
   `testdata/cli/export.json`, `import-preview.json`, `import.json`, `import-env.json`.

@@ -233,7 +233,7 @@ File JSON do người dùng tạo và cất ở chỗ của họ. App không gi�
 | `format` | Luôn `hive-secrets`. Khác → lỗi `file_format` |
 | `version` | `1`. Lớn hơn hay lạ → lỗi `file_version`, không giải mã |
 | `createdAt` | RFC 3339 UTC, lúc xuất |
-| `kdf` | Argon2id (`golang.org/x/crypto/argon2`), salt ngẫu nhiên 16 byte. `memory` tính bằng KiB. Mặc định time=3, memory=64 MiB, threads=4. Đọc chấp nhận time 1–10, memory ≤ 1 GiB, threads 1–16 để file lạ không chiếm hết RAM |
+| `kdf` | Argon2id (`golang.org/x/crypto/argon2`), salt ngẫu nhiên 16 byte. `memory` tính bằng KiB. Mặc định time=3, memory=64 MiB, threads=4. Đọc chấp nhận time 1–10, memory 1 MiB–1 GiB, threads 1–16 để file lạ không chiếm hết RAM |
 | `cipher` | AES-256-GCM, khoá 32 byte từ `kdf`, nonce ngẫu nhiên 12 byte |
 | `data` | Bản mã của phần dưới. AAD là JSON gọn của `{format, version, createdAt, kdf, cipher}` theo đúng thứ tự trường này, nên sửa vỏ ngoài cũng làm giải mã thất bại |
 

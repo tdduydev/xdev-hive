@@ -19,6 +19,8 @@ const (
 	KindRun      = "run"
 	KindTerminal = "terminal"
 	KindReveal   = "reveal"
+	KindExport   = "export"
+	KindImport   = "import"
 	kindLeak     = "leak"
 
 	OutcomeGranted    = "granted"

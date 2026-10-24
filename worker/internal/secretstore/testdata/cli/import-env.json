@@ -1,0 +1,44 @@
+{
+  "dryRun": true,
+  "items": [
+    {
+      "name": "NEW_TOKEN",
+      "status": "new",
+      "action": "create",
+      "allProjects": false,
+      "projects": [
+        {
+          "localId": "1111111111111111",
+          "name": "app"
+        }
+      ],
+      "unmatched": [],
+      "limited": [],
+      "line": 1
+    },
+    {
+      "name": "DATABASE_URL",
+      "status": "same_value",
+      "action": "skip",
+      "allProjects": false,
+      "projects": [],
+      "unmatched": [],
+      "limited": [],
+      "line": 2
+    },
+    {
+      "name": "",
+      "status": "invalid",
+      "action": "skip",
+      "allProjects": false,
+      "projects": [],
+      "unmatched": [],
+      "limited": [],
+      "error": {
+        "code": "invalid_name",
+        "message": "Tên biến chỉ gồm chữ in hoa, số và `_`, không bắt đầu bằng số, tối đa 64 ký tự."
+      },
+      "line": 3
+    }
+  ]
+}

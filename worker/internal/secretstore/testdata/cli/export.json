@@ -1,0 +1,8 @@
+{
+  "out": "/home/dev/backup.hivesecrets",
+  "names": [
+    "DATABASE_URL",
+    "SENTRY_DSN",
+    "STRIPE_TEST_KEY"
+  ]
+}

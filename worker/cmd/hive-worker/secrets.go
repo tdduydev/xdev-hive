@@ -33,6 +33,11 @@ const secretsUsage = `Cách dùng: hive-worker secrets <lệnh> [--config FILE] 
   reveal    --name TÊN [--copy]
   purge     --project LOCAL_ID|--all
   delivery  status|list|set|delete          credential triển khai (Jenkins, Argo CD), không gán cho dự án
+  export    --out FILE [--name TÊN ...] [--force]
+                                            mật khẩu là JSON {"password":"…"} trên stdin
+  import    --in FILE [--dry-run] [--on-conflict skip|overwrite]
+                                            mật khẩu là JSON {"password":"…"} trên stdin
+  import    --env FILE [--dry-run] [--on-conflict skip|overwrite] [--project LOCAL_ID|--all-projects]
 Giá trị chỉ đọc từ stdin, không bao giờ từ tham số hay biến môi trường.`
 
 // Kiểu ra của lệnh, khớp contracts/sidecar-cli.md và fixture testdata/cli của secretstore.
@@ -94,6 +99,9 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	}
 	if len(args) > 0 && args[0] == "delivery" {
 		return deliveryCredsCommand(args[1:], stdin, stdout, stderr)
+	}
+	if len(args) > 0 && (args[0] == "export" || args[0] == "import") {
+		return secretsTransferCommand(args[0], args[1:], stdin, stdout, stderr)
 	}
 	action := ""
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
