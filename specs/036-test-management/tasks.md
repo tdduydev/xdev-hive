@@ -379,7 +379,7 @@ kết lỗi, thời điểm."
 Story P1 nhưng đặt sau cùng: phần hub cần specs/032 T011, T012, T017, T020 ở `main`. Phần worker T049, T050 làm được
 ngay sau T006.
 
-- [ ] T049 [P] [US3] W — `testreport.Options{Library bool}`: tìm mã bằng `\bTC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}\b` trong
+- [x] T049 [P] [US3] W — `testreport.Options{Library bool}`: tìm mã bằng `\bTC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}\b` trong
   tên test; nhiều mã tính `ambiguous`, không mã tính `unmapped`; giới hạn 32 MiB và 5000 ca
   (`worker/internal/testreport/summary.go`, `worker/internal/testreport/summary_test.go`)
 - [ ] T050 [P] [US3] W — Việc `test-report` (FR-023, FR-025). `op=read` theo ba mode (D7): `pipeline-report` gọi
