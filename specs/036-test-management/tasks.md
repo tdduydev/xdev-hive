@@ -248,6 +248,7 @@ bị cấm trả lỗi 403 kèm thông báo tiếng Việt."
   `qa.cases.write`. Nối ở `main.ts`. Test: tester lưu được file TC; lưu tài liệu khác bị từ chối nếu không có
   `docs.write` (FR-011). Sau T022 (`apps/hub/src/modules/qa/doc-hooks.ts`, `qa/doc-hooks.db.test.ts`,
   `qa/index.ts`, `apps/hub/src/main.ts`)
+  Còn thiếu: gọi `provideDocAccess(qaDocAccess)` ở `main.ts`. Provider và test đã xong; nhánh QA036A không được sửa `main.ts`.
 - [ ] T030 [US2] H — Ma trận FR-012 cho route `testing.*`: mỗi quyền được cho chạy được; thiếu quyền trả 403 với tên
   quyền thiếu (FR-016); người ngoài đội nhận 404 (FR-015) (`apps/hub/src/modules/qa/access.db.test.ts`)
 - [ ] T031 [P] [US2] H — Ma trận FR-013 (SC-007): thành viên `team-tester` bị từ chối mọi quyền cấm, gọi qua hàm kiểm

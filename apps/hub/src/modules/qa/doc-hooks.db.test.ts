@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { seedOrg } from "../../../test/org-fixture.ts";
-import { archiveDoc, provideDocSaved, restoreDoc, saveDoc, saveDocFromSync } from "../knowledge/index.ts";
+import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
+import { errorCode, seedOrg } from "../../../test/org-fixture.ts";
+import {
+  archiveDoc,
+  provideDocAccess,
+  provideDocSaved,
+  restoreDoc,
+  saveDoc,
+  saveDocFromSync,
+} from "../knowledge/index.ts";
 import { createPool, type Tx, withTenant } from "../platform/index.ts";
-import { areaKeyPrefix, qaDocSaved } from "./doc-hooks.ts";
+import { areaKeyPrefix, qaDocAccess, qaDocSaved } from "./doc-hooks.ts";
 
 const db = inject("db");
 const admin = new pg.Pool({ connectionString: db.adminUrl });
@@ -13,6 +20,7 @@ const app = createPool(db.appUrl);
 let org: Awaited<ReturnType<typeof seedOrg>>;
 let projectId: string;
 const projectKey = `qa${randomUUID().slice(0, 6)}`;
+const tester = `tester-${randomUUID().slice(0, 8)}`;
 
 const asAdmin = <T>(run: (tx: Tx) => Promise<T>) =>
   withTenant(app, { orgId: org.orgId, userId: org.user("tadmin") }, run);
@@ -74,6 +82,16 @@ beforeAll(async () => {
     `insert into hive.qa_project_settings (project_id, org_id, enabled, tc_dir) values ($1, $2, true, 'Test Cases/')`,
     [projectId, org.orgId],
   );
+  await admin.query(`insert into auth."user" (id, name, email) values ($1, $1, $1 || '@seed.test')`, [tester]);
+  await admin.query("insert into hive.org_members (org_id, user_id, role) values ($1, $2, 'member')", [
+    org.orgId,
+    tester,
+  ]);
+  await admin.query("insert into hive.team_members (team_id, org_id, user_id, role) values ($1, $2, $3, 'tester')", [
+    org.teamId,
+    org.orgId,
+    tester,
+  ]);
   provideDocSaved(qaDocSaved);
 });
 
@@ -127,5 +145,44 @@ describe("qaDocSaved", () => {
     expect(await library("LUU")).toEqual([expect.objectContaining({ archived: true, state: "retired" })]);
     await asAdmin((tx) => restoreDoc(tx, principal(), { key, baseVersion: 1 }));
     expect(await library("LUU")).toEqual([expect.objectContaining({ archived: false, state: "active", version: 1 })]);
+  });
+});
+
+describe("qaDocAccess", () => {
+  afterEach(() => provideDocAccess(undefined));
+
+  const as = <T>(userId: string, run: (tx: Tx) => Promise<T>) => withTenant(app, { orgId: org.orgId, userId }, run);
+  const save = (userId: string, key: string, content: string, baseVersion = 0) =>
+    as(userId, (tx) => saveDoc(tx, { kind: "user", userId }, { key, content, baseVersion }));
+
+  it("tester lưu thẳng file trong thư mục TC, tài liệu khác của dự án thì không (FR-011)", async () => {
+    provideDocAccess(qaDocAccess);
+    const key = `project/${projectKey}/test-cases/tester`;
+    expect((await save(tester, key, file("TESTER", "Tester viết"))).version).toBe(1);
+    expect((await save(tester, key, file("TESTER", "Tester sửa"), 1)).version).toBe(2);
+    expect(await library("TESTER")).toEqual([expect.objectContaining({ name: "Tester sửa", version: 2 })]);
+    const guide = () => save(tester, `project/${projectKey}/guide/tester`, "# Ghi chú\n");
+    expect(await errorCode(guide)).toBe("TEAM_ROLE_REQUIRED");
+    // Cấp lưu không mở lưu trữ: lưu trữ file TC vẫn cần quản trị đội.
+    const archive = () => as(tester, (tx) => archiveDoc(tx, { kind: "user", userId: tester }, { key, baseVersion: 2 }));
+    expect(await errorCode(archive)).toBe("TEAM_ROLE_REQUIRED");
+  });
+
+  it("không cấp khi thiếu qa.cases.write, khi thư viện tắt hoặc khi chưa nối provider", async () => {
+    const key = `project/${projectKey}/test-cases/khong-cap`;
+    expect(await errorCode(() => save(tester, key, file("KHONGCAP", "Chưa nối")))).toBe("TEAM_ROLE_REQUIRED");
+    provideDocAccess(qaDocAccess);
+    expect(await errorCode(() => save(org.user("tviewer"), key, file("KHONGCAP", "Viewer")))).toBe(
+      "TEAM_ROLE_REQUIRED",
+    );
+    expect(await errorCode(() => save(org.user("oadmin"), key, file("KHONGCAP", "Đội khác")))).toBe(
+      "PROJECT_NOT_FOUND",
+    );
+    await admin.query("update hive.qa_project_settings set enabled = false where project_id = $1", [projectId]);
+    try {
+      expect(await errorCode(() => save(tester, key, file("KHONGCAP", "Tắt")))).toBe("TEAM_ROLE_REQUIRED");
+    } finally {
+      await admin.query("update hive.qa_project_settings set enabled = true where project_id = $1", [projectId]);
+    }
   });
 });

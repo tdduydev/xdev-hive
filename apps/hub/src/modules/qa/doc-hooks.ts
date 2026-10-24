@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import { keyFromPath } from "../docsync/index.ts";
-import type { DocSavedEvent } from "../knowledge/index.ts";
+import type { DocAccessFor, DocSavedEvent } from "../knowledge/index.ts";
 import type { Tx } from "../platform/index.ts";
+import { effectivePermissions } from "../tenancy/index.ts";
 import { type AreaFile, applyAreaFile, archiveAreaDoc } from "./library.ts";
 
 // Hook lưu tài liệu (research D3). Sửa trên web và đồng bộ từ repo đều qua `docChanged()`, nên một hook phủ cả hai
@@ -13,8 +14,30 @@ export function areaKeyPrefix(projectKey: string, tcDir: string): string | null 
   return sample ? sample.slice(0, -1) : null;
 }
 
+const projectKeyOf = (key: string) => /^project\/([a-z0-9-]+)\//.exec(key)?.[1];
+
+/**
+ * Provider quyền lưu (D4, FR-011): người có `qa.cases.write` ở đội sở hữu lưu thẳng được file trong thư mục TC dù
+ * không có `docs.write`. Chạy ở mọi lần đọc và lưu tài liệu của dự án, nên lọc theo key trước khi hỏi database.
+ */
+export const qaDocAccess: DocAccessFor = async (tx, reader, key) => {
+  if (reader.kind !== "user") return null;
+  const projectKey = projectKeyOf(key);
+  if (!projectKey) return null;
+  const { rows } = await tx.execute<{ team_id: string; tc_dir: string }>(sql`
+    select p.team_id, s.tc_dir
+      from hive.projects p
+      join hive.qa_project_settings s on s.project_id = p.id and s.enabled
+     where p.key = ${projectKey}`);
+  const row = rows[0];
+  const prefix = row ? areaKeyPrefix(projectKey, row.tc_dir) : null;
+  if (!row || !prefix || !key.startsWith(prefix) || !reader.teams.has(row.team_id)) return null;
+  const permissions = await effectivePermissions(tx, reader.principal.userId, row.team_id);
+  return permissions.has("qa.cases.write") ? { read: true, propose: true, save: true } : null;
+};
+
 export async function qaDocSaved(tx: Tx, event: DocSavedEvent): Promise<void> {
-  const projectKey = /^project\/([a-z0-9-]+)\//.exec(event.key)?.[1];
+  const projectKey = projectKeyOf(event.key);
   if (!projectKey) return;
   const { rows } = await tx.execute<{ project_id: string; tc_dir: string; content: string | null }>(sql`
     select s.project_id, s.tc_dir, v.content
