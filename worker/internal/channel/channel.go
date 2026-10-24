@@ -109,11 +109,12 @@ func (c Config) status(state string, err error) {
 }
 
 type jobSpec struct {
-	Execution      string                   `json:"execution"`
-	Sandbox        *runner.SandboxJobConfig `json:"sandbox"`
-	Kind           string                   `json:"kind"`
-	Budget         runner.Budget            `json:"budget"`
-	RunPermissions string                   `json:"runPermissions"`
+	RunLogRetentionDays int                      `json:"runLogRetentionDays"`
+	Execution           string                   `json:"execution"`
+	Sandbox             *runner.SandboxJobConfig `json:"sandbox"`
+	Kind                string                   `json:"kind"`
+	Budget              runner.Budget            `json:"budget"`
+	RunPermissions      string                   `json:"runPermissions"`
 	// FullAllowed: chính sách tổ chức cho toàn quyền; nil với hub cũ.
 	FullAllowed *bool              `json:"fullAllowed"`
 	ProjectID   string             `json:"projectId"`
@@ -181,6 +182,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
 	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv, Policy: s.Policy, ProjectID: strings.ToLower(s.ProjectID)}
 	j.MCPServers = s.MCPServers
+	j.RunLogRetentionDays = s.RunLogRetentionDays
 	j.TokenSaving = s.TokenSaving
 	j.Effort, j.Advisor, j.Tier = s.Effort, s.Advisor, s.Tier
 	j.TaskText = s.TaskText
@@ -199,6 +201,9 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	}
 	if j.Branch == "" {
 		j.Branch = "ai/" + o.RunID
+	}
+	if l.Git != nil {
+		j.Git = runner.NewRunGit(runCredential(*l.Git))
 	}
 	return j, nil
 }
@@ -544,6 +549,8 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 			}
 		case *Steer:
 			jobs.steer(m)
+		case *GitToken:
+			jobs.onGitToken(m)
 		case *AccountSet:
 			jobs.onAccountSet(m)
 		case *AccountLoginStart:

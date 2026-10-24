@@ -169,4 +169,26 @@ describe("SettingsScreen", () => {
     expect(await screen.findByText("Không đọc được cài đặt của app.")).toBeTruthy();
     expect((screen.getByRole("switch", { name: "Bật worker khi mở app" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("bí mật trên máy: nút mở hộp đề nghị xoá bí mật; Giữ lại liệt kê mục còn lại, không gọi purge", async () => {
+    const { calls } = fakeTauri({
+      secrets_list: () => ({
+        secrets: [
+          { name: "DATABASE_URL", description: "", createdAt: "", valueChangedAt: "", projects: [], inUseBy: 0 },
+        ],
+        reserved: { exact: [], prefixes: [] },
+      }),
+    });
+    renderSettings();
+    const user = userEvent.setup();
+    const card = screen.getByRole("region", { name: "Bí mật trên máy" });
+    expect(calls.some((c) => c.command === "secrets_list")).toBe(false);
+    await user.click(within(card).getByRole("button", { name: /Dọn bí mật trước khi gỡ app/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Xoá mọi bí mật khỏi kho?" });
+    expect(await within(dialog).findByText("DATABASE_URL")).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Giữ lại" }));
+    expect(await within(dialog).findByText("Các bí mật vẫn còn trong kho")).toBeTruthy();
+    expect(within(dialog).getByText("DATABASE_URL")).toBeTruthy();
+    expect(calls.some((c) => c.command === "secrets_purge")).toBe(false);
+  });
 });

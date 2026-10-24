@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delivery-creds-list"
+description = "Enables the delivery_creds_list command without any pre-configured scope."
+commands.allow = ["delivery_creds_list"]
+
+[[permission]]
+identifier = "deny-delivery-creds-list"
+description = "Denies the delivery_creds_list command without any pre-configured scope."
+commands.deny = ["delivery_creds_list"]

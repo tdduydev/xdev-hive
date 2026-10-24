@@ -55,10 +55,19 @@ var unavailableMessage = func() string {
 // cũ) bị báo hỏng thay vì trả về giá trị ghép từ hai lần ghi.
 type Store struct {
 	kr backend
+	// service rỗng là Service; credential delivery dùng DeliveryService để không lẫn với bí mật gán cho dự án.
+	service string
 }
 
 // NewStore dùng kho của hệ điều hành.
 func NewStore() *Store { return &Store{kr: osKeyring{}} }
+
+func (s *Store) svc() string {
+	if s.service == "" {
+		return Service
+	}
+	return s.service
+}
 
 func chunkAccount(name string, k int) string {
 	if k == 0 {
@@ -69,7 +78,7 @@ func chunkAccount(name string, k int) string {
 
 // Get đọc giá trị của name. Mục đầu không có → ErrMissing; khối thiếu hay sai định dạng → ErrCorrupt.
 func (s *Store) Get(name string) (string, error) {
-	head, err := s.kr.Get(Service, name)
+	head, err := s.kr.Get(s.svc(), name)
 	if err != nil {
 		return "", s.storeErr(err, name)
 	}
@@ -82,7 +91,7 @@ func (s *Store) Get(name string) (string, error) {
 	for k := 0; k < n; k++ {
 		enc := first
 		if k > 0 {
-			part, err := s.kr.Get(Service, chunkAccount(name, k))
+			part, err := s.kr.Get(s.svc(), chunkAccount(name, k))
 			if err != nil {
 				if errors.Is(err, keyring.ErrNotFound) {
 					return "", corrupt(name)
@@ -134,11 +143,11 @@ func (s *Store) Set(name, value string) error {
 	}
 	n, gen := len(chunks), newGen()
 	for k := n - 1; k >= 1; k-- {
-		if err := s.kr.Set(Service, chunkAccount(name, k), gen+":"+chunks[k]); err != nil {
+		if err := s.kr.Set(s.svc(), chunkAccount(name, k), gen+":"+chunks[k]); err != nil {
 			return s.storeErr(err, name)
 		}
 	}
-	if err := s.kr.Set(Service, name, fmt.Sprintf("%s:%d:%s:%s", headerTag, n, gen, chunks[0])); err != nil {
+	if err := s.kr.Set(s.svc(), name, fmt.Sprintf("%s:%d:%s:%s", headerTag, n, gen, chunks[0])); err != nil {
 		return s.storeErr(err, name)
 	}
 	return s.deleteChunks(name, n)
@@ -146,7 +155,7 @@ func (s *Store) Set(name, value string) error {
 
 // Delete xoá mọi khối của name. Mục không có thì không lỗi, để xoá lại sau lần xoá dở vẫn chạy được.
 func (s *Store) Delete(name string) error {
-	if err := s.kr.Delete(Service, name); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	if err := s.kr.Delete(s.svc(), name); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return s.storeErr(err, name)
 	}
 	return s.deleteChunks(name, 1)
@@ -155,7 +164,7 @@ func (s *Store) Delete(name string) error {
 // deleteChunks xoá khối từ from trở đi còn sót của giá trị cũ dài hơn.
 func (s *Store) deleteChunks(name string, from int) error {
 	for k := max(from, 1); k < maxChunks; k++ {
-		if err := s.kr.Delete(Service, chunkAccount(name, k)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		if err := s.kr.Delete(s.svc(), chunkAccount(name, k)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 			return s.storeErr(err, name)
 		}
 	}

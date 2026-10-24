@@ -17,6 +17,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   FolderOpenIcon,
+  KeyRoundIcon,
   RefreshCwIcon,
   SquareTerminalIcon,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import {
   setProjectFull,
   unbindProject,
 } from "@/lib/local-projects.ts";
+import { secretsHash, secretsList } from "@/lib/secrets.ts";
 import { errorText } from "@/lib/tauri.ts";
 import { openProjectTerminal } from "@/lib/terminal.ts";
 import { cn } from "@/lib/utils.ts";
@@ -79,6 +81,8 @@ const text: Dict<{
   unbindLabel: (name: string) => string;
   terminal: string;
   terminalLabel: (name: string) => string;
+  secrets: (n: number) => string;
+  secretsLabel: (name: string, n: number) => string;
   origin: (url: string) => string;
   noOrigin: string;
   full: string;
@@ -126,6 +130,8 @@ const text: Dict<{
     unbindLabel: (name) => `Bỏ gắn ${name}`,
     terminal: "Terminal",
     terminalLabel: (name) => `Mở terminal ở ${name}`,
+    secrets: (n) => `${n} bí mật`,
+    secretsLabel: (name, n) => `Xem ${n} bí mật của ${name}`,
     origin: (url) => `origin: ${url}`,
     noOrigin: "không có remote origin",
     full: "Cho toàn quyền trên máy này",
@@ -181,6 +187,8 @@ const text: Dict<{
     unbindLabel: (name) => `Unbind ${name}`,
     terminal: "Terminal",
     terminalLabel: (name) => `Open a terminal in ${name}`,
+    secrets: (n) => `${n} ${n === 1 ? "secret" : "secrets"}`,
+    secretsLabel: (name, n) => `View ${n} ${n === 1 ? "secret" : "secrets"} of ${name}`,
     origin: (url) => `origin: ${url}`,
     noOrigin: "no origin remote",
     full: "Full permission on this machine",
@@ -320,6 +328,8 @@ function ProjectsView() {
   const [branches, setBranches] = useState<Record<string, BranchStatus>>({});
   const [sheet, setSheet] = useState<{ folder: string; name: string } | null>(null);
   const [cleaning, setCleaning] = useState(false);
+  // Số bí mật gán cho từng dự án trên máy, theo localId. null là chưa biết (worker cũ chưa có lệnh): hàng không hiện số.
+  const [secretCounts, setSecretCounts] = useState<ReadonlyMap<string, number> | null>(null);
 
   const load = useCallback(async () => {
     // Chỉ để đặt tên mục của repo chưa có trên hub; đọc lỗi thì vẫn gom theo remote, mục Nhóm Git tự báo lỗi.
@@ -339,6 +349,17 @@ function ProjectsView() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    // Chỉ là con số phụ: lỗi (worker cũ, kho lỗi) thì bỏ qua, không chặn màn dự án.
+    void secretsList().then(
+      ({ secrets }) => {
+        const counts = new Map<string, number>();
+        for (const s of secrets) for (const p of s.projects) counts.set(p.localId, (counts.get(p.localId) ?? 0) + 1);
+        setSecretCounts(counts);
+      },
+      () => setSecretCounts(null),
+    );
+  }, []);
 
   // Chuỗi thay vì mảng: mảng tạo lại mỗi lần `local` đổi và sẽ bắt đọc lại trạng thái dù danh sách repo không đổi.
   const repoKey = useMemo(
@@ -426,6 +447,8 @@ function ProjectsView() {
   const visible = new Set((hubList ?? []).map((p) => p.id));
   const waiting = entries.filter((l) => !l.projectId || (hubList && !visible.has(l.projectId)));
   const allowFull = policy.data?.allowFullPermission;
+  const secretCountOf = (l: LocalProject | undefined) =>
+    l?.localId && secretCounts ? (secretCounts.get(l.localId) ?? 0) : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
@@ -496,6 +519,7 @@ function ProjectsView() {
                   t={t}
                   busy={busy === p.id}
                   allowFull={allowFull}
+                  secretCount={secretCountOf(byId.get(p.id))}
                   onPick={() => void choose(p)}
                   onUnbind={() => void act(p.id, () => unbindProject(p.id))}
                   onFull={(on) =>
@@ -767,6 +791,7 @@ function ProjectRow({
   t,
   busy,
   allowFull,
+  secretCount,
   onPick,
   onUnbind,
   onFull,
@@ -779,6 +804,8 @@ function ProjectRow({
   t: (typeof text)["vi"];
   busy: boolean;
   allowFull: boolean | undefined;
+  /** Số bí mật gán cho dự án; undefined là chưa gắn thư mục hay chưa biết. */
+  secretCount: number | undefined;
   onPick: () => void;
   onUnbind: () => void;
   onFull: (on: boolean) => void;
@@ -823,6 +850,19 @@ function ProjectRow({
             />
             <TerminalButton name={p.name} folder={local.folder} />
           </>
+        )}
+        {local?.localId && secretCount !== undefined && (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={t.secretsLabel(p.name, secretCount)}
+            onClick={() => {
+              location.hash = secretsHash(local.localId);
+            }}
+          >
+            <KeyRoundIcon aria-hidden="true" />
+            {t.secrets(secretCount)}
+          </Button>
         )}
         <Button size="sm" variant="outline" disabled={busy} aria-label={t.pickTitle(p.name)} onClick={onPick}>
           <FolderOpenIcon aria-hidden="true" />

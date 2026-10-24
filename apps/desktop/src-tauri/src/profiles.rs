@@ -316,6 +316,72 @@ impl Launch {
             note,
         }
     }
+
+    pub(crate) fn cwd(&self) -> Option<&str> {
+        self.cwd.as_deref()
+    }
+
+    /// Shell của người dùng trong thư mục dự án (nút Terminal): dự án có bí mật gán thì `secrets exec` cần một lệnh để
+    /// bọc, nên nút này mở shell chứ không để hệ điều hành tự chọn.
+    pub(crate) fn shell_in(dir: &str, home: Option<&Path>) -> Result<Self, String> {
+        let argv = if cfg!(windows) {
+            vec!["cmd".to_string()]
+        } else {
+            let shell = std::env::var("SHELL")
+                .ok()
+                .filter(|s| Path::new(s).is_absolute() && valid_dir(s))
+                .unwrap_or_else(|| "/bin/sh".into());
+            vec![shell, "-l".into()]
+        };
+        Ok(Launch {
+            argv,
+            env: None,
+            path: None,
+            cwd: Some(work_dir(dir, home)?),
+            note: "xDev Hive: shell của dự án, có bí mật đã gán. Gõ exit để đóng.",
+        })
+    }
+
+    /// Bọc lệnh bằng `hive-worker secrets exec`: worker nạp bí mật vào môi trường của tiến trình con rồi chạy lệnh. Script
+    /// sinh ra không chứa giá trị nào (FR-015); `sidecar` đi vào script nên phải qua cùng bộ lọc với thư mục.
+    pub(crate) fn with_secrets(
+        mut self,
+        sidecar: &str,
+        local_id: &str,
+        cli: &str,
+    ) -> Result<Self, String> {
+        let id_ok = !local_id.is_empty()
+            && local_id.len() <= 64
+            && local_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
+        let cli_ok = cli.len() <= 32
+            && cli.starts_with(|c: char| c.is_ascii_lowercase())
+            && cli
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if !id_ok || !cli_ok {
+            return Err("Mã dự án hoặc tên CLI không hợp lệ để nạp bí mật.".into());
+        }
+        if !valid_dir(sidecar) {
+            return Err(
+                "Đường dẫn worker có ký tự không dùng được trong script, nên chưa nạp được bí mật vào terminal."
+                    .into(),
+            );
+        }
+        let mut argv = vec![
+            sidecar.to_string(),
+            "secrets".into(),
+            "exec".into(),
+            format!("--project={local_id}"),
+            "--kind=terminal".into(),
+            format!("--cli={cli}"),
+            "--".into(),
+        ];
+        argv.append(&mut self.argv);
+        self.argv = argv;
+        Ok(self)
+    }
 }
 
 const LOGIN_NOTE: &str = "xDev Hive: đăng nhập gói agent. Xong thì quay lại app, app tự kiểm lại.";
@@ -463,6 +529,16 @@ fn sh_script(job: &Launch) -> String {
     s
 }
 
+/// cmd tách tham số theo khoảng trắng: đường dẫn như `C:\Program Files\…` phải nằm trong nháy kép. Đường dẫn vào script đã
+/// qua `valid_dir` nên không chứa nháy kép.
+fn cmd_quote(s: &str) -> String {
+    if s.contains(char::is_whitespace) {
+        format!("\"{s}\"")
+    } else {
+        s.to_string()
+    }
+}
+
 /// Script cho cmd của Windows. `call` vì CLI cài qua npm là file .cmd: thiếu `call` thì script dừng sau lệnh đó và
 /// cửa sổ đóng trước khi người dùng đọc được kết quả.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -476,7 +552,8 @@ fn cmd_script(job: &Launch) -> String {
         s.push_str(&format!("cd /d \"{cwd}\" || exit /b 1\r\n"));
     }
     s.push_str(&format!("echo {}\r\n", job.note));
-    s.push_str(&format!("call {}\r\n", job.argv.join(" ")));
+    let argv: Vec<String> = job.argv.iter().map(|a| cmd_quote(a)).collect();
+    s.push_str(&format!("call {}\r\n", argv.join(" ")));
     s.push_str("echo.\r\npause\r\n(goto) 2>nul & del \"%~f0\"\r\n");
     s
 }
@@ -687,6 +764,7 @@ pub async fn open_cli_terminal(
     id: String,
     folder: Option<String>,
     bypass: Option<bool>,
+    project_local_id: Option<String>,
 ) -> Result<(), String> {
     let Accounts { accounts } =
         sidecar_json(&app, vec!["accounts".into(), "--json".into()], vec![]).await?;
@@ -697,6 +775,12 @@ pub async fn open_cli_terminal(
         home_dir().as_deref(),
         bypass.unwrap_or(false),
     )?;
+    let cli = accounts
+        .iter()
+        .find(|a| a.id == id.trim())
+        .map(|a| a.cli.clone())
+        .unwrap_or_default();
+    let job = crate::secrets::wrap_launch(&app, job, &cli, project_local_id.as_deref()).await?;
     tauri::async_runtime::spawn_blocking(move || open_terminal(&job))
         .await
         .map_err(|e| e.to_string())?
@@ -758,6 +842,7 @@ pub async fn open_agent_terminal(
     plan_id: Option<String>,
     bypass: Option<bool>,
     folder: String,
+    project_local_id: Option<String>,
 ) -> Result<(), String> {
     let bypass = bypass.unwrap_or(false);
     let plan_id = plan_id.filter(|p| !p.trim().is_empty());
@@ -765,7 +850,7 @@ pub async fn open_agent_terminal(
         if bypass || plan_id.is_some() {
             return Err("Shell không có gói agent hay chế độ bỏ hỏi quyền.".into());
         }
-        return crate::git_groups::open_folder_terminal(folder).await;
+        return crate::git_groups::open_folder_terminal(app, folder, project_local_id).await;
     }
     let accounts = match &plan_id {
         Some(_) => {
@@ -782,6 +867,7 @@ pub async fn open_agent_terminal(
         home_dir().as_deref(),
         bypass,
     )?;
+    let job = crate::secrets::wrap_launch(&app, job, &cli, project_local_id.as_deref()).await?;
     tauri::async_runtime::spawn_blocking(move || open_terminal(&job))
         .await
         .map_err(|e| e.to_string())?
@@ -1214,5 +1300,74 @@ mod tests {
         assert_eq!(expand_home("~", home).unwrap(), "/home/duy");
         assert_eq!(expand_home("/opt/~x", home).unwrap(), "/opt/~x");
         assert_eq!(expand_home("~other/x", home).unwrap(), "~other/x");
+    }
+
+    fn wrapped(argv: &[&str]) -> Launch {
+        Launch::plain(argv.iter().map(|a| a.to_string()).collect(), "ghi chú")
+            .with_secrets("/opt/hive/hive-worker", "1111111111111111", "claude")
+            .unwrap()
+    }
+
+    #[test]
+    fn secrets_wrap_argv_as_in_the_contract() {
+        let job = wrapped(&["claude", "--dangerously-skip-permissions"]);
+        assert_eq!(
+            job.argv,
+            [
+                "/opt/hive/hive-worker",
+                "secrets",
+                "exec",
+                "--project=1111111111111111",
+                "--kind=terminal",
+                "--cli=claude",
+                "--",
+                "claude",
+                "--dangerously-skip-permissions",
+            ]
+        );
+    }
+
+    #[test]
+    fn wrapped_scripts_carry_no_secret_exports() {
+        let job = wrapped(&["codex"]);
+        let sh = sh_script(&job);
+        assert!(sh.contains(
+            "'/opt/hive/hive-worker' 'secrets' 'exec' '--project=1111111111111111' '--kind=terminal' '--cli=claude' '--' 'codex'"
+        ));
+        let cmd = cmd_script(&job);
+        assert!(cmd.contains(
+            "call /opt/hive/hive-worker secrets exec --project=1111111111111111 --kind=terminal --cli=claude -- codex\r\n"
+        ));
+        // Bí mật vào môi trường ở worker; script không export hay set biến nào cho chúng.
+        assert_eq!(sh.matches("export ").count(), 0);
+        assert_eq!(cmd.matches("set \"").count(), 0);
+    }
+
+    #[test]
+    fn cmd_quotes_a_sidecar_path_with_spaces() {
+        let job = Launch::plain(vec!["cmd".into()], "ghi chú")
+            .with_secrets("C:\\Program Files\\Hive\\hive-worker.exe", "p-1", "shell")
+            .unwrap();
+        assert!(cmd_script(&job).contains(
+            "call \"C:\\Program Files\\Hive\\hive-worker.exe\" secrets exec --project=p-1 --kind=terminal --cli=shell -- cmd\r\n"
+        ));
+    }
+
+    #[test]
+    fn secrets_wrap_refuses_what_a_script_cannot_carry() {
+        let plain = || Launch::plain(vec!["claude".into()], "ghi chú");
+        for sidecar in [
+            "/opt/a'b/hive-worker",
+            "C:\\x%TEMP%\\hive-worker.exe",
+            "/opt/$(id)/w",
+        ] {
+            assert!(
+                plain().with_secrets(sidecar, "p1", "claude").is_err(),
+                "{sidecar}"
+            );
+        }
+        assert!(plain().with_secrets("/opt/w", "p 1", "claude").is_err());
+        assert!(plain().with_secrets("/opt/w", "p1", "--x").is_err());
+        assert!(plain().with_secrets("/opt/w", "", "claude").is_err());
     }
 }

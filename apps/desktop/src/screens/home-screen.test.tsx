@@ -182,12 +182,13 @@ function fakeTauri(over: Handlers = {}) {
       if (args?.name === "run_list") return { runs: RUNS };
       throw new Error(`tool chưa giả: ${String(args?.name)}`);
     },
-    hub_rpc: () => ({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        json: [logChunk("tool Edit retry.ts\n\ntool Bash pnpm test\ntest 12 đạt\nagent Thêm backoff\n")],
-      }),
+    read_run_log: () => ({
+      runId: RUNS[0]?.id,
+      attempt: 1,
+      offset: 0,
+      nextOffset: 100,
+      size: 100,
+      bytes: logChunk("tool Edit retry.ts\n\ntool Bash pnpm test\ntest 12 đạt\nagent Thêm backoff\n").bytes,
     }),
     cli_profiles: () => ({ path: "/x/accounts.json", accounts: PLANS }),
     scan_environment: () => CHECKS,
@@ -292,7 +293,8 @@ describe("HomeScreen", () => {
     await waitFor(() =>
       expect(log.textContent).toBe("tool Edit retry.ts\ntool Bash pnpm test\ntest 12 đạt\nagent Thêm backoff"),
     );
-    expect(calls.some((c) => c.command === "hub_rpc" && String(c.args?.path).includes("logs"))).toBe(true);
+    expect(calls.some((c) => c.command === "read_run_log")).toBe(true);
+    expect(calls.some((c) => c.command === "hub_rpc" && String(c.args?.path).includes("logs"))).toBe(false);
 
     expect(screen.getByText("Run hôm nay").parentElement?.textContent).toContain("1 thành công · 1 cần xem");
     expect(screen.getByText("Chi phí hôm nay").parentElement?.textContent).toContain("1,81 USD");
@@ -324,6 +326,17 @@ describe("HomeScreen", () => {
     expect(calls.some((c) => c.command === "remote_disable")).toBe(true);
     // Máy nối bình thường thì không có lời báo mất kết nối.
     expect(screen.queryByText(/Worker mất kết nối với hub hơn 1 phút/)).toBeNull();
+  });
+
+  it("log không có ở máy này: báo nơi giữ và không gọi log của hub", async () => {
+    const calls = fakeTauri({
+      read_run_log: () => {
+        throw new Error("Log không có trên máy này.");
+      },
+    });
+    renderHome();
+    expect(await screen.findByText(/Log nằm trên máy/)).toBeTruthy();
+    expect(calls.some((c) => c.command === "hub_rpc")).toBe(false);
   });
 
   it("thẻ Agent đang chạy đếm theo CLI và mở màn Agent trên máy", async () => {

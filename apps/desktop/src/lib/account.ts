@@ -22,7 +22,8 @@ export interface AccountStatus {
 
 export const accountStatus = () => invoke<AccountStatus>("account_status");
 export const linkAccount = (token: string) => invoke<AccountStatus>("account_link", { token });
-export const unlinkAccount = () => invoke<AccountStatus>("account_unlink");
+export const unlinkAccount = (outboxAction: "send" | "keep" | "drop" = "keep") =>
+  invoke<AccountStatus>("account_unlink", { outboxAction });
 /** Máy đã đăng ký đăng nhập lại bằng trình duyệt, như `hive login`: không đăng ký lại máy. */
 export const accountBrowserLogin = () => invoke<AccountStatus>("account_browser_login");
 

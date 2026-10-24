@@ -13,6 +13,7 @@ import { NotFoundError, type Tx } from "../platform/index.ts";
 import { taskForUser, taskSummaries } from "../tasks/index.ts";
 import { teamRoleOf, teamRolesOf, visibleTeamIds } from "../tenancy/index.ts";
 import { runForUser } from "./engine.ts";
+import { liveRunLogs } from "./live-logs.ts";
 import { runEvents, runLogs, runs } from "./schema.ts";
 import { toRun } from "./state.ts";
 
@@ -142,19 +143,23 @@ export async function eventsAfter(tx: Tx, runId: string, after: number, limit: n
 }
 
 export async function logsAfter(tx: Tx, runId: string, after: number, limit: number): Promise<RunLogChunk[]> {
+  // Bộ đệm RAM không có RLS, nên luôn xác nhận run còn thấy được trong tenant trước khi đọc.
+  const [visible] = await tx.select({ id: runs.id }).from(runs).where(eq(runs.id, runId));
+  if (!visible) return [];
   const rows = await tx
     .select()
     .from(runLogs)
     .where(and(eq(runLogs.runId, runId), gt(runLogs.id, after)))
     .orderBy(asc(runLogs.id))
     .limit(limit);
-  return rows.map((l) => ({
+  const legacy = rows.map((l) => ({
     id: l.id,
     attempt: l.attempt,
     offset: l.offset,
     bytes: l.data.toString("base64"),
     createdAt: l.createdAt.toISOString(),
   }));
+  return [...legacy, ...liveRunLogs.after(runId, after, limit)].sort((a, b) => a.id - b.id).slice(0, limit);
 }
 
 export async function listEvents(tx: Tx, userId: string, id: string, after: number, limit: number) {

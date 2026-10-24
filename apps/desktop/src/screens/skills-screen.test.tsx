@@ -103,7 +103,7 @@ function fakeTauri(local: InstalledSkill[] = LOCAL, hub: HubSkillItem[] = HUB) {
       conflicts: [],
     }),
     remove_skills: (args) => ({ done: args?.names, conflicts: [] }),
-    propose_skill: () => ({ proposalId: "p1" }),
+    propose_skill: () => ({ key: "p1", state: "queued" }),
     // Skill mặc định của Hive lấy đủ file qua API (oRPC sau lệnh hub_rpc), không qua MCP.
     hub_rpc: (a) => {
       const path = String(a?.path)
@@ -291,7 +291,7 @@ describe("SkillsScreen", () => {
     await user.click(await screen.findByRole("button", { name: "Đề xuất sửa" }));
     await user.type(screen.getByRole("textbox", { name: /Vì sao cần sửa/ }), "Thêm bước VAT.");
     await user.click(screen.getByRole("button", { name: "Gửi đề xuất" }));
-    expect(await screen.findByText(/Đã gửi đề xuất/)).toBeTruthy();
+    expect(await screen.findByText(/Đã xếp đề xuất/)).toBeTruthy();
     expect(calls.find((c) => c.command === "propose_skill")?.args).toEqual({
       name: "code-review",
       project: "PAY",

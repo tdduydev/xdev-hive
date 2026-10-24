@@ -74,7 +74,9 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 - [ ] T014b [US8] U — Trang "Chuyển sang worker" — **ngoài phạm vi** (thay bằng hộp "Máy chạy" ở T021)
 - [x] T015 [US6] U — Cột "Máy chạy" ở lịch sử; trang lần triển khai: máy chạy, lý do đang chờ máy, người duyệt, thẻ
   "Log nằm trên máy X" thay khung log (`board-page.tsx`, `deploy-page.tsx`)
-- [ ] T016 [US7] U — Tab "Credential triển khai" ở màn Bí mật desktop (chưa làm; desktop do luồng khác giữ)
+- [x] T016 [US7] U — Tab "Credential triển khai" ở màn Bí mật desktop: tên và lúc đổi, thêm, thay giá trị, xoá có xác
+  nhận; kho riêng `dev.xdev.hive.delivery`, đọc ngay lúc dùng, Linux thiếu Secret Service báo rõ (`secretstore/delivery.go`,
+  `delivery/keyring.go`, `hive-worker secrets delivery`, `delivery-credentials.tsx`, `delivery-credentials.test.tsx`)
 - [x] T021 [US1] U — Trang Môi trường: hộp "Máy chạy" (máy theo thứ tự ưu tiên, nhãn `deploy-runner`, đường cũ); đích
   Jenkins và Argo CD có ô "Credential trên máy chạy" (`runner-form.tsx`, `target-form.tsx`, `target-presets.ts`,
   `e2e/delivery-servers.spec.ts`)
@@ -87,8 +89,8 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
   khoá và lý do (`environments.ts`, `deploys.db.test.ts`, `e2e/delivery-servers.spec.ts`; từ specs/020 T027, T030)
 - [x] T027 [US5] U — Tab CI/CD: "Duyệt deployment" và "Từ chối" cho deployment chờ duyệt của GitHub Actions
   (`cicd-run-detail.tsx`, `e2e/delivery-ci.spec.ts`; từ specs/020 T032)
-- [ ] T028 [US5] H+U — Trang duyệt so sánh commit giữa bản đang chạy và bản mới (`approvals.compare`, route còn trả
-  `NOT_IMPLEMENTED`)
+- [x] T028 [US5] H+U — Trang duyệt và lần triển khai so sánh commit giữa bản thành công trước và bản mới
+  (`approvals.compare`, GitHub/GitLab, tối đa 100 commit, có trạng thái chưa đủ danh sách)
 - [ ] T029 H — Rollback (`deploys.rollback`, `rollbackInfo`) — **ngoài phạm vi** (chạy lệnh; muốn về bản cũ thì triển khai
   lại bản đó qua cổng duyệt; từ specs/020 T028)
 - [ ] T030 H — Bộ lọc theo hệ thống ở kênh thông báo — **ngoài phạm vi** (người duyệt đã nhận `deploy.approval_requested`;
@@ -96,5 +98,7 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 - [ ] T020 [US1] X — Mỗi đăng ký một hàng việc, một outbox và một `Scope` truyền vào `delivery.Executor` (thuộc specs/034)
 - [ ] T017 [US1] X — Nối `channel`: nhận `deliveryJobSpec` qua lease, gửi `deliveryEvent` qua outbox, báo khả năng ở `hello`
   (thuộc specs/034; hub đã có `worker-jobs.ts` chờ phía worker)
-- [ ] T018 [US10] X — Test hợp đồng trên ba hệ điều hành trong CI
+- [x] T018 [US10] X — Test hợp đồng trên ba hệ điều hành trong CI: file mẫu chung `fixtures/delivery-worker.json` cho zod
+  và Go; worker chạy thật jenkins-job, argocd với server giả rồi so sự kiện; đường dẫn máy đích giữ nguyên (FR-101)
+  (`delivery-worker.test.ts`, `delivery/contract_test.go`)
 - [x] T019 H — Sinh migration (`0090_delivery_jobs`, đánh lại số sau khi gộp `main`), `pnpm openapi`

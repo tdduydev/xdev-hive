@@ -14,7 +14,7 @@ import { RUNS_CHANNEL } from "./state.ts";
 /**
  * Một kết nối LISTEN cho cả tiến trình api, phát lại trong bộ nhớ cho các luồng SSE (docs/architecture.md mục 9).
  * Mượn kết nối từ pool lúc có người nghe đầu tiên và giữ luôn; mất kết nối thì nối lại, luồng SSE vẫn tự đọc lại định
- * kỳ nên không mất dữ liệu trong lúc nối lại.
+ * kỳ để đọc lại sự kiện bền vững và phần log còn trong bộ đệm RAM khi nối lại.
  */
 export class RunNotifier {
   private client: pg.PoolClient | null = null;
@@ -96,7 +96,7 @@ export interface RunStreamDeps {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE = 200;
 
-/** Con trỏ SSE gộp hai dãy id (sự kiện, log) thành `<eventId>.<logId>`, để Last-Event-ID nối tiếp được cả hai. */
+/** Giữ dạng con trỏ của spec 010; id log mới trỏ vào bộ đệm RAM, log cũ vẫn đọc được từ database. */
 export function parseCursor(raw: string | undefined | null): { e: number; l: number } {
   const m = /^(\d{1,18})\.(\d{1,18})$/.exec(raw ?? "");
   return m ? { e: Number(m[1]), l: Number(m[2]) } : { e: 0, l: 0 };
