@@ -69,6 +69,13 @@ describe("khoá của hub", () => {
     expect(cmd).toContain("chmod 600 ~/.ssh/authorized_keys");
     expect(cmd).not.toContain("PRIVATE");
   });
+
+  it("khoá sinh ra luôn đọc được: ssh2 làm hỏng khoảng 1/256 cặp ed25519", () => {
+    const bad = Array.from({ length: 1000 }, () => generateServerKey().privateKey).filter(
+      (k) => ssh2.utils.parseKey(k) instanceof Error,
+    );
+    expect(bad).toEqual([]);
+  });
 });
 
 describe("host key", () => {
@@ -99,10 +106,7 @@ describe("host key", () => {
 
   it("máy có nhiều host key: ép thuật toán đã lưu, dò được từng khoá", async () => {
     const multi = await startFakeSsh({
-      hostKeys: [
-        ssh2.utils.generateKeyPairSync("ed25519").private,
-        ssh2.utils.generateKeyPairSync("ecdsa", { bits: 256 }).private,
-      ],
+      hostKeys: [generateServerKey().privateKey, ssh2.utils.generateKeyPairSync("ecdsa", { bits: 256 }).private],
       authorizedKeys: () => [key.publicKey],
       exec: () => ({ stdout: "ok" }),
     });
