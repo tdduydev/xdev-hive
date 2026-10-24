@@ -1,6 +1,6 @@
 # Feature Specification: Kho đăng nhập trên máy dev, lấy token bằng SSO
 
-**Feature Branch**: `030-credential-broker-sso` (nhánh tại máy `ai/SPEC030`)
+**Feature Branch**: `037-credential-broker-sso` (nhánh tại máy `ai/SPEC037`)
 
 **Created**: 2026-10-22
 
