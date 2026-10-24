@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import ssh2, { type AuthContext, type Connection, type ParsedKey, type SFTPWrapper } from "ssh2";
+import { generateServerKey } from "../clients/ssh.ts";
 
 // Máy chủ SSH giả trong tiến trình (`Server` của ssh2), chỉ nghe 127.0.0.1 cổng ngẫu nhiên: test không bao giờ kết nối
 // máy thật. Ghi lại mọi lệnh và file để test kiểm "host key sai thì không lệnh nào chạy".
@@ -56,7 +57,7 @@ function parsed(key: string): ParsedKey {
 }
 
 export async function startFakeSsh(options: FakeSshOptions): Promise<FakeSsh> {
-  const hostKeys = options.hostKeys ?? [utils.generateKeyPairSync("ed25519").private];
+  const hostKeys = options.hostKeys ?? [generateServerKey().privateKey];
   const user = options.user ?? "deploy";
   const state: FakeSsh = {
     host: "127.0.0.1",
