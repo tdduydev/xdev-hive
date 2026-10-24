@@ -382,7 +382,7 @@ ngay sau T006.
 - [x] T049 [P] [US3] W — `testreport.Options{Library bool}`: tìm mã bằng `\bTC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}\b` trong
   tên test; nhiều mã tính `ambiguous`, không mã tính `unmapped`; giới hạn 32 MiB và 5000 ca
   (`worker/internal/testreport/summary.go`, `worker/internal/testreport/summary_test.go`)
-- [ ] T050 [P] [US3] W — Việc `test-report` (FR-023, FR-025). `op=read` theo ba mode (D7): `pipeline-report` gọi
+- [x] T050 [P] [US3] W — Việc `test-report` (FR-023, FR-025). `op=read` theo ba mode (D7): `pipeline-report` gọi
   `/pipelines/:id/test_report`; hai mode artifact gọi `/pipelines/:id/jobs` rồi `/jobs/:job_id/artifacts/*path`;
   `total_count = 0` báo `no_report`. `op=list` theo D18. Phát `test-results`, `pipelines`, `finished` với mã T006.
   Test bằng `httptest`: JSON sự kiện không chứa tên test, tên suite, thông báo lỗi (SC-003)
