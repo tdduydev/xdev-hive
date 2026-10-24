@@ -26,6 +26,8 @@ export interface Scope {
   projectId: string | null;
   /** `docAccessFor` đã cho riêng key này quyền đề xuất dù người gọi không thuộc đội; `manage` không bao giờ mở. */
   proposeGranted?: boolean | undefined;
+  /** `docAccessFor` cho lưu thẳng riêng key này (tester lưu file TC, specs/036 D4); không mở lưu trữ hay duyệt. */
+  saveGranted?: boolean | undefined;
 }
 
 /** Phần dữ liệu tri thức người gọi được đọc, tính một lần cho mỗi thao tác. */
@@ -53,25 +55,48 @@ export async function readerFor(tx: Tx, principal: Principal): Promise<Reader> {
 
 /**
  * Quyền riêng theo key tài liệu, do module khác tiêm (AI SDLC: thành viên mọi đội tham gia hạng mục đọc và đề xuất
- * tài liệu chung nằm ở dự án chính, specs/011 D22). Chỉ mở đọc và đề xuất; lưu thẳng và duyệt vẫn theo `authorize`.
+ * tài liệu chung nằm ở dự án chính, specs/011 D22; kiểm thử: tester lưu file TC, specs/036 D4). Lưu trữ và duyệt
+ * vẫn theo `authorize`.
  */
 export interface DocAccessGrant {
   read: boolean;
   propose: boolean;
+  /** Chỉ cho người dùng; run không bao giờ lưu thẳng. */
+  save?: boolean | undefined;
 }
 export type DocAccessFor = (tx: Tx, reader: Reader, key: string) => Promise<DocAccessGrant | null>;
 
 // Mọi đường vào tài liệu (router, MCP, worker) dựng deps riêng nên hook đặt ở đây để không đường nào bỏ sót; như
-// `provide*` của mcp/registry.ts, tiêm một lần lúc khởi động hub.
-let docAccessHook: DocAccessFor | undefined;
-export function provideDocAccess(hook: DocAccessFor | undefined): void {
-  docAccessHook = hook;
+// `provide*` của mcp/registry.ts, tiêm lúc khởi động hub. Nhiều module cùng cấp (sdlc, qa) nên là danh sách: knowledge
+// không biết module nào.
+const docAccessHooks = new Set<DocAccessFor>();
+/** Thêm một provider, trả hàm gỡ nó. `undefined` gỡ mọi provider (test dọn sau mỗi ca). */
+export function provideDocAccess(hook: DocAccessFor | undefined): () => void {
+  if (!hook) {
+    docAccessHooks.clear();
+    return () => {};
+  }
+  docAccessHooks.add(hook);
+  return () => docAccessHooks.delete(hook);
 }
 
+/** Quyền của các provider gộp bằng OR từng trường. */
 export async function docGrant(tx: Tx, reader: Reader, key: string): Promise<DocAccessGrant | null> {
-  const grant = (await docAccessHook?.(tx, reader, key)) ?? null;
-  // Đề xuất được thì đọc được: người đề xuất phải thấy bản mình sửa.
-  return grant && (grant.read || grant.propose) ? { read: true, propose: grant.propose } : null;
+  let read = false;
+  let propose = false;
+  let save = false;
+  // Tuần tự: mọi provider dùng chung một transaction.
+  for (const hook of docAccessHooks) {
+    const grant = await hook(tx, reader, key);
+    if (!grant) continue;
+    read ||= grant.read;
+    propose ||= grant.propose;
+    save ||= grant.save === true;
+  }
+  if (reader.kind === "run") save = false;
+  // Lưu được thì đề xuất được, đề xuất được thì đọc được: người sửa phải thấy bản mình sửa.
+  propose ||= save;
+  return read || propose ? { read: true, propose, save } : null;
 }
 
 export function canRead(reader: Reader, scope: Scope): boolean {
@@ -169,7 +194,8 @@ export async function authorize(tx: Tx, reader: Reader, scope: Scope, action: Ac
     return;
   }
   const userId = reader.principal.userId;
-  if (action === "propose" && scope.proposeGranted) return;
+  if (action === "propose" && (scope.proposeGranted || scope.saveGranted)) return;
+  if (action === "manage" && scope.saveGranted) return;
   if (scope.teamId === null) {
     if (action === "propose") return;
     await requireOrgRole(tx, userId, "admin");

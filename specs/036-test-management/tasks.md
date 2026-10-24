@@ -140,7 +140,7 @@ Chặn mọi story. Không có nhãn story.
   - `qa_result_history`: pk `(round_case_id, revision)`, `note_deleted` mặc định `false`.
 
   Thêm bốn bảng vào `rls.db.test.ts` (`apps/hub/src/modules/qa/schema.ts`, `apps/hub/src/modules/qa/rls.db.test.ts`)
-- [ ] T011 [P] H — Knowledge (D3, D4): `provideDocSaved` và `provideDocAccess` nhận nhiều hàm thay vì một. Quyền của
+- [x] T011 [P] H — Knowledge (D3, D4): `provideDocSaved` và `provideDocAccess` nhận nhiều hàm thay vì một. Quyền của
   các provider gộp bằng OR. `DocAccessGrant` thêm `save`, `Scope` thêm `saveGranted`. `authorize` cho `manage` khi
   `reader.kind === "user"` và `saveGranted`. Chạy lại test của `sdlc` và `docsync` đang dùng hai hook
   (`apps/hub/src/modules/knowledge/access.ts`, `knowledge/docs.ts`, `knowledge/index.ts`, test cùng thư mục)

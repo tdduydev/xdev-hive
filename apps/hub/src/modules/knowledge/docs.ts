@@ -74,11 +74,14 @@ async function readable(tx: Tx, reader: Reader, key: string): Promise<DocRow> {
  */
 export async function docScope(tx: Tx, reader: Reader, key: string): Promise<Scope> {
   const d = await loadDoc(tx, key);
-  if (!d) return scopeOfDocKey(tx, reader, key);
-  if (canRead(reader, d)) return d;
+  // Tester đọc được mọi tài liệu của đội nhưng chỉ lưu thẳng file TC, nên cấp lưu được hỏi cả khi đã đọc được, cả với
+  // tài liệu chưa có.
   const grant = await docGrant(tx, reader, key);
+  const saveGranted = grant?.save === true;
+  if (!d) return { ...(await scopeOfDocKey(tx, reader, key)), saveGranted };
+  if (canRead(reader, d)) return { teamId: d.teamId, projectId: d.projectId, saveGranted };
   if (!grant) throw notFound();
-  return { teamId: d.teamId, projectId: d.projectId, proposeGranted: grant.propose };
+  return { teamId: d.teamId, projectId: d.projectId, proposeGranted: grant.propose, saveGranted };
 }
 
 /** Phiên bản hiện tại của tài liệu theo key (0 khi chưa có). Dùng khi tạo đề xuất để báo sớm base đã cũ. */
@@ -106,24 +109,25 @@ export interface DocSavedEvent {
 }
 export type DocSavedHook = (tx: Tx, event: DocSavedEvent) => Promise<void>;
 
-// docsync phụ thuộc knowledge nên không import ngược được; hook tiêm một lần lúc khởi động như provideDocAccess. Gọi
-// trong transaction lưu để job đẩy chỉ được xếp khi phiên bản thật sự được ghi.
-let docSavedHook: DocSavedHook | undefined;
-export function provideDocSaved(hook: DocSavedHook | undefined): void {
-  docSavedHook = hook;
+// docsync và qa phụ thuộc knowledge nên không import ngược được; hook tiêm lúc khởi động như provideDocAccess. Gọi
+// trong transaction lưu để job đẩy chỉ được xếp, và thư viện TC chỉ đổi, khi phiên bản thật sự được ghi.
+const docSavedHooks = new Set<DocSavedHook>();
+/** Thêm một hook, trả hàm gỡ nó. `undefined` gỡ mọi hook (test dọn sau mỗi ca). */
+export function provideDocSaved(hook: DocSavedHook | undefined): () => void {
+  if (!hook) {
+    docSavedHooks.clear();
+    return () => {};
+  }
+  docSavedHooks.add(hook);
+  return () => docSavedHooks.delete(hook);
 }
 
 async function docChanged(tx: Tx, row: DocRow, source: DocSource, change: DocSavedEvent["change"]): Promise<void> {
-  // Chỉ mục tìm kiếm là việc của chính knowledge nên không đi qua hook một chỗ của docsync.
+  // Chỉ mục tìm kiếm là việc của chính knowledge nên không đi qua hook của module khác.
   await queueDocIndex(tx, { orgId: row.orgId, docId: row.id });
-  await docSavedHook?.(tx, {
-    orgId: row.orgId,
-    docId: row.id,
-    key: row.key,
-    version: row.currentVersion,
-    source,
-    change,
-  });
+  const event = { orgId: row.orgId, docId: row.id, key: row.key, version: row.currentVersion, source, change };
+  // Tuần tự trong cùng transaction; một hook lỗi thì cả lần lưu bị huỷ.
+  for (const hook of docSavedHooks) await hook(tx, event);
 }
 
 /** Cùng cách tính với migration điền `content_hash` cho dòng cũ: sha256 của chuỗi UTF-8 nguyên văn. */
