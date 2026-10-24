@@ -17,10 +17,10 @@
         "path": ".claude/skills/ui-ux-pro-max",
         "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/7246805992a42b7bba37d4cac83b01416f0c6c44/.claude/skills/ui-ux-pro-max"
       },
-      "hash": "987d4f9ee839a18c2dbc7e31480a5c1d47b7b39c4fcd94fa8d33207debd0a8c6",
-      "version": 2,
+      "hash": "8dcc8c69197750b390ce880d7a3f3637549bcdf9bbd845c508ef4cc738e993ba",
+      "version": 1,
       "files": 75,
-      "bytes": 3654110
+      "bytes": 3584561
     },
     {
       "name": "ui-styling",
@@ -34,10 +34,10 @@
         "path": ".claude/skills/ui-styling",
         "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/7246805992a42b7bba37d4cac83b01416f0c6c44/.claude/skills/ui-styling"
       },
-      "hash": "747a56a5aab85d00889e4bdef3432f9c3add1ff91d3c2101a721099e7278620b",
-      "version": 2,
+      "hash": "09252cda3edb57b6824862f49491d14e9b30e52984752ade57f474ad62814b66",
+      "version": 1,
       "files": 18,
-      "bytes": 184433
+      "bytes": 179343
     },
     {
       "name": "design-system",
@@ -51,10 +51,10 @@
         "path": ".claude/skills/design-system",
         "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/7246805992a42b7bba37d4cac83b01416f0c6c44/.claude/skills/design-system"
       },
-      "hash": "db6d1c98b2eaad7580bf1eb25c58244f32c1a0e96e41fe3a6ac12bb50ef62d16",
-      "version": 2,
+      "hash": "1fbf58c4bee6440eff459f809c5c933ab2a4c61a266d4b6f58ad996f67cb05e6",
+      "version": 1,
       "files": 29,
-      "bytes": 189161
+      "bytes": 184213
     },
     {
       "name": "frontend-design",
@@ -68,10 +68,10 @@
         "path": "skills/frontend-design",
         "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/frontend-design"
       },
-      "hash": "5a630131e544b39ca62e7d1bb46fec08ebddac9c2047dc4ed05682427b4c8f8f",
-      "version": 2,
+      "hash": "703bc837a02ad55cd32016e861fb55f8b938707bbad212a9919ed8de4fc32565",
+      "version": 1,
       "files": 3,
-      "bytes": 20292
+      "bytes": 20032
     },
     {
       "name": "web-design-guidelines",
@@ -85,10 +85,10 @@
         "path": "skills/web-design-guidelines",
         "url": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278/skills/web-design-guidelines"
       },
-      "hash": "9e5ccf3f6038f2c4afe9375f92f4d6daade46e959c62105552cebdaaab612c55",
+      "hash": "ebc6a4378a13cff5f216ab0be7b3799d1e6f92aea176aed9b4b309f1859c9212",
       "version": 2,
       "files": 5,
-      "bytes": 13186
+      "bytes": 12889
     },
     {
       "name": "vercel-react-best-practices",
@@ -102,10 +102,10 @@
         "path": "skills/react-best-practices",
         "url": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278/skills/react-best-practices"
       },
-      "hash": "aefde312e3dad25439182fbaf2dc29175c03989db526ef2f8d220faca551034e",
-      "version": 2,
+      "hash": "3cb6a688064d2f1ea5d8009996a80340396b7641d5e78a25e02eefc16e2b722a",
+      "version": 1,
       "files": 78,
-      "bytes": 240585
+      "bytes": 232448
     },
     {
       "name": "vercel-composition-patterns",
@@ -119,10 +119,10 @@
         "path": "skills/composition-patterns",
         "url": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278/skills/composition-patterns"
       },
-      "hash": "fb1aa2dbcf6597605bfaa39b757ff171795187302fefd229bd1d8361fdaa8f73",
-      "version": 2,
+      "hash": "47a66a9b15316c617399f99905b7c0a3eab6614490d32d366ee1e8fe357651fe",
+      "version": 1,
       "files": 16,
-      "bytes": 54474
+      "bytes": 52404
     },
     {
       "name": "design-taste-frontend",
@@ -136,10 +136,10 @@
         "path": "skills/taste-skill",
         "url": "https://github.com/Leonxlnx/taste-skill/tree/6010f91a9935f1c167dfc500fb1a475681892e6b/skills/taste-skill"
       },
-      "hash": "a283ee036cf9f78fd86f1dcfeb422171e66713be24bfa356b184faf18ff45a0d",
+      "hash": "9f7a1a26fc35bf2cc90143ad0e4d628e1421aa94cb6f2ca6705deb8dba0b3cd1",
       "version": 1,
       "files": 39,
-      "bytes": 2450251
+      "bytes": 2413188
     },
     {
       "name": "shadcn",
@@ -153,10 +153,10 @@
         "path": "skills/shadcn",
         "url": "https://github.com/shadcn-ui/ui/tree/30a58d4498f270af1c1e981a7d78a15cf5740841/skills/shadcn"
       },
-      "hash": "1ae1bf8e4288e112dc00a099be74de1d22a3f291830b6092173b92aac7b19043",
-      "version": 2,
+      "hash": "bff5207cb646616101238c43269d71b53a373e3c95ca4ba5543655029597f5b8",
+      "version": 1,
       "files": 19,
-      "bytes": 137917
+      "bytes": 134538
     },
     {
       "name": "test-driven-development",
@@ -170,10 +170,10 @@
         "path": "skills/test-driven-development",
         "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/test-driven-development"
       },
-      "hash": "9e32ff0d8392e8dec220fd7e6a3ad6d5d3f34edfc1c0068ea5253184848972d0",
-      "version": 2,
+      "hash": "6ab5175627d2df800fe4ffb8639b03aa37cdc015bd8fd5684fa47a3901d6cf8f",
+      "version": 1,
       "files": 4,
-      "bytes": 19968
+      "bytes": 19407
     },
     {
       "name": "systematic-debugging",
@@ -187,10 +187,10 @@
         "path": "skills/systematic-debugging",
         "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/systematic-debugging"
       },
-      "hash": "4f24e29724ec7cbf5067b5480a6006cf95aab76a9189816ae33ec0b626c9c397",
-      "version": 2,
+      "hash": "0196d0ddded6a9e30480b3a7cf2435042130152200fa67cfec5e9811c803ae53",
+      "version": 1,
       "files": 8,
-      "bytes": 31647
+      "bytes": 30693
     },
     {
       "name": "verification-before-completion",
@@ -204,10 +204,10 @@
         "path": "skills/verification-before-completion",
         "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/verification-before-completion"
       },
-      "hash": "e62c40d7037f7d5fab6bb4355175d0475367798806af1e9fd4523304870ad82e",
-      "version": 2,
+      "hash": "2c1f3e4bf9b54575b456971256cd512026aec531de2a98fe73159720b1cf05b7",
+      "version": 1,
       "files": 3,
-      "bytes": 5388
+      "bytes": 5235
     },
     {
       "name": "brainstorming",
@@ -221,10 +221,10 @@
         "path": "skills/brainstorming",
         "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/brainstorming"
       },
-      "hash": "56394a541317d7e1b6fa219f19b82ea1f8fd5f45e67b2dd259c7f4e35b0e3ac6",
-      "version": 2,
+      "hash": "712007f192f890ea27bd879c8dd5e0f7cd1ac41c9dd724cf4d7794ecb7e98d9f",
+      "version": 1,
       "files": 10,
-      "bytes": 77571
+      "bytes": 75557
     },
     {
       "name": "writing-plans",
@@ -238,10 +238,10 @@
         "path": "skills/writing-plans",
         "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/writing-plans"
       },
-      "hash": "780158c8f58f99dc3362dcb8f31aa9288c340fbad3b464cea1269dd43234fcc8",
-      "version": 2,
+      "hash": "6071d863d56aa83c92f68810e199bc7286e6ee6a0ec29cc2d88d6c08d591ab1d",
+      "version": 1,
       "files": 3,
-      "bytes": 12093
+      "bytes": 11856
     },
     {
       "name": "requesting-code-review",
@@ -255,10 +255,10 @@
         "path": "skills/requesting-code-review",
         "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/requesting-code-review"
       },
-      "hash": "b9174a140f23ee09ea317fc958ac831d06bfde49d8312713f51771e2f305b115",
-      "version": 2,
+      "hash": "27f97a4867c6756c38aa864367ce5d13deec750735012ed35b8811e08eae8c85",
+      "version": 1,
       "files": 4,
-      "bytes": 11306
+      "bytes": 10980
     },
     {
       "name": "receiving-code-review",
@@ -272,10 +272,10 @@
         "path": "skills/receiving-code-review",
         "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/receiving-code-review"
       },
-      "hash": "acb2ff89aa4f78549c8bf8a82c8e248e952ed52fcb47bb9122ed8f696da1de89",
-      "version": 2,
+      "hash": "e4c2dc4b9c47ad795e010f67158ef7ed47f6f57a0dc86f97652b60b5378b2cb6",
+      "version": 1,
       "files": 3,
-      "bytes": 7994
+      "bytes": 7756
     },
     {
       "name": "webapp-testing",
@@ -289,10 +289,10 @@
         "path": "skills/webapp-testing",
         "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/webapp-testing"
       },
-      "hash": "1da075acabcdf85837aee8c4dd3a95402a4afb1fb23746d3c55cc60d590ab22a",
-      "version": 2,
+      "hash": "c14da2968d0d2608746d407c7369378996d62df33cee9a015d8457e6ae8538bc",
+      "version": 1,
       "files": 7,
-      "bytes": 23376
+      "bytes": 22858
     },
     {
       "name": "playwright-cli",
@@ -306,10 +306,10 @@
         "path": "skills/playwright-cli",
         "url": "https://github.com/microsoft/playwright-cli/tree/b1a5903c5b633b8c9f843ad7b629c2a78437040c/skills/playwright-cli"
       },
-      "hash": "d5107ae2aeeb3f4a1bed0b3ac7ee9598e2804f71baf4b95fbfc55739c1831f28",
+      "hash": "852b996fef2f01d7b6b1db9c29b346eb94fe8a5221ca9094737e772f90d54853",
       "version": 1,
       "files": 13,
-      "bytes": 83074
+      "bytes": 80626
     },
     {
       "name": "differential-review",
@@ -323,10 +323,10 @@
         "path": "plugins/differential-review/skills/differential-review",
         "url": "https://github.com/trailofbits/skills/tree/8e54050ae63c2f62224c35b1616efe71865b4777/plugins/differential-review/skills/differential-review"
       },
-      "hash": "19c8586aecd371b7eb58735c7c941d527efcb847525e510c62f1adc772ebe167",
-      "version": 2,
+      "hash": "d137b6a6011747c7faf3861f0f559a592289a21bad6ae5fe7f22f606a5fcc2f1",
+      "version": 1,
       "files": 9,
-      "bytes": 59142
+      "bytes": 57363
     },
     {
       "name": "sharp-edges",
@@ -340,10 +340,10 @@
         "path": "plugins/sharp-edges/skills/sharp-edges",
         "url": "https://github.com/trailofbits/skills/tree/8e54050ae63c2f62224c35b1616efe71865b4777/plugins/sharp-edges/skills/sharp-edges"
       },
-      "hash": "f35db42804b6367dbe83d0e140382aa63229f03326c84a06fb216cc704f0d84d",
-      "version": 2,
+      "hash": "8e9951d4bb0ee68c5d2804224179f3c1d37c71f54c5d0152fb8fdb49b262468e",
+      "version": 1,
       "files": 21,
-      "bytes": 156555
+      "bytes": 151269
     },
     {
       "name": "mcp-builder",
@@ -357,10 +357,10 @@
         "path": "skills/mcp-builder",
         "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/mcp-builder"
       },
-      "hash": "7816df3cf987f16ce1a6c16d59756ea9afd2a6456d873d954571af4ee0b71231",
-      "version": 2,
+      "hash": "99f3d86440c12d908111cac9dd0f238ae0aa5f0e6f270b55b9fd40d2988dc796",
+      "version": 1,
       "files": 11,
-      "bytes": 125742
+      "bytes": 122208
     },
     {
       "name": "skill-creator",
@@ -374,10 +374,10 @@
         "path": "skills/skill-creator",
         "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/skill-creator"
       },
-      "hash": "b1c7846cf8f2b4fea1a031316391a1de5d44fc442135d77e01172b8eef228ff5",
-      "version": 2,
+      "hash": "ceac086a390346e72bc7367bc5bcaa79793d47e6c4bc144c897fe0ef1abcbba9",
+      "version": 1,
       "files": 19,
-      "bytes": 231118
+      "bytes": 225452
     },
     {
       "name": "speckit-constitution",
@@ -391,10 +391,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "d8c6e27a397d4241ccf0d71d409ae58bde1adfd4963dee3920c55437f91e98ba",
-      "version": 2,
+      "hash": "be1c8a6c0ddaa1b09df5138f39417e8b583738ef540296f3b2aab1acc4e9c23e",
+      "version": 1,
       "files": 3,
-      "bytes": 12617
+      "bytes": 12399
     },
     {
       "name": "speckit-specify",
@@ -408,10 +408,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "41b31e065e1558f3819ccabef108a2ac3e94bff79a332c4b7c9efe2066a270d1",
-      "version": 2,
+      "hash": "738eddba622d556b4960c22bb960e8a655a8fdd8e137a5bc0348171116d514c3",
+      "version": 1,
       "files": 3,
-      "bytes": 20888
+      "bytes": 20504
     },
     {
       "name": "speckit-clarify",
@@ -425,10 +425,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "a6637af2ebcce28009d8dac6e9219905e14bf72c0de8a10bc562b699ae428d9c",
-      "version": 2,
+      "hash": "d71ff06554b5004cbecc5f14ec10e2d015ea6c35792056356238c523dd4ec6db",
+      "version": 1,
       "files": 3,
-      "bytes": 21896
+      "bytes": 21566
     },
     {
       "name": "speckit-plan",
@@ -442,10 +442,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "2db6406172ea946c95a331644ec9ef9d1529bf91046b120caac0db6f5f4990b0",
-      "version": 2,
+      "hash": "d88eb7603c562232e959113f7079c5397977658046e7891e002c21e4e7c30ff1",
+      "version": 1,
       "files": 3,
-      "bytes": 10298
+      "bytes": 10093
     },
     {
       "name": "speckit-tasks",
@@ -459,10 +459,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "b0b2df8753b93415fb6d944e6e00befcb1d9d031da1a4090fe14843aff6770f1",
-      "version": 2,
+      "hash": "103ad1e8b3fd5ee0a1e4c6ed56cfa2406862180854eb03e4e4060a2e5d3473b4",
+      "version": 1,
       "files": 3,
-      "bytes": 13688
+      "bytes": 13434
     },
     {
       "name": "speckit-analyze",
@@ -476,10 +476,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "347ae6f27a85e6e00784821f379acc466d21977b1cd0cb8604c2561f07ab5688",
-      "version": 2,
+      "hash": "f82e9c601c79a781cb6a4f27ee8d9afbed82a1e8ad4ec153072b16b8ada0c32b",
+      "version": 1,
       "files": 3,
-      "bytes": 14192
+      "bytes": 13894
     },
     {
       "name": "speckit-checklist",
@@ -493,10 +493,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "019bb9780ee01fa63e6e28d542b99463e90c0a6a265cc2a8c328303216432ef7",
-      "version": 2,
+      "hash": "4238bf6c69c9100e13ca296d961747ed6c40ef6acb96cb47eae6b739a6ea1d8a",
+      "version": 1,
       "files": 3,
-      "bytes": 24942
+      "bytes": 24520
     },
     {
       "name": "speckit-implement",
@@ -510,10 +510,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "dae01d6eb610f0a79f34de6ab9e13d270f90c322fbde250b71d5cf6d1e06b19f",
-      "version": 2,
+      "hash": "fa442c8a29555f6b9d9f51dfa2a02b253028b4390a60ebb44c97b27898f41c82",
+      "version": 1,
       "files": 3,
-      "bytes": 15223
+      "bytes": 14958
     },
     {
       "name": "speckit-converge",
@@ -527,10 +527,10 @@
         "path": "",
         "url": "https://github.com/github/spec-kit"
       },
-      "hash": "3fe903f03f5a11725ee706584e97290695ba10fa648cc416a6ad70b776618040",
-      "version": 2,
+      "hash": "615184b6f8a51f11468099218742c59f495d05e08321848f493ca1bbbe90fb81",
+      "version": 1,
       "files": 3,
-      "bytes": 15586
+      "bytes": 15265
     },
     {
       "name": "hive-run-etiquette",
@@ -539,10 +539,10 @@
       "defaultOn": true,
       "license": "MIT",
       "upstream": null,
-      "hash": "82379334312b664c6e898481de74b81c8f08fc0c2ace96b42b4b3282ec737e75",
-      "version": 2,
+      "hash": "c97112392618a692aa145391b749381f749ffd7a003f7d2a2a913c4bfbe4ea3c",
+      "version": 1,
       "files": 3,
-      "bytes": 4489
+      "bytes": 4411
     },
     {
       "name": "vietnamese-ui-copy",
@@ -551,10 +551,10 @@
       "defaultOn": true,
       "license": "MIT",
       "upstream": null,
-      "hash": "39afb25bfe530b4bc672167267c63d5265204fcf12c10c35ce32d9217e92b983",
-      "version": 2,
+      "hash": "a02a6da9b74dd7039bd33d7937e0b3d0bb04c9b1e1ff8df72762a49d94828211",
+      "version": 1,
       "files": 3,
-      "bytes": 6084
+      "bytes": 5988
     },
     {
       "name": "product-owner",
@@ -563,10 +563,10 @@
       "defaultOn": false,
       "license": "MIT",
       "upstream": null,
-      "hash": "9ed17abf8fafb87b169d4bade1824e108c8523ccd062777d70327d937d4b7790",
-      "version": 2,
+      "hash": "be99a62e812d7e62b0a223d87dedb79c231e8632b02115d609a12bfe8633759d",
+      "version": 1,
       "files": 7,
-      "bytes": 15395
+      "bytes": 15075
     },
     {
       "name": "test-case-writing",
@@ -575,10 +575,10 @@
       "defaultOn": false,
       "license": "MIT",
       "upstream": null,
-      "hash": "f595c8057e3cef2a227cdd1dd76a23b7e35b462452d0a70d38e5900938366988",
+      "hash": "c878894df825df23fbfb92e7aa38b05b5ac938345dfab3a3ffe69b8131f12931",
       "version": 1,
       "files": 3,
-      "bytes": 5994
+      "bytes": 5865
     },
     {
       "name": "manual-test-run",
@@ -587,10 +587,10 @@
       "defaultOn": false,
       "license": "MIT",
       "upstream": null,
-      "hash": "347d1a67373a29207dec4dacf8331c900b7dc3047c5d3f0563f497474e2d45a4",
+      "hash": "172e0b29288700aef19d68dc94a2dd29881b25baf8bafb13b8b1c6056b7b7d02",
       "version": 1,
       "files": 3,
-      "bytes": 5101
+      "bytes": 4995
     },
     {
       "name": "test-automation",
@@ -599,10 +599,10 @@
       "defaultOn": false,
       "license": "MIT",
       "upstream": null,
-      "hash": "6bbb4e2fd6599a3da519e5fb395d3055436eef9036ad0e1203ddb122be55405f",
+      "hash": "34de23c3920439c5f638e77b432f0d7172ee2233bec8c7ea5f006ba0fb13acd4",
       "version": 1,
       "files": 3,
-      "bytes": 5062
+      "bytes": 4954
     },
     {
       "name": "bug-report",
@@ -611,10 +611,10 @@
       "defaultOn": false,
       "license": "MIT",
       "upstream": null,
-      "hash": "450f73b4ac688b953746a1c4aadff92070490de821bd8769545419a320968368",
+      "hash": "22340fdbc73e3ebde307dc6ae8b38fd008af2e6eaf78e1c3bd1aea38e619577d",
       "version": 1,
       "files": 3,
-      "bytes": 4124
+      "bytes": 4040
     },
     {
       "name": "test-coverage",
@@ -623,10 +623,10 @@
       "defaultOn": false,
       "license": "MIT",
       "upstream": null,
-      "hash": "76e72950af5a698f9ce3de89c28e2db404a78d6202bc610307fd0d088560bba3",
+      "hash": "2d275a0db99a232be66e97471406d1c887bcb84312541346595a2bf44f0de1dd",
       "version": 1,
       "files": 3,
-      "bytes": 4289
+      "bytes": 4200
     },
     {
       "name": "layout-review",
@@ -635,10 +635,10 @@
       "defaultOn": false,
       "license": "MIT",
       "upstream": null,
-      "hash": "789fe2826845c9e1a0de37e4e97114490693b0dc875416a6ab3dfa229943a7b8",
+      "hash": "04e821114d9ba3190a01dd3bd2f97e6632b8f9173400a76f66769d333dea4d92",
       "version": 1,
       "files": 3,
-      "bytes": 4315
+      "bytes": 4223
     }
   ]
 }
