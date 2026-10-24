@@ -539,7 +539,7 @@ không chứa giá trị.
   khớp dự án theo remote rồi theo tên, giới hạn 64 từng gán, `--dry-run`, `--on-conflict`, nhật ký `export`/`import`.
   Test: trùng tên, trùng giá trị, ghi đè, khớp dự án, giới hạn 64, mật khẩu không ra output; fixture
   `testdata/cli/export.json`, `import-preview.json`, `import.json`, `import-env.json`.
-- [ ] T050 B·nhẹ — `secrets.rs`: `secrets_export`, `secrets_import_preview`, `secrets_import`, `secrets_import_env`
+- [x] T050 B·nhẹ — `secrets.rs`: `secrets_export`, `secrets_import_preview`, `secrets_import`, `secrets_import_env`
   (mật khẩu qua stdin rồi `wipe`); đăng ký ở `lib.rs`, `build.rs`, capability `app.json` (thêm `dialog:allow-save`).
   Máy dev không có Rust, CI kiểm.
 - [ ] T051 C·vừa — Desktop: `lib/secrets.ts` (kiểu, lệnh), `secret-export-dialog.tsx`, `secret-import-dialog.tsx`, nút
