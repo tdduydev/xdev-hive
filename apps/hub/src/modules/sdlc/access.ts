@@ -27,6 +27,7 @@ export interface ItemAccessRow {
 const TEAM_ROLE_ID: Record<TeamRole, SystemRoleId> = {
   viewer: "team-viewer",
   ba: "team-ba",
+  tester: "team-tester",
   member: "team-member",
   admin: "team-admin",
 };

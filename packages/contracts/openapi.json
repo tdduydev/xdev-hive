@@ -15032,7 +15032,8 @@
                           "admin",
                           "member",
                           "viewer",
-                          "ba"
+                          "ba",
+                          "tester"
                         ],
                         "type": "string"
                       }
@@ -15416,7 +15417,8 @@
                       "admin",
                       "member",
                       "viewer",
-                      "ba"
+                      "ba",
+                      "tester"
                     ],
                     "type": "string"
                   }
@@ -15465,7 +15467,8 @@
                         "admin",
                         "member",
                         "viewer",
-                        "ba"
+                        "ba",
+                        "tester"
                       ],
                       "type": "string"
                     }
@@ -15855,7 +15858,8 @@
                       "admin",
                       "member",
                       "viewer",
-                      "ba"
+                      "ba",
+                      "tester"
                     ],
                     "type": "string"
                   }
@@ -15903,7 +15907,8 @@
                         "admin",
                         "member",
                         "viewer",
-                        "ba"
+                        "ba",
+                        "tester"
                       ],
                       "type": "string"
                     }
@@ -18355,7 +18360,8 @@
                                 "admin",
                                 "member",
                                 "viewer",
-                                "ba"
+                                "ba",
+                                "tester"
                               ],
                               "type": "string"
                             }
@@ -20358,7 +20364,8 @@
                       "admin",
                       "member",
                       "viewer",
-                      "ba"
+                      "ba",
+                      "tester"
                     ],
                     "type": "string"
                   }
@@ -20807,7 +20814,8 @@
                               "admin",
                               "member",
                               "viewer",
-                              "ba"
+                              "ba",
+                              "tester"
                             ],
                             "type": "string"
                           },
@@ -285651,13 +285659,14 @@
                     "properties": {
                       "deployRoles": {
                         "type": "array",
-                        "maxItems": 4,
+                        "maxItems": 5,
                         "items": {
                           "enum": [
                             "admin",
                             "member",
                             "viewer",
-                            "ba"
+                            "ba",
+                            "tester"
                           ],
                           "type": "string"
                         },
@@ -285665,13 +285674,14 @@
                       },
                       "approveRoles": {
                         "type": "array",
-                        "maxItems": 4,
+                        "maxItems": 5,
                         "items": {
                           "enum": [
                             "admin",
                             "member",
                             "viewer",
-                            "ba"
+                            "ba",
+                            "tester"
                           ],
                           "type": "string"
                         },
@@ -286403,13 +286413,14 @@
                     "properties": {
                       "deployRoles": {
                         "type": "array",
-                        "maxItems": 4,
+                        "maxItems": 5,
                         "items": {
                           "enum": [
                             "admin",
                             "member",
                             "viewer",
-                            "ba"
+                            "ba",
+                            "tester"
                           ],
                           "type": "string"
                         },
@@ -286417,13 +286428,14 @@
                       },
                       "approveRoles": {
                         "type": "array",
-                        "maxItems": 4,
+                        "maxItems": 5,
                         "items": {
                           "enum": [
                             "admin",
                             "member",
                             "viewer",
-                            "ba"
+                            "ba",
+                            "tester"
                           ],
                           "type": "string"
                         },

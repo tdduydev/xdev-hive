@@ -6,15 +6,17 @@ export type OrgRole = (typeof orgRole.enumValues)[number];
 export type TeamRole = (typeof teamRole.enumValues)[number];
 
 const ORG_RANK: Record<OrgRole, number> = { member: 1, admin: 2, owner: 3 };
-// BA/PO nằm giữa người xem và thành viên (specs/011 D27): mọi chỗ đang đòi `member` vẫn từ chối BA/PO, còn chỗ chỉ đòi
-// `viewer` (đọc) thì BA/PO qua được. Thứ hạng nằm ở code vì thứ tự giá trị của enum trong database không phản ánh nó.
-const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, ba: 2, member: 3, admin: 4 };
+// BA/PO và Tester nằm giữa người xem và thành viên (specs/011 D27, specs/036 D5): mọi chỗ đang đòi `member` vẫn từ chối
+// họ, còn chỗ chỉ đòi `viewer` (đọc) thì qua được. Thứ hạng nằm ở code vì thứ tự giá trị của enum trong database không
+// phản ánh nó.
+const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, ba: 2, tester: 2, member: 3, admin: 4 };
 
 const ORG_LABEL: Record<OrgRole, string> = { owner: "chủ sở hữu", admin: "quản trị", member: "thành viên" };
 const TEAM_LABEL: Record<TeamRole, string> = {
   admin: "quản trị",
   member: "thành viên",
   ba: "BA/PO",
+  tester: "Tester",
   viewer: "người xem",
 };
 

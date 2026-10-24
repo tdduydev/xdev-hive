@@ -1,8 +1,11 @@
 import type { OrgRole, TeamRole } from "@xdev-hive/contracts";
 
 export const ORG_ROLES: readonly OrgRole[] = ["owner", "admin", "member"];
-/** Thứ tự từ quyền cao xuống: BA/PO (specs/011 FR-061) đứng giữa thành viên và chỉ xem như thứ hạng của hub. */
-export const TEAM_ROLES: readonly TeamRole[] = ["admin", "member", "ba", "viewer"];
+/**
+ * Thứ tự từ quyền cao xuống: BA/PO (specs/011 FR-061) và Tester (specs/036 FR-012) đứng giữa thành viên và chỉ xem như
+ * thứ hạng của hub.
+ */
+export const TEAM_ROLES: readonly TeamRole[] = ["admin", "member", "ba", "tester", "viewer"];
 
 export const ORG_ROLE_LABEL: Record<OrgRole, string> = { owner: "Chủ sở hữu", admin: "Quản trị", member: "Thành viên" };
 export const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
@@ -10,6 +13,7 @@ export const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
   member: "Thành viên",
   viewer: "Chỉ xem",
   ba: "BA/PO",
+  tester: "Tester",
 };
 
 /*

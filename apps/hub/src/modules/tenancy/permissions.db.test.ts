@@ -19,7 +19,18 @@ const inA = <T>(fn: (tx: Tx) => Promise<T>) => withTenant(app, { userId: "caller
 
 beforeAll(async () => {
   const slug = () => `p-${randomUUID().slice(0, 8)}`;
-  await seedUsers(admin, ["owner", "admin", "tadmin", "tmember", "tviewer", "loner", "pending", "blocked", "only-b"]);
+  await seedUsers(admin, [
+    "owner",
+    "admin",
+    "tadmin",
+    "tmember",
+    "tviewer",
+    "ttester",
+    "loner",
+    "pending",
+    "blocked",
+    "only-b",
+  ]);
   await admin.query(
     "insert into hive.orgs (id, slug, name, created_by) values ($1, $2, 'A', 'owner'), ($3, $4, 'B', 'x')",
     [orgA, slug(), orgB, slug()],
@@ -28,7 +39,7 @@ beforeAll(async () => {
     `insert into hive.org_members (org_id, user_id, role, status) values
        ($1, 'owner', 'owner', 'active'), ($1, 'admin', 'admin', 'active'),
        ($1, 'tadmin', 'member', 'active'), ($1, 'tmember', 'member', 'active'),
-       ($1, 'tviewer', 'member', 'active'), ($1, 'loner', 'member', 'active'),
+       ($1, 'tviewer', 'member', 'active'), ($1, 'ttester', 'member', 'active'), ($1, 'loner', 'member', 'active'),
        ($1, 'pending', 'admin', 'pending'), ($1, 'blocked', 'owner', 'blocked'),
        ($2, 'only-b', 'owner', 'active'), ($2, 'tmember', 'owner', 'active')`,
     [orgA, orgB],
@@ -42,6 +53,7 @@ beforeAll(async () => {
   await admin.query(
     `insert into hive.team_members (team_id, org_id, user_id, role) values
        ($1, $2, 'tadmin', 'admin'), ($1, $2, 'tmember', 'member'), ($1, $2, 'tviewer', 'viewer'),
+       ($1, $2, 'ttester', 'tester'),
        ($1, $2, 'pending', 'admin'), ($1, $2, 'blocked', 'admin'), ($3, $4, 'tmember', 'admin')`,
     [teamA, orgA, teamB, orgB],
   );
@@ -125,6 +137,7 @@ describe("teamRoleOf", () => {
     ["tadmin", "admin"],
     ["tmember", "member"],
     ["tviewer", "viewer"],
+    ["ttester", "tester"],
   ] as const)("%s có vai trò %s ở đội", async (user, role) => {
     expect(await inA((tx) => teamRoleOf(tx, user, teamA))).toBe(role);
   });
@@ -157,7 +170,7 @@ describe("teamRoleOf", () => {
 });
 
 describe("teamRolesOf", () => {
-  const users = ["owner", "admin", "tadmin", "tmember", "tviewer", "loner", "pending", "blocked", "only-b"];
+  const users = ["owner", "admin", "tadmin", "tmember", "tviewer", "ttester", "loner", "pending", "blocked", "only-b"];
 
   it.each(users)("%s: cùng kết quả với teamRoleOf từng đội, một truy vấn cho mọi đội", async (user) => {
     const teams = [teamA, teamA2, teamB, randomUUID()];
@@ -185,6 +198,8 @@ describe("requireTeamRole", () => {
     ["tmember", "member"],
     ["tmember", "viewer"],
     ["tviewer", "viewer"],
+    ["ttester", "viewer"],
+    ["ttester", "tester"],
   ] as const)("%s đạt mức %s", async (user, min) => {
     await expect(inA((tx) => requireTeamRole(tx, user, teamA, min))).resolves.toBeDefined();
   });
@@ -197,6 +212,9 @@ describe("requireTeamRole", () => {
     ["tmember", "admin"],
     ["tviewer", "member"],
     ["tviewer", "admin"],
+    // Tester ngang BA/PO (specs/036 D5): mọi cổng đòi thành viên đội đều từ chối.
+    ["ttester", "member"],
+    ["tviewer", "tester"],
   ] as const)("%s không đạt mức %s", async (user, min) => {
     expect(await forbiddenCode(() => inA((tx) => requireTeamRole(tx, user, teamA, min)))).toBe("TEAM_ROLE_REQUIRED");
   });

@@ -26,6 +26,7 @@ const orgAdmin = u("admin");
 const member = u("member");
 const viewer = u("viewer");
 const ba = u("ba");
+const tester = u("tester");
 const invitee = `${u("invitee")}@seed.test`;
 const blocked = u("blocked");
 const onlyB = u("only-b");
@@ -72,7 +73,7 @@ async function errorCode(run: () => Promise<unknown>): Promise<string | undefine
 }
 
 beforeAll(async () => {
-  await seedUsers(admin, [owner, orgAdmin, member, viewer, ba, blocked, onlyB]);
+  await seedUsers(admin, [owner, orgAdmin, member, viewer, ba, tester, blocked, onlyB]);
   await admin.query(
     "insert into hive.orgs (id, slug, name, created_by) values ($1::uuid, $1::text, 'A', $3), ($2::uuid, $2::text, 'B', $4)",
     [orgA, orgB, owner, onlyB],
@@ -81,8 +82,8 @@ beforeAll(async () => {
     `insert into hive.org_members (org_id, user_id, role, status) values
        ($1, $3, 'owner', 'active'), ($1, $4, 'admin', 'active'), ($1, $5, 'member', 'active'),
        ($1, $6, 'member', 'active'), ($1, $7, 'member', 'blocked'), ($2, $8, 'owner', 'active'),
-       ($1, $9, 'member', 'active')`,
-    [orgA, orgB, owner, orgAdmin, member, viewer, blocked, onlyB, ba],
+       ($1, $9, 'member', 'active'), ($1, $10, 'member', 'active')`,
+    [orgA, orgB, owner, orgAdmin, member, viewer, blocked, onlyB, ba, tester],
   );
   const team = async (s: string) =>
     (await admin.query("insert into hive.teams (org_id, slug, name) values ($1, $2, $2) returning id", [orgA, s]))
@@ -91,8 +92,9 @@ beforeAll(async () => {
   teamA2 = await team(`tb-${randomUUID().slice(0, 6)}`);
   await admin.query(
     `insert into hive.team_members (team_id, org_id, user_id, role) values
-       ($1, $3, $4, 'viewer'), ($1, $3, $5, 'member'), ($2, $3, $5, 'member'), ($1, $3, $6, 'member'), ($1, $3, $7, 'ba')`,
-    [teamA, teamA2, orgA, viewer, member, blocked, ba],
+       ($1, $3, $4, 'viewer'), ($1, $3, $5, 'member'), ($2, $3, $5, 'member'), ($1, $3, $6, 'member'), ($1, $3, $7, 'ba'),
+       ($1, $3, $8, 'tester')`,
+    [teamA, teamA2, orgA, viewer, member, blocked, ba, tester],
   );
 });
 
@@ -340,11 +342,47 @@ describe("vai trò BA/PO (specs/011 D27)", () => {
   });
 });
 
+describe("vai trò Tester (specs/036 D5)", () => {
+  it("danh sách vai trò có team-tester với đúng bộ quyền của FR-012", async () => {
+    const list = await call(router(member).list, undefined, ctx());
+    const teamTester = list.system.find((r) => r.id === "team-tester");
+    expect(teamTester).toMatchObject({ scope: "team", memberCount: 1 });
+    expect(teamTester?.permissions).toEqual([...SYSTEM_ROLE_PERMISSIONS["team-tester"]]);
+  });
+
+  it("quyền hiệu lực trong đội lấy từ team-tester", async () => {
+    const granted = await inA(tester, (tx) => effectivePermissions(tx, tester, teamA));
+    for (const k of SYSTEM_ROLE_PERMISSIONS["team-tester"]) expect(granted.has(k)).toBe(true);
+    expect(granted.has("qa.cases.write")).toBe(true);
+  });
+
+  it("quản trị đội đổi vai trò sang tester và mời bằng tester; Tester không quản trị được đội", async () => {
+    const r = tenancy(orgAdmin);
+    expect(await call(r.teamMembers.setRole, { teamId: teamA, userId: viewer, role: "tester" }, ctx())).toMatchObject({
+      userId: viewer,
+      role: "tester",
+    });
+    await call(r.teamMembers.setRole, { teamId: teamA, userId: viewer, role: "viewer" }, ctx());
+    expect(
+      await errorCode(() =>
+        call(tenancy(tester).teamMembers.add, { teamId: teamA, userId: owner, role: "tester" }, ctx()),
+      ),
+    ).toBe("TEAM_ROLE_REQUIRED");
+    const email = `${u("tester-invitee")}@seed.test`;
+    await call(r.invitations.create, { emails: [email], teamId: teamA, teamRole: "tester" }, ctx());
+    const stored = await admin.query("select team_role from hive.invitations where org_id = $1 and email = $2", [
+      orgA,
+      email,
+    ]);
+    expect(stored.rows[0]).toEqual({ team_role: "tester" });
+  });
+});
+
 describe("danh sách và cô lập tổ chức", () => {
   it("liệt kê vai trò hệ thống kèm số người và vai trò tự tạo kèm người, đội được gán", async () => {
     const list = await call(router(member).list, undefined, ctx());
     const sys = Object.fromEntries(list.system.map((r) => [r.id, r.memberCount]));
-    expect(sys).toMatchObject({ owner: 1, admin: 1, member: 3, "team-viewer": 1, "team-ba": 1 });
+    expect(sys).toMatchObject({ owner: 1, admin: 1, member: 4, "team-viewer": 1, "team-ba": 1, "team-tester": 1 });
     expect(list.custom.length).toBeGreaterThan(0);
   });
 

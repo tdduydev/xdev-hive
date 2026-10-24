@@ -63,7 +63,7 @@ import {
  * dung lượng. Mọi hàm nhận `Reader` nên route (người) và tool MCP (run, T011) đi cùng một đường quyền.
  */
 
-const TEAM_RANK = { viewer: 1, ba: 2, member: 3, admin: 4 } as const;
+const TEAM_RANK = { viewer: 1, ba: 2, tester: 2, member: 3, admin: 4 } as const;
 
 // ---- Biên dịch `react` ---------------------------------------------------------------------------------------------
 

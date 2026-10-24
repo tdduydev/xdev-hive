@@ -195,7 +195,7 @@ export interface ArtifactFacts {
   linkedToRunWork: boolean;
 }
 
-const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, ba: 2, member: 3, admin: 4 };
+const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, ba: 2, tester: 2, member: 3, admin: 4 };
 const isOrgAdmin = (role: OrgRole) => role === "admin" || role === "owner";
 const scopedTeam = (facts: ArtifactFacts) =>
   facts.scope === "project" || facts.scope === "team" ? facts.teamId : null;
