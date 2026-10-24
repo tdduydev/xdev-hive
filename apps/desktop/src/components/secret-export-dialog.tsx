@@ -226,7 +226,7 @@ function ExportBody({ names, onClose }: Omit<Props, "open">) {
           </ul>
         </section>
         <form className="flex flex-col gap-3" onSubmit={(e) => void submit(e)} noValidate>
-          <fieldset className="flex min-w-0 flex-col gap-1.5 border-0 p-0">
+          <fieldset className="flex min-w-0 flex-col gap-1.5 border-0 p-0" disabled={busy}>
             <legend className="mb-1 flex w-full flex-wrap items-center gap-2 text-sm font-medium">
               <span className="flex-1">{t.pick}</span>
               <span className="text-xs font-normal text-muted-foreground">{t.picked(chosen.length, names.length)}</span>
@@ -265,6 +265,7 @@ function ExportBody({ names, onClose }: Omit<Props, "open">) {
               value={password}
               autoComplete="new-password"
               spellCheck={false}
+              disabled={busy}
               aria-invalid={shownProblem === "short" ? true : undefined}
               aria-describedby={`${id}-password-note`}
               onChange={(e) => setPassword(e.target.value)}
@@ -285,6 +286,7 @@ function ExportBody({ names, onClose }: Omit<Props, "open">) {
               value={confirm}
               autoComplete="new-password"
               spellCheck={false}
+              disabled={busy}
               aria-invalid={shownProblem === "mismatch" ? true : undefined}
               aria-describedby={shownProblem === "mismatch" ? `${id}-confirm-note` : undefined}
               onChange={(e) => setConfirm(e.target.value)}

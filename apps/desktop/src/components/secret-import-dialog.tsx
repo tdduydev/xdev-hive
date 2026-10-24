@@ -238,8 +238,8 @@ function ImportBody({ projects, onClose, onImported }: Omit<Props, "open">) {
     return dryRun ? secretsImportPreview(file, password, conflict) : secretsImport(file, password, conflict);
   }
 
-  async function call(dryRun: boolean, conflict: OnConflict) {
-    if (!path || busy) return;
+  async function call(dryRun: boolean, conflict: OnConflict): Promise<boolean> {
+    if (!path || busy) return false;
     setBusy(true);
     setError(null);
     try {
@@ -249,8 +249,10 @@ function ImportBody({ projects, onClose, onImported }: Omit<Props, "open">) {
         setPassword("");
         onImported();
       }
+      return true;
     } catch (e) {
       setError(errorText(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -276,10 +278,12 @@ function ImportBody({ projects, onClose, onImported }: Omit<Props, "open">) {
     void call(true, onConflict);
   }
 
-  function changeConflict(next: OnConflict) {
+  async function changeConflict(next: OnConflict) {
+    const prev = onConflict;
     setOnConflict(next);
     // Cách xử lý tên trùng đổi hành động của từng mục: xem trước lại để bảng đúng với lần nhập thật.
-    void call(true, next);
+    // Xem trước lỗi thì bảng vẫn là của lựa chọn cũ, nên trả lại lựa chọn cũ để lần nhập không khác bảng.
+    if (!(await call(true, next))) setOnConflict(prev);
   }
 
   const close = () => !busy && onClose();
@@ -316,7 +320,7 @@ function ImportBody({ projects, onClose, onImported }: Omit<Props, "open">) {
                     name={`${id}-conflict`}
                     className="size-4 shrink-0 accent-primary"
                     checked={onConflict === value}
-                    onChange={() => changeConflict(value)}
+                    onChange={() => void changeConflict(value)}
                   />
                   {label}
                 </label>
@@ -396,7 +400,7 @@ function ImportBody({ projects, onClose, onImported }: Omit<Props, "open">) {
                 variant="outline"
                 size="sm"
                 disabled={busy}
-                aria-describedby={`${id}-file ${id}-path`}
+                aria-describedby={touched && !path ? `${id}-file ${id}-path ${id}-file-error` : `${id}-file ${id}-path`}
                 onClick={() => void choose()}
               >
                 <FileIcon aria-hidden="true" />
@@ -412,7 +416,11 @@ function ImportBody({ projects, onClose, onImported }: Omit<Props, "open">) {
                 {path ? shortPath(path) : t.noFile}
               </span>
             </div>
-            {touched && !path && <span className="text-xs text-destructive">{t.needFile}</span>}
+            {touched && !path && (
+              <span id={`${id}-file-error`} className="text-xs text-destructive">
+                {t.needFile}
+              </span>
+            )}
           </div>
           {source === "hivesecrets" && (
             <div className="flex flex-col gap-1">

@@ -31,7 +31,7 @@ interface Call {
   args?: Record<string, unknown> | undefined;
 }
 
-function fakeApp(opts: { picked?: string; fail?: string; skipPreview?: ImportResult } = {}) {
+function fakeApp(opts: { picked?: string; fail?: string; failOverwrite?: string; skipPreview?: ImportResult } = {}) {
   const calls: Call[] = [];
   window.__TAURI__ = {
     core: {
@@ -39,6 +39,7 @@ function fakeApp(opts: { picked?: string; fail?: string; skipPreview?: ImportRes
         calls.push({ command, args });
         if (command === "plugin:dialog|open") return (opts.picked ?? "/home/dev/backup.hivesecrets") as T;
         if (opts.fail) throw new Error(opts.fail);
+        if (opts.failOverwrite && args?.onConflict === "overwrite") throw new Error(opts.failOverwrite);
         if (command === "secrets_import_preview")
           return (
             args?.onConflict === "skip" && opts.skipPreview ? opts.skipPreview : fixture("import-preview.json")
@@ -139,6 +140,29 @@ describe("hộp nhập bí mật", () => {
     await user.click(within(dialog).getByRole("button", { name: "Xem trước" }));
     expect((await within(dialog).findByRole("alert")).textContent).toContain("Sai mật khẩu hoặc file đã bị sửa.");
     expect(within(dialog).getByRole("button", { name: "Xem trước" })).toBeTruthy();
+  });
+
+  it("đổi cách xử lý tên trùng mà xem trước lại lỗi: trả lại lựa chọn cũ, nhập theo đúng bảng đang hiện", async () => {
+    const preview = fixture("import-preview.json");
+    const skipPreview: ImportResult = {
+      ...preview,
+      items: preview.items.map((i) => (i.status === "new" ? i : { ...i, action: "skip" })),
+    };
+    const calls = fakeApp({ skipPreview, failOverwrite: "File vừa bị đổi, chọn lại file." });
+    const user = userEvent.setup();
+    render(<SecretImportDialog open projects={[]} onClose={() => {}} onImported={() => {}} />);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /Chọn file/ }));
+    await user.type(within(dialog).getByLabelText("Mật khẩu của file"), PASSWORD);
+    await user.click(within(dialog).getByRole("button", { name: "Xem trước" }));
+    await user.click(await within(dialog).findByLabelText(/Ghi đè giá trị và mô tả/));
+
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("File vừa bị đổi");
+    expect((within(dialog).getByLabelText(/Bỏ qua, giữ bí mật đang có/) as HTMLInputElement).checked).toBe(true);
+    expect(rows(dialog).map((r) => r[2])).toEqual(["Bỏ qua", "Bỏ qua", "Thêm"]);
+    await user.click(within(dialog).getByRole("button", { name: "Nhập 1 bí mật" }));
+    expect(await within(dialog).findByText("Đã nhập bí mật")).toBeTruthy();
+    expect(calls.find((c) => c.command === "secrets_import")?.args?.onConflict).toBe("skip");
   });
 
   it("file .env: không hỏi mật khẩu, gán cho dự án đã chọn, dòng sai được liệt kê", async () => {
