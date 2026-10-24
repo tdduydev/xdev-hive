@@ -1,17 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArtifactPanel, type ArtifactRef, type ArtifactSelection } from "@xdev-hive/artifacts-ui";
 import type { ChatMessage } from "@xdev-hive/contracts";
-import {
-  type KeyboardEvent,
-  type PointerEvent,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { type KeyboardEvent, type PointerEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet.tsx";
+import { useMediaQuery } from "@/hooks/use-media-query.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { meQuery } from "@/lib/me.ts";
 
@@ -22,18 +14,6 @@ const text: Dict<{ resize: string; panel: string }> = {
 
 /** FR-042: từ 1024 px chat và khung chia đôi; hẹp hơn thì khung là ngăn kéo phủ toàn màn. */
 const WIDE = "(min-width: 1024px)";
-
-function useMediaQuery(query: string): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const mql = matchMedia(query);
-      mql.addEventListener("change", onChange);
-      return () => mql.removeEventListener("change", onChange);
-    },
-    () => matchMedia(query).matches,
-    () => false,
-  );
-}
 
 const MIN_RATIO = 0.25;
 const MAX_RATIO = 0.75;

@@ -3,6 +3,7 @@ import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import type { ReactNode } from "react";
 import { Brand } from "@/components/icons.tsx";
 import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
+import { isHubUnreachable } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{
@@ -11,6 +12,8 @@ const text: Dict<{
   home: string;
   errorTitle: string;
   errorBody: string;
+  crashTitle: string;
+  crashBody: string;
   missingTitle: string;
   missingBody: string;
 }> = {
@@ -20,6 +23,8 @@ const text: Dict<{
     home: "Về trang chủ",
     errorTitle: "Không kết nối được hub",
     errorBody: "Hub không trả lời hoặc đang gặp lỗi. Kiểm tra mạng, đợi một lát rồi thử lại.",
+    crashTitle: "Màn hình gặp lỗi",
+    crashBody: "Màn hình này gặp lỗi không mong muốn. Thử lại; nếu vẫn lỗi, tải lại trang hoặc báo quản trị hub.",
     missingTitle: "Không tìm thấy trang",
     missingBody: "Đường dẫn này không có trên hub, hoặc màn hình chưa được làm.",
   },
@@ -29,16 +34,29 @@ const text: Dict<{
     home: "Go home",
     errorTitle: "Cannot reach the hub",
     errorBody: "The hub is not responding or has an error. Check your network, wait a moment, then try again.",
+    crashTitle: "This screen hit an error",
+    crashBody:
+      "Something unexpected went wrong on this screen. Try again; if it persists, reload the page or tell your hub admin.",
     missingTitle: "Page not found",
     missingBody: "This address does not exist on the hub, or the screen is not built yet.",
   },
 };
 
-function Centered({ code, title, body, children }: { code: string; title: string; body: string; children: ReactNode }) {
+function Centered({
+  code,
+  title,
+  body,
+  children,
+}: {
+  code?: string | undefined;
+  title: string;
+  body: string;
+  children: ReactNode;
+}) {
   return (
     <OutsideLayout centered>
       <div className="flex w-full max-w-110 flex-col items-center gap-4 text-center">
-        <span className="font-mono text-7xl font-semibold tracking-tighter text-border">{code}</span>
+        {code && <span className="font-mono text-7xl font-semibold tracking-tighter text-border">{code}</span>}
         <Brand className="h-12" />
         <h1 className="font-heading text-[22px] font-semibold tracking-tight">{title}</h1>
         <p className="text-muted-foreground">{body}</p>
@@ -48,11 +66,18 @@ function Centered({ code, title, body, children }: { code: string; title: string
   );
 }
 
-export function LoadErrorPage(_: ErrorComponentProps) {
+export function LoadErrorPage({ error }: ErrorComponentProps) {
   const router = useRouter();
   const t = useT(text);
+  // Mọi lỗi chưa có chỗ bắt riêng (cả lỗi vẽ trang) đều về đây; báo "không kết nối được hub" cho lỗi của trang thì người
+  // dùng đi kiểm tra mạng trong khi hub vẫn chạy.
+  const hub = isHubUnreachable(error);
   return (
-    <Centered code="503" title={t.errorTitle} body={t.errorBody}>
+    <Centered
+      code={hub ? "503" : undefined}
+      title={hub ? t.errorTitle : t.crashTitle}
+      body={hub ? t.errorBody : t.crashBody}
+    >
       <Button onClick={() => router.invalidate()}>
         <Spinner />
         {t.retry}

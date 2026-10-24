@@ -10,6 +10,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { useState } from "react";
 import { type ActiveFilter, type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import type { Facet } from "@/components/data-table/model.ts";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query.ts";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDayTime, formatUsd } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
@@ -192,6 +193,7 @@ export function RunsPage() {
     }),
   );
   const now = useNow(REFRESH_MS);
+  const phone = useMediaQuery(PHONE);
   const items = [
     ...new Map((runs.data?.pages.flatMap((page) => page.items) ?? []).map((row) => [row.id, row])).values(),
   ];
@@ -336,6 +338,9 @@ export function RunsPage() {
         ),
     },
   ];
+  // Điện thoại không ghim cột và bảng cuộn ngang: trạng thái lên ngay sau mã run để vẫn thấy mà không phải cuộn.
+  const phoneRank = (column: Column<RunListItem>) => (column.key === "run" ? 0 : column.key === "status" ? 1 : 2);
+  const tableColumns = phone ? [...columns].sort((a, b) => phoneRank(a) - phoneRank(b)) : columns;
   const facets: Facet<RunListItem>[] = [
     {
       key: "status",
@@ -438,7 +443,7 @@ export function RunsPage() {
             {runs.hasNextPage && <p className="text-xs text-muted-foreground">{t.loadedScope}</p>}
             <DataTable
               key={JSON.stringify(search)}
-              columns={columns}
+              columns={tableColumns}
               rows={items}
               facets={facets}
               caption={t.title}

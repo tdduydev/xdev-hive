@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group.tsx";
 import { StatTile } from "@/components/ui/stat-tile.tsx";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query.ts";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatUsd } from "@/lib/format.ts";
 
@@ -314,6 +315,9 @@ function EmptyBoard({ canCreate, blockedReason }: { canCreate: boolean; blockedR
 }
 
 function TaskTable({ rows, now }: { rows: BoardRow[]; now: number }) {
+  // Bảng rộng 860 px: trên điện thoại cột trạng thái nằm ngoài màn, nên mỗi việc thành một thẻ có trạng thái ở dòng đầu.
+  const phone = useMediaQuery(PHONE);
+  if (phone) return <TaskCards rows={rows} now={now} />;
   return (
     <Card className="overflow-hidden">
       <Table className="min-w-215">
@@ -333,60 +337,112 @@ function TaskTable({ rows, now }: { rows: BoardRow[]; now: number }) {
             <tr key={task.id}>
               <Td className="min-w-70">
                 <span className="grid leading-tight">
-                  {run ? (
-                    <Link
-                      to="/runs/$id"
-                      params={{ id: run.id }}
-                      className="font-mono text-xs text-primary hover:text-primary/90"
-                      aria-label={`${task.key}: mở run gần nhất`}
-                    >
-                      {task.key}
-                    </Link>
-                  ) : (
-                    <span className="font-mono text-xs text-muted-foreground">{task.key}</span>
-                  )}
+                  <TaskKey task={task} run={run} />
                   <span className="font-medium text-foreground">{task.title}</span>
                 </span>
               </Td>
               <Td className="whitespace-nowrap">
-                <span className="grid justify-items-start gap-1">
-                  <Pill tone={badge.tone} dot>
-                    {badge.label}
-                  </Pill>
-                  {task.status === "awaiting_plan" && (
-                    <Link
-                      to="/tasks/$key/plan"
-                      params={{ key: task.key }}
-                      className="text-xs text-primary hover:text-primary/90"
-                      aria-label={`Xem và duyệt kế hoạch của ${task.key}`}
-                    >
-                      Xem kế hoạch
-                    </Link>
-                  )}
-                </span>
+                <TaskStatus task={task} badge={badge} />
               </Td>
               <Td className="whitespace-nowrap">
-                <span className="text-foreground">{cliLabel(run?.cli ?? task.preferredCli)}</span>{" "}
-                {run?.machineName && <span className="font-mono text-xs text-muted-foreground">{run.machineName}</span>}
+                <TaskAgent task={task} run={run} />
               </Td>
               <Td className="whitespace-nowrap text-muted-foreground">{runActivity(run, now)}</Td>
               <Td className="text-right whitespace-nowrap text-foreground tabular-nums">
                 {run ? formatUsd(run.cost.costUsd) : "—"}
               </Td>
               <Td className="whitespace-nowrap font-mono text-xs">
-                {run?.prUrl ? (
-                  <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-primary hover:text-primary/90">
-                    {prLabel(run.prUrl)}
-                    <span className="sr-only"> (mở PR của {task.key} ở tab mới)</span>
-                  </a>
-                ) : (
-                  "—"
-                )}
+                <TaskPr task={task} run={run} />
               </Td>
             </tr>
           ))}
         </tbody>
       </Table>
     </Card>
+  );
+}
+
+function TaskCards({ rows, now }: { rows: BoardRow[]; now: number }) {
+  return (
+    <Card className="gap-0 py-0">
+      <ul aria-label="Danh sách việc" className="divide-y divide-border">
+        {rows.map(({ task, run, badge }) => (
+          <li key={task.id} className="grid gap-1.5 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <TaskKey task={task} run={run} />
+              <TaskStatus task={task} badge={badge} />
+            </div>
+            <span className="font-medium break-words text-foreground">{task.title}</span>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                <TaskAgent task={task} run={run} />
+              </span>
+              <span>{runActivity(run, now)}</span>
+              {run && <span className="text-foreground tabular-nums">{formatUsd(run.cost.costUsd)}</span>}
+              {run?.prUrl && (
+                <span className="font-mono">
+                  <TaskPr task={task} run={run} />
+                </span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function TaskKey({ task, run }: Pick<BoardRow, "task" | "run">) {
+  return run ? (
+    <Link
+      to="/runs/$id"
+      params={{ id: run.id }}
+      className="font-mono text-xs text-primary hover:text-primary/90"
+      aria-label={`${task.key}: mở run gần nhất`}
+    >
+      {task.key}
+    </Link>
+  ) : (
+    <span className="font-mono text-xs text-muted-foreground">{task.key}</span>
+  );
+}
+
+function TaskStatus({ task, badge }: Pick<BoardRow, "task" | "badge">) {
+  return (
+    <span className="grid justify-items-start gap-1">
+      <Pill tone={badge.tone} dot>
+        {badge.label}
+      </Pill>
+      {task.status === "awaiting_plan" && (
+        <Link
+          to="/tasks/$key/plan"
+          params={{ key: task.key }}
+          className="text-xs text-primary hover:text-primary/90"
+          aria-label={`Xem và duyệt kế hoạch của ${task.key}`}
+        >
+          Xem kế hoạch
+        </Link>
+      )}
+    </span>
+  );
+}
+
+function TaskAgent({ task, run }: Pick<BoardRow, "task" | "run">) {
+  return (
+    <>
+      <span className="text-foreground">{cliLabel(run?.cli ?? task.preferredCli)}</span>{" "}
+      {run?.machineName && <span className="font-mono text-xs text-muted-foreground">{run.machineName}</span>}
+    </>
+  );
+}
+
+function TaskPr({ task, run }: Pick<BoardRow, "task" | "run">) {
+  return run?.prUrl ? (
+    <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-primary hover:text-primary/90">
+      {prLabel(run.prUrl)}
+      <span className="sr-only"> (mở PR của {task.key} ở tab mới)</span>
+    </a>
+  ) : (
+    "—"
   );
 }
