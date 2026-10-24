@@ -4,6 +4,8 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 # Tasks: Bảng điều khiển CI/CD và triển khai lên máy chủ
 
+> `- [-]`: bỏ, ngoài phạm vi (lý do ghi trong từng task). Giữ task để ghi lại.
+
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md)
 
 ## Quy ước
@@ -568,7 +570,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 4: các cách triển khai khác, test `sshd` (song song, sau Đợt 3)
 
-- [ ] **T024 [P] [US5] [nặng] · 1,5 ngày — Cách `jenkins-job`, "đẩy từ môi trường", lần "ngoài Hive"**
+- [-] **T024 [P] [US5] [nặng] · 1,5 ngày — Cách `jenkins-job`, "đẩy từ môi trường", lần "ngoài Hive"**
   - **ngoài phạm vi (thay bằng spec 032)**: hub không bấm Jenkins nữa; máy chạy (worker) bấm job và theo dõi build
     (specs/032 T004, T008), hub chỉ giao việc sau cổng duyệt (specs/032 T013). Đường cũ trên hub chỉ còn sau cờ
     `HIVE_DELIVERY_OUTBOUND` (specs/032 T014).
@@ -592,7 +594,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test với Jenkins giả (header Basic là của người yêu cầu; build ngoài Hive hiện trên bảng, không chặn
     lần triển khai mới; promote lấy đúng số build), typecheck.
 
-- [ ] **T025 [P] [US5] [vừa] · 2 ngày — Cách `gitlab-manual`, `argocd`, `kubectl`**
+- [-] **T025 [P] [US5] [vừa] · 2 ngày — Cách `gitlab-manual`, `argocd`, `kubectl`**
   - **ngoài phạm vi (thay bằng spec 032)**: Argo CD do máy chạy sync và theo dõi (specs/032 T005, T008, T013).
     `gitlab-manual`, `kubectl` và gọi thẳng Kubernetes không làm (specs/032 T025).
   - **Phụ thuộc**: T005, T010, T013, T019.
@@ -611,7 +613,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test với GitLab `memory`, Argo CD và Kubernetes giả (hết thời gian chờ thì `failed`; application hay
     workload không còn thì báo "không tìm thấy"), typecheck.
 
-- [ ] **T026 [P] [US4] [nặng] · 1,5 ngày — Test tích hợp với `sshd`, có ca dừng hub giữa bước**
+- [-] **T026 [P] [US4] [nặng] · 1,5 ngày — Test tích hợp với `sshd`, có ca dừng hub giữa bước**
   - **ngoài phạm vi (thay bằng spec 032)**: không triển khai qua SSH từ hub hay worker (specs/032 T010). Log và nhận sự
     kiện bỏ trùng của máy chạy: specs/032 T003, T012.
   - **Phụ thuộc**: T016, T019, T020.
@@ -633,7 +635,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 5: P2: duyệt, khoá, quay về, thông báo (song song, sau Đợt 4)
 
-- [ ] **T027 [P] [US6] [nặng] · 1,5 ngày — Duyệt và khoá môi trường**
+- [-] **T027 [P] [US6] [nặng] · 1,5 ngày — Duyệt và khoá môi trường**
   - **ngoài phạm vi (thay bằng spec 032)**: cổng duyệt (duyệt, từ chối kèm lý do, `SELF_APPROVAL`, hết hạn, audit) ở
     specs/032 T022; chỉ giao việc khi đủ duyệt và môi trường không khoá ở specs/032 T013; khoá, mở khoá kèm lý do ở
     specs/032 T026. Proceed/Abort bước `input` của Jenkins: ngoài phạm vi (specs/032 T013b). `compare`: specs/032
@@ -656,7 +658,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (SC-006: lên `prod` không thể thiếu người duyệt khác người yêu cầu, kể cả khi người yêu cầu có
     `deploy.approve`; hết hạn; khoá môi trường), typecheck.
 
-- [ ] **T028 [P] [US7] [vừa] · 1 ngày — Quay về bản trước**
+- [-] **T028 [P] [US7] [vừa] · 1 ngày — Quay về bản trước**
   - **ngoài phạm vi**: quay về là chạy lệnh trên hệ đích, hub không làm. Muốn về bản cũ thì triển khai lại bản đó qua
     cổng duyệt như lần thường (specs/032 T029).
   - **Phụ thuộc**: T019, T020, T024, T025.
@@ -671,7 +673,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (A thành công, B `failed_needs_review` thì quay về A, ghi "quay về từ B"; không có bản trước thì
     lý do đúng), typecheck.
 
-- [ ] **T029 [P] [US8] [vừa] · 1 ngày — Thông báo theo hệ thống, người liên quan**
+- [-] **T029 [P] [US8] [vừa] · 1 ngày — Thông báo theo hệ thống, người liên quan**
   - **Phần thuộc Duyệt đã có**: người duyệt nhận `deploy.approval_requested` trong hộp thư (`deploys/orchestrator.ts`).
   - **ngoài phạm vi**: lọc kênh theo hệ thống và chọn hệ thống ở trang thông báo (specs/032 T030).
   - **Phụ thuộc**: T008, T015, T016, T019.
@@ -687,7 +689,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/web/src/pages/notifications-page.tsx`, `apps/web/src/lib/notification-channels.ts` (+ test)
   - **Kiểm**: hub test, web typecheck, test, Playwright `queue-notifications.spec.ts`.
 
-- [ ] **T030 [P] [US6] [vừa] · 1 ngày — Web: duyệt, khoá môi trường, quay về**
+- [-] **T030 [P] [US6] [vừa] · 1 ngày — Web: duyệt, khoá môi trường, quay về**
   - **ngoài phạm vi (thay bằng spec 032)**: trang "Duyệt triển khai" `/deploy-approvals` ở specs/032 T023; khoá, mở
     khoá ở trang Môi trường ở specs/032 T026; danh sách commit khi duyệt ở specs/032 T028 (chưa làm). Bảng triển khai
     và nút "Quay về" không làm (specs/032 T024, T029).
@@ -736,7 +738,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 7: kiểm tổng, chạy thật (sau Đợt 4–6)
 
-- [ ] **T033 [—] [—] [nặng] · 1 ngày — Kiểm tổng tự động**
+- [-] **T033 [—] [—] [nặng] · 1 ngày — Kiểm tổng tự động**
   - **Còn áp dụng**: SC-006 mức API đã có ở `delivery/dispatch.db.test.ts` ("người yêu cầu không tự duyệt"). SC-003
     (mọi route ghi có audit) đang phủ theo từng file test; `audit-coverage.db.test.ts` duyệt cả router chưa viết.
   - **ngoài phạm vi**: SC-001 đo tải và Playwright hub thật với `sshd`, `ssh-script` (specs/032 T010, T024).

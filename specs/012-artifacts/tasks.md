@@ -1,5 +1,7 @@
 # Tasks: Artifacts
 
+> `- [-]`: bỏ, ngoài phạm vi (lý do ghi trong từng task). Giữ task để ghi lại.
+
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [ADR 0023](../../docs/adr/0023-artifacts.md)
 
 **Tests**: bắt buộc (feature-checklist mục 5). Mỗi task tự viết test của phần mình và để `pnpm check` xanh.
@@ -336,7 +338,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Scope**: `apps/hub/src/modules/artifacts/access.ts` + test, `packages/artifacts-ui/src/share-dialog.tsx`
   - **Phụ thuộc**: MVP · **Mức**: vừa
 
-- [ ] T064 [US8] Terminal Leader: khung bên cạnh
+- [-] T064 [US8] Terminal Leader: khung bên cạnh
   - Module LEADTERM cung cấp `TerminalHost`; hướng dẫn/MCP của phiên có `terminalSessionId`; màn Terminal Leader đặt
     `ArtifactPanel`.
   - **Scope**: file của LEADTERM (theo nhánh LEADTERM khi đã merge), `apps/hub/src/main.ts` (đăng ký hook)
@@ -380,7 +382,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     chỉ thêm import, mục nav và chỗ đặt), màn `/admin/artifact-usage`, e2e `artifact-admin.spec.ts`.
   - **Phụ thuộc**: MVP · **Mức**: vừa
 
-- [ ] T068 [US9] Soạn tay đầy đủ
+- [-] T068 [US9] Soạn tay đầy đủ
   - Markdown bằng doc-editor Tiptap (ẩn R-n, đề xuất, gửi duyệt); ô soạn code có tô màu; nút "Artifact mới" ở thư viện và
     khung.
   - **Scope**: `packages/artifacts-ui/src/editor.tsx`, `packages/doc-editor/src/**` (chỉ cờ chế độ artifact, phối hợp làn

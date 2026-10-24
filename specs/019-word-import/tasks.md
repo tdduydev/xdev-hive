@@ -4,6 +4,8 @@ description: "Task list: nhập Word thành tài liệu hub"
 
 # Tasks: Nhập Word thành tài liệu hub
 
+> `- [-]`: bỏ, ngoài phạm vi (lý do ghi trong từng task). Giữ task để ghi lại.
+
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md)
 
 ## Quy ước
@@ -440,7 +442,7 @@ description: "Task list: nhập Word thành tài liệu hub"
 
 ## Đợt 3: `.doc`, cập nhật, đề xuất, desktop Rust (song song, sau Đợt 2)
 
-- [ ] **T014 [P] [US1] [nặng] · 2 ngày — `.doc` qua LibreOffice**
+- [-] **T014 [P] [US1] [nặng] · 2 ngày — `.doc` qua LibreOffice**
   - **Phụ thuộc**: T008, T009, T024 (gói trên máy chủ).
   - **Goal**: giai đoạn 1b. Q9, FR-003, FR-004, FR-023, SC-002 (`.doc`), SC-005, plan.md mục 12b, R9, R10.
     - `soffice.ts`:
